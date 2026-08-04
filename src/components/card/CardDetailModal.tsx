@@ -33,6 +33,14 @@ import {
   Trash,
   Pencil,
   Palette,
+  Bold,
+  Underline,
+  Italic,
+  Strikethrough,
+  Heading,
+  Quote,
+  List as ListIcon,
+  Link,
 } from 'lucide-react';
 import {
   cn,
@@ -269,6 +277,35 @@ export default function CardDetailModal({
   const [newLabelColor, setNewLabelColor] = useState('#3B82F6');
 
   const modalRef = useRef<HTMLDivElement>(null);
+  const descTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertFormat = (prefix: string, suffix = '') => {
+    const ta = descTextareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = descValue.substring(start, end);
+    const before = descValue.substring(0, start);
+    const after = descValue.substring(end);
+    const newText = prefix + selected + suffix;
+    const newDesc = before + newText + after;
+    setDescValue(newDesc);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start, start + newText.length);
+    });
+  };
+
+  const formatButtons = [
+    { label: lang === 'zh' ? '加粗' : 'Bold', icon: Bold, action: () => insertFormat('**', '**') },
+    { label: lang === 'zh' ? '斜体' : 'Italic', icon: Italic, action: () => insertFormat('*', '*') },
+    { label: lang === 'zh' ? '下划线' : 'Underline', icon: Underline, action: () => insertFormat('<u>', '</u>') },
+    { label: lang === 'zh' ? '删除线' : 'Strikethrough', icon: Strikethrough, action: () => insertFormat('~~', '~~') },
+    { label: lang === 'zh' ? '标题' : 'Heading', icon: Heading, action: () => insertFormat('## ') },
+    { label: lang === 'zh' ? '引用' : 'Quote', icon: Quote, action: () => insertFormat('> ') },
+    { label: lang === 'zh' ? '列表' : 'List', icon: ListIcon, action: () => insertFormat('- ') },
+    { label: lang === 'zh' ? '链接' : 'Link', icon: Link, action: () => insertFormat('[', '](url)') },
+  ];
 
   useEffect(() => {
     setTitleValue(latestCard.title);
@@ -566,7 +603,22 @@ export default function CardDetailModal({
                   </div>
                   {editingDesc ? (
                     <div className="space-y-2">
+                      {/* Formatting Toolbar */}
+                      <div className="flex items-center gap-0.5 flex-wrap p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        {formatButtons.map(btn => (
+                          <button
+                            key={btn.label}
+                            type="button"
+                            onClick={btn.action}
+                            className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                            title={btn.label}
+                          >
+                            <btn.icon size={14} />
+                          </button>
+                        ))}
+                      </div>
                       <textarea
+                        ref={descTextareaRef}
                         autoFocus
                         value={descValue}
                         onChange={(e) => setDescValue(e.target.value)}
