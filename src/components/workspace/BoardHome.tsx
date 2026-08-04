@@ -524,6 +524,11 @@ export default function BoardHome() {
         document.body
       )}
       </div>
+
+      {/* Version */}
+      <div className="text-center py-2 text-[11px] text-slate-400 shrink-0">
+        v1.0.0
+      </div>
     </div>
   );
 }
