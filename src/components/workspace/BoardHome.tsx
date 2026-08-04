@@ -51,6 +51,9 @@ export default function BoardHome() {
   const [showMemberManage, setShowMemberManage] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [emojiPickerId, setEmojiPickerId] = useState<string | null>(null);
+  const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; left: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const bgRef = [...BOARD_BG_GRADIENTS];
@@ -72,12 +75,17 @@ export default function BoardHome() {
   };
 
   useEffect(() => {
-    const handler = () => setMenuOpenId(null);
-    if (menuOpenId) {
+    const handler = () => {
+      setMenuOpenId(null);
+      setMenuPos(null);
+      setEmojiPickerId(null);
+      setEmojiPickerPos(null);
+    };
+    if (menuOpenId || emojiPickerId) {
       document.addEventListener('mousedown', handler);
       return () => document.removeEventListener('mousedown', handler);
     }
-  }, [menuOpenId]);
+  }, [menuOpenId, emojiPickerId]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -201,7 +209,7 @@ export default function BoardHome() {
               const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.completed).length, 0);
               const bg = bgRef[(bgIdx++) % bgRef.length];
               const emojis = ['📋', '🚀', '💡', '🎯', '🔥', '🌟', '💎', '🎨', '⚡', '🛠️', '📦', '🏗️'];
-              const emoji = emojis[board.title.length % emojis.length];
+              const emoji = board.emoji || emojis[board.title.length % emojis.length];
               return (
                 <div
                   key={board.id}
@@ -211,9 +219,24 @@ export default function BoardHome() {
                   <div className="h-1.5 w-full" style={{ background: board.background || bg }} />
                   <div className="p-5">
                     <div className="flex items-start gap-3.5 mb-3">
-                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm" style={{ background: board.background || bg }}>
+                      <button
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer"
+                        style={{ background: board.background || bg }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (emojiPickerId === board.id) {
+                            setEmojiPickerId(null);
+                            setEmojiPickerPos(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setEmojiPickerPos({ top: rect.bottom + 4, left: rect.left });
+                            setEmojiPickerId(board.id);
+                          }
+                        }}
+                        title={lang === 'zh' ? '更换图标' : 'Change icon'}
+                      >
                         <span>{emoji}</span>
-                      </div>
+                      </button>
                       <div className="min-w-0 flex-1 pt-0.5">
                         {renameId === board.id ? (
                           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -257,31 +280,23 @@ export default function BoardHome() {
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2.5">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
-                      <div className="relative ml-auto">
+                      <div className="ml-auto">
                         <button
-                          onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === board.id ? null : board.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (menuOpenId === board.id) {
+                              setMenuOpenId(null);
+                              setMenuPos(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setMenuPos({ top: rect.bottom + 4, left: Math.min(rect.right - 128, window.innerWidth - 144) });
+                              setMenuOpenId(board.id);
+                            }
+                          }}
                           className="p-0.5 rounded text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
                         >
                           <MoreHorizontal size={14} />
                         </button>
-                        {menuOpenId === board.id && (
-                          <div className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 animate-slide-up" onMouseDown={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => { setRenameId(board.id); setRenameText(board.title); setMenuOpenId(null); }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                            >
-                              <MoreHorizontal size={13} className="rotate-90" />
-                              {lang === 'zh' ? '重命名' : 'Rename'}
-                            </button>
-                            <button
-                              onClick={() => { setDeleteTarget(board.id); setMenuOpenId(null); }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                            >
-                              <Trash2 size={13} />
-                              {lang === 'zh' ? '删除' : 'Delete'}
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -299,6 +314,57 @@ export default function BoardHome() {
           </div>
         )}
       </div>
+
+      {/* Three-dot menu portal */}
+      {menuOpenId && menuPos && createPortal(
+        <div className="fixed z-[99999] animate-slide-up" style={{ left: menuPos.left, top: menuPos.top }} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="w-32 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1">
+            <button
+              onClick={() => {
+                const board = boards.find(b => b.id === menuOpenId);
+                if (board) { setRenameId(board.id); setRenameText(board.title); }
+                setMenuOpenId(null); setMenuPos(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              <MoreHorizontal size={13} className="rotate-90" />
+              {lang === 'zh' ? '重命名' : 'Rename'}
+            </button>
+            <button
+              onClick={() => { setDeleteTarget(menuOpenId); setMenuOpenId(null); setMenuPos(null); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <Trash2 size={13} />
+              {lang === 'zh' ? '删除' : 'Delete'}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Emoji picker portal */}
+      {emojiPickerId && emojiPickerPos && createPortal(
+        <div className="fixed z-[99999] animate-slide-up" style={{ left: emojiPickerPos.left, top: emojiPickerPos.top }} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="w-56 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-2">
+            <div className="grid grid-cols-6 gap-1">
+              {['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','💼','📊','🎵','🛒','🏠','🌍'].map(e => (
+                <button
+                  key={e}
+                  onClick={() => {
+                    dispatch({ type: 'SET_BOARD_EMOJI', payload: { boardId: emojiPickerId, emoji: e } });
+                    setEmojiPickerId(null);
+                    setEmojiPickerPos(null);
+                  }}
+                  className="w-8 h-8 flex items-center justify-center text-lg rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Create Board Modal */}
       {showCreate && createPortal(

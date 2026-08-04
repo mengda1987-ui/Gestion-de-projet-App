@@ -93,6 +93,7 @@ export interface Board {
   id: string;
   title: string;
   background: string;
+  emoji?: string;
   columns: Column[];
   labels: Label[];
   mindmap: MindMapNode[];
