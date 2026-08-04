@@ -17,6 +17,7 @@ import {
   Clock,
   Users,
   Image,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
@@ -103,6 +104,13 @@ export default function BoardHome() {
             <p className="text-slate-500 text-sm mt-2">{t('home.subtitle')}</p>
           </div>
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => dispatch({ type: 'SET_CURRENT_USER', payload: null })}
+              className="btn-secondary text-xs text-slate-500 hover:text-red-500"
+              title={lang === 'zh' ? '退出登录' : 'Logout'}
+            >
+              <LogOut size={14} />
+            </button>
             {currentUser?.role === 'admin' && (
               <>
                 <button
