@@ -233,69 +233,71 @@ export default function MindMapView() {
       const width = nodeWidthFor(root.text, depth);
       const height = depth === 0 ? ROOT_HEIGHT : NODE_HEIGHT;
       const rootOverridden = !!root.posOverride && (root.posOverride.x !== 0 || root.posOverride.y !== 0);
+
+      // 1. 先递归计算所有子节点的布局，得到它们的总高度
+      const layKids: LayoutedNode[] = [];
+      const childDepth = depth + 1;
+      let childrenSubtreeHeight = 0;
+
+      if (kids.length > 0) {
+        let curY = yCursor;
+        for (const k of kids) {
+          const kOverridden = !!k.posOverride && (k.posOverride.x !== 0 || k.posOverride.y !== 0);
+          // 即使子节点有 override，我们也先按自动布局算一遍高度，或者给个默认高度
+          const sub = lay(k, childDepth, curY);
+          layKids.push(sub);
+          curY += sub.subtreeHeight + NODE_V_GAP;
+        }
+        childrenSubtreeHeight = curY - yCursor - NODE_V_GAP;
+      }
+
+      // 2. 确定当前节点的 subtreeHeight
+      const subtreeHeight = Math.max(height, childrenSubtreeHeight);
+
+      // 3. 确定当前节点的坐标
       let x = forceX ?? (40 + depth * (NODE_H_GAP + NODE_MIN_WIDTH + 30));
-      let y = yCursor;
+      let y = yCursor + subtreeHeight / 2 - height / 2;
+
       if (rootOverridden) {
         x = root.posOverride!.x;
         y = root.posOverride!.y;
       }
-      const layKids: LayoutedNode[] = [];
-      let subtree = 0;
+
+      // 4. 如果当前节点位置变了（比如被居中或被 override），调整子节点的位置
       if (kids.length > 0) {
-        const childDepth = depth + 1;
         const childrenXForce = x + width + NODE_H_GAP;
-        // 父被拖走时：子节点紧贴父节点下方堆叠，不做居中重排（避免落盘跳动）
-        let childrenYStart = yCursor;
-        if (rootOverridden) {
-          // 改进：如果父节点被手动定位，子节点默认在父节点右侧垂直居中分布，而不是全部堆在下方
-          const totalKidsHeight = kids.length * (NODE_HEIGHT + NODE_V_GAP) - NODE_V_GAP;
-          childrenYStart = y + height / 2 - totalKidsHeight / 2;
-        }
-        let cur = childrenYStart;
-        for (const k of kids) {
+        let curY = rootOverridden 
+          ? (y + height / 2 - childrenSubtreeHeight / 2)
+          : yCursor;
+
+        for (let i = 0; i < layKids.length; i++) {
+          const sub = layKids[i];
+          const k = kids[i];
           const kOverridden = !!k.posOverride && (k.posOverride.x !== 0 || k.posOverride.y !== 0);
+          
           if (kOverridden) {
-            const sub = lay(k, childDepth, 0);
-            layKids.push({ ...sub, x: k.posOverride!.x, y: k.posOverride!.y });
-            if (!rootOverridden) {
-              cur = Math.max(cur, k.posOverride!.y + sub.subtreeHeight + NODE_V_GAP);
-            }
+            sub.x = k.posOverride!.x;
+            sub.y = k.posOverride!.y;
           } else {
-            const sub = rootOverridden
-              ? lay(k, childDepth, cur, childrenXForce)
-              : lay(k, childDepth, cur);
-            layKids.push(sub);
-            cur = sub.y + sub.subtreeHeight + NODE_V_GAP;
+            sub.x = childrenXForce;
+            sub.y = curY + sub.subtreeHeight / 2 - sub.height / 2;
+            // 递归更新子节点的子节点（如果有的话）
+            const shiftY = sub.y - (curY + sub.subtreeHeight / 2 - sub.height / 2); // 这里其实不需要 shift，因为我们是直接设置
           }
+          curY += sub.subtreeHeight + NODE_V_GAP;
         }
-        subtree = layKids.reduce((s, k) => s + k.subtreeHeight + NODE_V_GAP, -NODE_V_GAP);
-        if (!rootOverridden && layKids.length > 0) {
-          const ys = layKids.map(k => k.y).sort((a, b) => a - b);
-          const first = layKids.find(k => k.y === ys[0])!;
-          const last = layKids.reduce((a, c) => (c.y > a.y ? c : a), layKids[0]);
-          const c1 = first.y + first.subtreeHeight / 2;
-          const c2 = last.y + last.subtreeHeight / 2;
-          y = (c1 + c2) / 2 - height / 2;
-        }
-      } else {
-        subtree = height;
       }
-      return { node: root, depth, subtreeHeight: Math.max(height, subtree), x, y, width, height, children: layKids };
+
+      return { node: root, depth, subtreeHeight, x, y, width, height, children: layKids };
     }
+
     const roots = (childrenMap.get(null) ?? []).slice().sort((a, b) => a.order - b.order);
-    let y = 48;
+    let currentY = 48;
     const result: LayoutedNode[] = [];
     for (const r of roots) {
-      const rOverridden = !!r.posOverride && (r.posOverride.x !== 0 || r.posOverride.y !== 0);
-      if (rOverridden) {
-        const lr = lay(r, 0, 0);
-        result.push(lr);
-        y = Math.max(y, lr.y + lr.subtreeHeight + 32);
-      } else {
-        const lr = lay(r, 0, y);
-        result.push(lr);
-        y = lr.y + lr.subtreeHeight + 32;
-      }
+      const lr = lay(r, 0, currentY);
+      result.push(lr);
+      currentY += lr.subtreeHeight + 64; // 根节点之间留大一点间距
     }
     return result;
   }, [nodes, childrenMap, collapsed]);
