@@ -109,8 +109,11 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         {/* Due Date Banner */}
         {dueStatus && !card.coverImage && (
           <div className={cn(
-            'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-white shadow-sm',
-            dueStatus.color
+            'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium shadow-sm',
+            dueStatus.status === 'completed' && 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+            dueStatus.status === 'overdue' && 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+            dueStatus.status === 'due-soon' && 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+            dueStatus.status === 'normal' && 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
           )}>
             <Calendar size={10} />
             {dueStatus.label}

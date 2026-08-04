@@ -118,7 +118,7 @@ export default function TableView() {
   const selectedCard = selectedCardId ? findCard(selectedCardId) : null;
 
   return (
-    <div className="h-full flex flex-col p-4">
+    <div className="min-h-full flex flex-col p-4">
       <div className="glass rounded-xl overflow-hidden flex-1 flex flex-col min-h-0">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60">
@@ -189,7 +189,7 @@ export default function TableView() {
                     : rawDueStatus.status === 'due-soon' ? t('date.soon')
                     : rawDueStatus.label
                 } : null;
-                const assignees = card.assignees.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
+                const assignees = card.assignees.map(id => users.find(u => u.id === id)).filter((u): u is User => u !== undefined);
                 return (
                   <tr
                     key={card.id}
@@ -232,8 +232,11 @@ export default function TableView() {
                     <td className="px-4 py-3">
                       {dueStatus ? (
                         <div className={cn(
-                          'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-white',
-                          dueStatus.color
+                          'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium shadow-sm',
+                          dueStatus.status === 'completed' && 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+                          dueStatus.status === 'overdue' && 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+                          dueStatus.status === 'due-soon' && 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+                          dueStatus.status === 'normal' && 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
                         )}>
                           <Calendar size={10} />
                           {dueStatus.label}

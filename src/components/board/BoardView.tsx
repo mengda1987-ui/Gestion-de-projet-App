@@ -74,11 +74,19 @@ export default function BoardView() {
 
     if (type === 'COLUMN') {
       const fromRealIndex = board.columns.findIndex(c => c.id === draggableId);
-      const visibleColOrder = visibleColumns.map(c => c.id);
-      const destVisibleId = visibleColOrder[destination.index];
-      let toRealIndex = board.columns.findIndex(c => c.id === destVisibleId);
-      if (toRealIndex === -1) toRealIndex = board.columns.length - 1;
       if (fromRealIndex === -1) return;
+
+      const visibleColIds = visibleColumns.map(c => c.id);
+      let toRealIndex: number;
+
+      if (destination.index >= visibleColIds.length) {
+        toRealIndex = board.columns.length - 1;
+      } else {
+        const destVisibleId = visibleColIds[destination.index];
+        toRealIndex = board.columns.findIndex(c => c.id === destVisibleId);
+      }
+
+      if (toRealIndex === -1) toRealIndex = board.columns.length - 1;
       
       broadcastChange({
         type: 'REORDER_COLUMNS',
@@ -93,14 +101,22 @@ export default function BoardView() {
       if (!fromCol || !toCol) return;
 
       if (source.droppableId === destination.droppableId) {
-        const srcVisibleCardIds = (
-          visibleColumns.find(c => c.id === source.droppableId) || { cards: [] }
-        ).cards.map(c => c.id);
+        const visibleCol = visibleColumns.find(c => c.id === source.droppableId);
+        if (!visibleCol) return;
+
+        const srcVisibleCardIds = visibleCol.cards.map(c => c.id);
         const fromRealIdx = fromCol.cards.findIndex(c => c.id === srcVisibleCardIds[source.index]);
-        const destVisibleId = srcVisibleCardIds[destination.index];
-        let toRealIdx = fromCol.cards.findIndex(c => c.id === destVisibleId);
-        if (toRealIdx === -1) toRealIdx = fromCol.cards.length;
         if (fromRealIdx === -1) return;
+
+        let toRealIdx: number;
+        if (destination.index >= srcVisibleCardIds.length) {
+          toRealIdx = fromCol.cards.length - 1;
+        } else {
+          const destVisibleId = srcVisibleCardIds[destination.index];
+          toRealIdx = fromCol.cards.findIndex(c => c.id === destVisibleId);
+        }
+
+        if (toRealIdx === -1) toRealIdx = fromCol.cards.length - 1;
 
         broadcastChange({
           type: 'REORDER_CARDS',
@@ -111,22 +127,24 @@ export default function BoardView() {
           },
         });
       } else {
-        const srcVisibleCardIds = (
-          visibleColumns.find(c => c.id === source.droppableId) || { cards: [] }
-        ).cards.map(c => c.id);
-        const dstVisibleCardIds = (
-          visibleColumns.find(c => c.id === destination.droppableId) || { cards: [] }
-        ).cards.map(c => c.id);
+        const srcVisibleCol = visibleColumns.find(c => c.id === source.droppableId);
+        const dstVisibleCol = visibleColumns.find(c => c.id === destination.droppableId);
+        if (!srcVisibleCol || !dstVisibleCol) return;
+
+        const srcVisibleCardIds = srcVisibleCol.cards.map(c => c.id);
+        const dstVisibleCardIds = dstVisibleCol.cards.map(c => c.id);
+
         const fromRealIdx = fromCol.cards.findIndex(c => c.id === srcVisibleCardIds[source.index]);
-        const destVisibleId = dstVisibleCardIds[destination.index];
+        if (fromRealIdx === -1) return;
+
         let toRealIdx: number;
-        if (!destVisibleId) {
+        if (destination.index >= dstVisibleCardIds.length) {
           toRealIdx = toCol.cards.length;
         } else {
+          const destVisibleId = dstVisibleCardIds[destination.index];
           toRealIdx = toCol.cards.findIndex(c => c.id === destVisibleId);
           if (toRealIdx === -1) toRealIdx = toCol.cards.length;
         }
-        if (fromRealIdx === -1) return;
 
         broadcastChange({
           type: 'MOVE_CARD',
