@@ -95,7 +95,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
             />
           ) : (
             <h3
-              className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded px-1.5 py-0.5 -mx-1.5"
+              className="font-semibold text-sm text-slate-800 dark:text-slate-100 whitespace-normal break-words cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded px-1.5 py-0.5 -mx-1.5"
               onDoubleClick={() => setEditingTitle(true)}
               onClick={(e) => e.stopPropagation()}
             >
