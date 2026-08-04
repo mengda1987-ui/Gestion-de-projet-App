@@ -158,10 +158,11 @@ export default function MindMapView() {
           if (card.labels.length > 0) {
             const lbl = board.labels.find(l => l.id === card.labels[0]);
             if (lbl?.color) color = lbl.color;
-          } else if (card.status === 'complete') {
-            color = '#10B981';
-          } else if (card.status === 'in_progress') {
-            color = '#F59E0B';
+          } else {
+            // Status-based colors for card nodes
+            if (card.status === 'in_progress') color = '#FBBF24';
+            else if (card.status === 'complete') color = '#10B981';
+            else color = '#FFFFFF';
           }
           list.push({
             id: `card-${card.id}`,
@@ -1036,8 +1037,12 @@ export default function MindMapView() {
 
                 <div
                   className={cn(
-                    'w-full h-full rounded-2xl flex items-center justify-center border border-white/60 dark:border-slate-600/50 backdrop-blur group',
-                    n.node.completed && 'line-through decoration-white/80 decoration-2'
+                    'w-full h-full rounded-2xl flex items-center justify-center backdrop-blur group',
+                    // Border: black for card nodes, subtle for columns/items
+                    n.node.kind === 'card'
+                      ? 'border-2 border-black dark:border-white'
+                      : 'border border-white/60 dark:border-slate-600/50',
+                    n.node.completed && 'line-through decoration-black/60 dark:decoration-white/60 decoration-2'
                   )}
                   style={{
                     background: `linear-gradient(135deg, ${n.node.color} 0%, ${n.node.color}ee 100%)`,
@@ -1049,21 +1054,14 @@ export default function MindMapView() {
                   {!isEdit ? (
                     <div
                       className={cn(
-                        'font-bold text-white whitespace-normal text-center leading-snug drop-shadow-sm select-none w-full break-words',
+                        'font-bold whitespace-normal text-center leading-snug select-none w-full break-words',
+                        n.node.kind === 'card'
+                          ? 'text-black dark:text-white'
+                          : 'text-white drop-shadow-sm',
                         n.depth === 0 ? 'text-[16px]' : n.depth === 1 ? 'text-[14px]' : 'text-[13px]'
                       )}
                       title={n.node.text + (n.node.description ? `\n---\n${n.node.description.slice(0, 200)}` : '')}
                     >
-                      {n.node.kind === 'card' && n.node.status && (
-                        <span className={cn(
-                          'inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium mr-1 align-middle',
-                          n.node.status === 'todo' ? 'bg-white/20 text-white/90' :
-                          n.node.status === 'in_progress' ? 'bg-white/30 text-white' :
-                          'bg-white/30 text-white'
-                        )}>
-                          {n.node.status === 'todo' ? '⬜' : n.node.status === 'in_progress' ? '🔄' : '✅'}
-                        </span>
-                      )}
                       {n.node.text}
                     </div>
                   ) : (
