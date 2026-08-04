@@ -188,6 +188,9 @@ export default function LoginPage() {
         </div>
       </div>
 
+      {/* Version */}
+      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.0</p>
+
       {/* Background Picker */}
       {showBgPicker && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
