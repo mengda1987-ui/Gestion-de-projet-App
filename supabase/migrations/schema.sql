@@ -58,5 +58,5 @@ INSERT INTO boards (title, background, data)
 VALUES (
   '我的第一个看板',
   'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%)',
-  '{"columns":[{"id":"col-1","title":"待办","position":0,"archived":false,"cards":[]},{"id":"col-2","title":"进行中","position":1,"archived":false,"cards":[]},{"id":"col-3","title":"已完成","position":2,"archived":false,"cards":[]}]}'::jsonb
+  '{"columns":[{"id":"col-1","title":"待办","order":0,"archived":false,"cards":[]},{"id":"col-2","title":"进行中","order":1,"archived":false,"cards":[]},{"id":"col-3","title":"已完成","order":2,"archived":false,"cards":[]}]}'::jsonb
 );

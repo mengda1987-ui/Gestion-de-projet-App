@@ -12,7 +12,7 @@ const in5Days = new Date(Date.now() + 5 * 86400000).toISOString();
 
 export const MOCK_USERS: User[] = [
   {
-    id: 'user-1',
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     name: 'Da MENG',
     email: 'dameng@example.com',
     avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20orange%20fox%20avatar%20kawaii%20style%20big%20eyes%20round%20face%20pastel%20background&image_size=square',
@@ -21,7 +21,7 @@ export const MOCK_USERS: User[] = [
     password: '123456',
   },
   {
-    id: 'user-2',
+    id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
     name: '李娜',
     email: 'lina@example.com',
     avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20fluffy%20bunny%20rabbit%20avatar%20kawaii%20style%20pink%20ears%20big%20sparkle%20eyes%20soft%20pastel%20background&image_size=square',
@@ -30,7 +30,7 @@ export const MOCK_USERS: User[] = [
     password: '123456',
   },
   {
-    id: 'user-3',
+    id: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
     name: '王磊',
     email: 'wanglei@example.com',
     avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20panda%20bear%20avatar%20kawaii%20chibi%20style%20bamboo%20leaf%20big%20round%20eyes%20soft%20green%20background&image_size=square',
@@ -51,7 +51,7 @@ export const MOCK_LABELS: Label[] = [
 ];
 
 export const MOCK_BOARD: Board = {
-  id: 'board-1',
+  id: 'd4e5f6a7-b8c9-0123-defa-234567890123',
   title: '产品开发项目',
   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
   createdAt: lastWeek,

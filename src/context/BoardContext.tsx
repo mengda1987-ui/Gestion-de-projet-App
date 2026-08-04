@@ -1275,7 +1275,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           background: b.background || '#f5f5f7',
           labels: b.labels || [],
           columns: b.data?.columns || [],
-          mindmap: b.data?.mindmap || { nodes: [], scale: 1, offsetX: 0, offsetY: 0 },
+          mindmap: b.data?.mindmap || [],
           createdAt: b.created_at,
           updatedAt: b.updated_at,
         }));
@@ -1345,7 +1345,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           title: b.title,
           background: b.background,
           labels: b.labels || [],
-          data: { columns: b.columns || [], mindmap: b.mindmap || { nodes: [], scale: 1, offsetX: 0, offsetY: 0 } },
+          data: { columns: b.columns || [], mindmap: b.mindmap || [] },
           updated_at: new Date().toISOString(),
         });
       } catch (e) {}
@@ -1413,7 +1413,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
               background: fresh.background || '#f5f5f7',
               labels: fresh.labels || [],
               columns: fresh.data?.columns || [],
-              mindmap: fresh.data?.mindmap || { nodes: [], scale: 1, offsetX: 0, offsetY: 0 },
+              mindmap: fresh.data?.mindmap || [],
               createdAt: fresh.created_at,
               updatedAt: fresh.updated_at,
             };

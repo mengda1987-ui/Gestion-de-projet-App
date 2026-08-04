@@ -49,5 +49,5 @@ export function formatFileSize(bytes: number) {
 }
 
 export function generateId() {
-  return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 }
