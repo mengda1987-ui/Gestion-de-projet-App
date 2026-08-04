@@ -1247,6 +1247,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevUserIdsRef = useRef<Set<string>>(new Set());
+  const prevBoardIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (loadedRef.current) return;
@@ -1337,7 +1339,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // --- Supabase: Save boards list when boards array changes ---
   useEffect(() => {
     if (!loadedRef.current) return;
-    // Save each board's core metadata
+    const currentIds = new Set(state.boards.map(b => b.id));
+    const prevIds = prevBoardIdsRef.current;
+
+    // Upsert current boards
     state.boards.forEach(async (b) => {
       try {
         await supabase.from('boards').upsert({
@@ -1350,11 +1355,26 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         });
       } catch (e) {}
     });
+
+    // Delete boards that were removed
+    prevIds.forEach(async (id) => {
+      if (!currentIds.has(id)) {
+        try {
+          await supabase.from('boards').delete().eq('id', id);
+        } catch (e) {}
+      }
+    });
+
+    prevBoardIdsRef.current = currentIds;
   }, [state.boards]);
 
   // --- Supabase: Save users ---
   useEffect(() => {
     if (!loadedRef.current) return;
+    const currentIds = new Set(state.users.map(u => u.id));
+    const prevIds = prevUserIdsRef.current;
+
+    // Upsert current users
     state.users.forEach(async (u) => {
       try {
         await supabase.from('users').upsert({
@@ -1368,6 +1388,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         });
       } catch (e) {}
     });
+
+    // Delete users that were removed
+    prevIds.forEach(async (id) => {
+      if (!currentIds.has(id)) {
+        try {
+          await supabase.from('users').delete().eq('id', id);
+        } catch (e) {}
+      }
+    });
+
+    prevUserIdsRef.current = currentIds;
   }, [state.users]);
 
   // --- Supabase: Save workspace settings ---
