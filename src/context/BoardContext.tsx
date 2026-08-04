@@ -115,7 +115,7 @@ function syncBoardInList(state: BoardState): BoardState {
 function baseReducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
     case 'SET_CURRENT_USER':
-      return { ...state, currentUser: action.payload };
+      return { ...state, currentUser: action.payload, currentBoardId: '' };
 
     case 'SET_VIEW_MODE':
       return { ...state, viewMode: action.payload };
