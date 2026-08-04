@@ -243,6 +243,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
                   autoFocus
                   value={newCardTitle}
                   onChange={(e) => setNewCardTitle(e.target.value)}
+                  onBlur={handleAddCard}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();

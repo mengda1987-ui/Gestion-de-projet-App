@@ -944,12 +944,20 @@ export default function MindMapView() {
             style={{ left: -2000, top: -2000, overflow: 'visible', zIndex: 5, isolation: 'isolate', pointerEvents: 'none' }}
           >
             <defs>
-              {DEFAULT_COLORS.map(c => (
-                <linearGradient key={`lg-${c}`} id={`mm-edge-${c.replace('#', '')}`} x1="0" x2="1" y1="0" y2="0">
-                  <stop offset="0%" stopColor={c} stopOpacity="0.75"/>
-                  <stop offset="100%" stopColor={c} stopOpacity="0.95"/>
-                </linearGradient>
-              ))}
+              {(() => {
+                const usedColors = new Set<string>();
+                nodesFlat.forEach(n => {
+                  n.children.forEach(ch => {
+                    usedColors.add(ch.node.color.replace('#', ''));
+                  });
+                });
+                return Array.from(usedColors).map(c => (
+                  <linearGradient key={`lg-${c}`} id={`mm-edge-${c}`} x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0%" stopColor={`#${c}`} stopOpacity="0.75"/>
+                    <stop offset="100%" stopColor={`#${c}`} stopOpacity="0.95"/>
+                  </linearGradient>
+                ));
+              })()}
             </defs>
             {nodesFlat.map(n =>
               n.children.map(ch => {

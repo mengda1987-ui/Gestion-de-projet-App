@@ -67,7 +67,7 @@ const zh: Dict = {
 
   'board.stats': '列表 {cols} · 卡片 {cards} · 子任务 {items}',
   'board.addColumn': '新增列表',
-  'board.addCard': '+ 新增卡片',
+  'board.addCard': '新增卡片',
   'board.placeholder': '输入标题，按 Enter 创建…',
   'board.archive': '归档',
   'board.unarchive': '恢复（取消归档）',
@@ -282,7 +282,7 @@ const en: Dict = {
 
   'board.stats': 'Lists {cols} · Cards {cards} · Items {items}',
   'board.addColumn': 'Add list',
-  'board.addCard': '+ Add card',
+  'board.addCard': 'Add card',
   'board.placeholder': 'Enter title, press Enter to create…',
   'board.archive': 'Archive',
   'board.unarchive': 'Restore (unarchive)',

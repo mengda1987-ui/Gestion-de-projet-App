@@ -19,6 +19,7 @@ interface BoardState {
   workspaceBackground: string;
   loginBackground: string;
   logo: string;
+  boardLabels: Label[]; // Global labels shared across all boards
   _loaded?: boolean;
 }
 
@@ -97,6 +98,7 @@ function initialState(): BoardState {
     workspaceBackground: '#f5f5f7',
     loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
     logo: '',
+    boardLabels: [],
   };
 }
 
@@ -158,15 +160,20 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         })),
       }));
       const firstBoard = migratedBoards.length > 0 ? migratedBoards[0] : { ...initialState().board, id: '', title: '' };
+      // Merge labels from all boards into global label set
+      const labelMap = new Map<string, Label>();
+      migratedBoards.forEach(b => b.labels?.forEach(l => labelMap.set(l.id, l)));
+      const boardLabels = Array.from(labelMap.values());
       return {
         ...state,
         users,
         boards: migratedBoards,
         board: firstBoard,
-        currentBoardId: '', // don't auto-select — let session restore handle it
+        currentBoardId: '',
         workspaceBackground,
         loginBackground,
         logo,
+        boardLabels,
         _loaded: true,
       };
     }
@@ -442,18 +449,31 @@ function baseReducer(state: BoardState, action: Action): BoardState {
 
     case 'ADD_LABEL': {
       const newLabel: Label = { id: generateId(), ...action.payload.label };
-      return { ...state, board: { ...state.board, labels: [...state.board.labels, newLabel] } };
+      const boardLabels = [...state.boardLabels, newLabel];
+      const boards = state.boards.map(b => ({ ...b, labels: boardLabels }));
+      return {
+        ...state,
+        boardLabels,
+        boards,
+        board: { ...state.board, labels: boardLabels },
+      };
     }
 
     case 'UPDATE_LABEL': {
-      const labels = state.board.labels.map(l =>
+      const boardLabels = state.boardLabels.map(l =>
         l.id === action.payload.labelId ? { ...l, ...action.payload.updates } : l
       );
-      return { ...state, board: { ...state.board, labels } };
+      const boards = state.boards.map(b => ({ ...b, labels: boardLabels }));
+      return {
+        ...state,
+        boardLabels,
+        boards,
+        board: { ...state.board, labels: boardLabels },
+      };
     }
 
     case 'DELETE_LABEL': {
-      const labels = state.board.labels.filter(l => l.id !== action.payload.labelId);
+      const boardLabels = state.boardLabels.filter(l => l.id !== action.payload.labelId);
       const columns = state.board.columns.map(col => ({
         ...col,
         cards: col.cards.map(c => ({
@@ -462,7 +482,24 @@ function baseReducer(state: BoardState, action: Action): BoardState {
           updatedAt: new Date().toISOString(),
         })),
       }));
-      return { ...state, board: { ...state.board, labels, columns, updatedAt: new Date().toISOString() } };
+      const boards = state.boards.map(b => ({
+        ...b,
+        labels: boardLabels,
+        columns: b.columns.map(col => ({
+          ...col,
+          cards: col.cards.map(c => ({
+            ...c,
+            labels: c.labels.filter(lid => lid !== action.payload.labelId),
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+      }));
+      return {
+        ...state,
+        boardLabels,
+        boards,
+        board: { ...state.board, labels: boardLabels, columns, updatedAt: new Date().toISOString() },
+      };
     }
 
     case 'TOGGLE_CARD_LABEL': {
