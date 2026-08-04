@@ -130,14 +130,6 @@ export default function MindMapView() {
     return () => { if (settleTimerRef.current) clearTimeout(settleTimerRef.current); };
   }, []);
 
-  // 首次挂载时清除数据库中残留的旧 mmPosition，确保自动布局正确
-  const clearedStalePositionsRef = useRef(false);
-  useEffect(() => {
-    if (clearedStalePositionsRef.current) return;
-    clearedStalePositionsRef.current = true;
-    broadcastChange({ type: 'CLEAR_ALL_MM_POSITIONS' } as any);
-  }, []);
-
   // ============ 核心：从看板数据实时派生出脑图节点 ============
   const nodes: VirtualNode[] = useMemo(() => {
     const list: VirtualNode[] = [];
