@@ -94,6 +94,8 @@ export interface Board {
   title: string;
   background: string;
   emoji?: string;
+  iconBg?: string;
+  iconImage?: string;
   columns: Column[];
   labels: Label[];
   mindmap: MindMapNode[];

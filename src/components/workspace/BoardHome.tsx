@@ -55,6 +55,8 @@ export default function BoardHome() {
   const [emojiPickerId, setEmojiPickerId] = useState<string | null>(null);
   const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; left: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const iconImageInputRef = useRef<HTMLInputElement>(null);
+  const pendingIconBoardRef = useRef<string | null>(null);
 
   const bgRef = [...BOARD_BG_GRADIENTS];
   let bgIdx = 0;
@@ -110,6 +112,43 @@ export default function BoardHome() {
         }
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         dispatch({ type: 'UPDATE_LOGO', payload: dataUrl });
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleIconImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !pendingIconBoardRef.current) { e.target.value = ''; return; }
+    const boardId = pendingIconBoardRef.current;
+    pendingIconBoardRef.current = null;
+    if (file.size > 2 * 1024 * 1024) {
+      alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const size = Math.min(img.width, img.height, 256);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
+        }
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const board = boards.find(b => b.id === boardId);
+        dispatch({
+          type: 'SET_BOARD_ICON',
+          payload: { boardId, iconImage: dataUrl, emoji: undefined, iconBg: board?.iconBg },
+        });
       };
       img.src = ev.target?.result as string;
     };
@@ -220,8 +259,8 @@ export default function BoardHome() {
                   <div className="p-5">
                     <div className="flex items-start gap-3.5 mb-3">
                       <button
-                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer"
-                        style={{ background: board.background || bg }}
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer overflow-hidden"
+                        style={{ background: board.iconBg || board.background || bg }}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (emojiPickerId === board.id) {
@@ -235,7 +274,11 @@ export default function BoardHome() {
                         }}
                         title={lang === 'zh' ? '更换图标' : 'Change icon'}
                       >
-                        <span>{emoji}</span>
+                        {board.iconImage ? (
+                          <img src={board.iconImage} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{emoji}</span>
+                        )}
                       </button>
                       <div className="min-w-0 flex-1 pt-0.5">
                         {renameId === board.id ? (
@@ -342,16 +385,44 @@ export default function BoardHome() {
         document.body
       )}
 
-      {/* Emoji picker portal */}
+      {/* Icon editor portal */}
       {emojiPickerId && emojiPickerPos && createPortal(
         <div className="fixed z-[99999] animate-slide-up" style={{ left: emojiPickerPos.left, top: emojiPickerPos.top }} onMouseDown={(e) => e.stopPropagation()}>
-          <div className="w-56 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-2">
-            <div className="grid grid-cols-6 gap-1">
+          <div className="w-64 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-3">
+            {/* Background color */}
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{lang === 'zh' ? '背景颜色' : 'Background'}</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {['#ef4444','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#ec4899','#78716c','#94a3b8','#1e293b'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => {
+                    const b = boards.find(b2 => b2.id === emojiPickerId);
+                    dispatch({ type: 'SET_BOARD_ICON', payload: { boardId: emojiPickerId!, iconBg: color, emoji: b?.emoji, iconImage: b?.iconImage } });
+                  }}
+                  className="w-6 h-6 rounded-full border-2 border-white dark:border-slate-700 shadow-sm hover:scale-110 transition-transform"
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+              <button
+                onClick={() => {
+                  const b = boards.find(b2 => b2.id === emojiPickerId);
+                  dispatch({ type: 'SET_BOARD_ICON', payload: { boardId: emojiPickerId!, iconBg: undefined, emoji: b?.emoji, iconImage: b?.iconImage } });
+                }}
+                className="w-6 h-6 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-600 hover:scale-110 transition-transform flex items-center justify-center"
+              >
+                <X size={10} className="text-slate-400" />
+              </button>
+            </div>
+
+            {/* Emoji grid */}
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{lang === 'zh' ? '图标' : 'Icon'}</p>
+            <div className="grid grid-cols-6 gap-1 mb-3">
               {['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','💼','📊','🎵','🛒','🏠','🌍'].map(e => (
                 <button
                   key={e}
                   onClick={() => {
-                    dispatch({ type: 'SET_BOARD_EMOJI', payload: { boardId: emojiPickerId, emoji: e } });
+                    const b = boards.find(b2 => b2.id === emojiPickerId);
+                    dispatch({ type: 'SET_BOARD_ICON', payload: { boardId: emojiPickerId!, emoji: e, iconBg: b?.iconBg, iconImage: undefined } });
                     setEmojiPickerId(null);
                     setEmojiPickerPos(null);
                   }}
@@ -361,10 +432,25 @@ export default function BoardHome() {
                 </button>
               ))}
             </div>
+
+            {/* Upload custom image */}
+            <button
+              onClick={() => {
+                pendingIconBoardRef.current = emojiPickerId;
+                setEmojiPickerId(null);
+                setEmojiPickerPos(null);
+                setTimeout(() => iconImageInputRef.current?.click(), 100);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Upload size={13} />
+              {lang === 'zh' ? '上传图片' : 'Upload Image'}
+            </button>
           </div>
         </div>,
         document.body
       )}
+      <input ref={iconImageInputRef} type="file" accept="image/*" onChange={handleIconImageUpload} className="hidden" />
 
       {/* Create Board Modal */}
       {showCreate && createPortal(

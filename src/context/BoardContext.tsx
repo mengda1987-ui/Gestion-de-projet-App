@@ -34,6 +34,7 @@ type Action =
   | { type: 'DELETE_BOARD'; payload: string }
   | { type: 'RENAME_BOARD'; payload: { boardId: string; title: string } }
   | { type: 'SET_BOARD_EMOJI'; payload: { boardId: string; emoji: string } }
+  | { type: 'SET_BOARD_ICON'; payload: { boardId: string; emoji?: string; iconBg?: string; iconImage?: string } }
   | { type: 'REORDER_COLUMNS'; payload: { fromIndex: number; toIndex: number } }
   | { type: 'ADD_COLUMN'; payload: { title: string; id?: string } }
   | { type: 'UPDATE_COLUMN'; payload: { columnId: string; updates: Partial<Column> } }
@@ -228,6 +229,20 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         boards: updatedBoards,
         board: state.board.id === action.payload.boardId
           ? { ...state.board, emoji: action.payload.emoji, updatedAt: new Date().toISOString() }
+          : state.board,
+      };
+    }
+
+    case 'SET_BOARD_ICON': {
+      const { boardId, ...iconFields } = action.payload;
+      const updatedBoards = state.boards.map(b =>
+        b.id === boardId ? { ...b, ...iconFields, updatedAt: new Date().toISOString() } : b
+      );
+      return {
+        ...state,
+        boards: updatedBoards,
+        board: state.board.id === boardId
+          ? { ...state.board, ...iconFields, updatedAt: new Date().toISOString() }
           : state.board,
       };
     }
