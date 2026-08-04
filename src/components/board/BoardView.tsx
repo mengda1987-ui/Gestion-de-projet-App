@@ -162,7 +162,7 @@ export default function BoardView() {
               ref={provided.innerRef}
               {...provided.droppableProps}
               className={cn(
-                'h-full flex items-start gap-3 p-4 overflow-x-auto overflow-y-hidden',
+                'h-full flex items-start gap-3 p-4 overflow-x-auto overflow-y-auto',
                 snapshot.isDraggingOver && 'bg-white/5'
               )}
               style={{ scrollBehavior: 'smooth' }}

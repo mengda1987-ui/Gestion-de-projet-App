@@ -457,7 +457,7 @@ export default function MainBoard() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-auto">
         {viewMode === 'board' && <BoardView />}
         {viewMode === 'table' && <TableView />}
         {viewMode === 'gantt' && <GanttView />}
