@@ -271,7 +271,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
           </div>
           
           {assignees.length > 0 && (
-            <AvatarStack users={assignees} max={3} size="sm" showOnline onlineUsers={onlineUsers} />
+            <AvatarStack users={assignees} max={3} size="sm" />
           )}
         </div>
       </div>

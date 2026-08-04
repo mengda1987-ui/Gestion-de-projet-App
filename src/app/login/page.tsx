@@ -15,6 +15,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLogging, setIsLogging] = useState(false);
   const [error, setError] = useState('');
+  const [logoWidth, setLogoWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return parseInt(localStorage.getItem('logoWidth') || '220');
+    }
+    return 220;
+  });
+  const [showLogoSlider, setShowLogoSlider] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
 
   const handleLogin = async () => {
@@ -44,7 +51,7 @@ export default function LoginPage() {
     }
     dispatch({ type: 'SET_CURRENT_USER', payload: user });
     dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
-    setLang(user.lang || 'en');
+    setLang(user.lang || 'zh');
   };
 
   const getBgStyle = (bg: string): React.CSSProperties => {
@@ -97,7 +104,38 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="text-center mb-6">
             {logo ? (
-              <img src={logo} alt="Logo" className="h-16 mx-auto mb-5" style={{ maxWidth: '220px' }} />
+              <div className="relative group/lg inline-block mb-5">
+                <img
+                  src={logo}
+                  alt="Logo"
+                  className="h-auto mx-auto cursor-pointer"
+                  style={{ maxWidth: `${logoWidth}px`, maxHeight: '80px' }}
+                  onClick={() => setShowLogoSlider(!showLogoSlider)}
+                  title={lang === 'zh' ? '点击调整大小' : 'Click to resize'}
+                />
+                {showLogoSlider && (
+                  <div className="mt-2 flex items-center justify-center gap-2 animate-slide-up">
+                    <span className="text-[10px] text-slate-400">S</span>
+                    <input
+                      type="range"
+                      min="80"
+                      max="400"
+                      value={logoWidth}
+                      onChange={(e) => {
+                        const w = parseInt(e.target.value);
+                        setLogoWidth(w);
+                        localStorage.setItem('logoWidth', String(w));
+                      }}
+                      className="w-24 h-1 accent-[#007AFF]"
+                    />
+                    <span className="text-[10px] text-slate-400">L</span>
+                    <span className="text-[10px] text-slate-500">{logoWidth}px</span>
+                  </div>
+                )}
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-[#007AFF] rounded-full opacity-0 group-hover/lg:opacity-100 transition-opacity cursor-se-resize"
+                  style={{ resize: 'both' }}
+                />
+              </div>
             ) : (
               <div className="mb-5">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-100">
@@ -190,7 +228,7 @@ export default function LoginPage() {
       </div>
 
       {/* Version */}
-      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.16</p>
+      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.17</p>
 
       {/* Background Picker */}
       {showBgPicker && createPortal(

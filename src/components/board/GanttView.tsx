@@ -360,7 +360,7 @@ export default function GanttView() {
                                 {formatDate(task.card.createdAt)}
                               </div>
                             </div>
-                            <AvatarStack users={assignees} max={2} size="sm" showOnline onlineUsers={onlineUsers} />
+                            <AvatarStack users={assignees} max={2} size="sm" />
                           </div>
                         </div>
                       );

@@ -971,7 +971,9 @@ export default function MindMapView() {
                 const span = Math.max(60, x2 - x1);
                 const cx = span * 0.55;
                 const d = `M ${x1} ${y1} C ${x1 + cx} ${y1}, ${x2 - cx} ${y2}, ${x2} ${y2}`;
-                const col = ch.node.color.replace('#', '');
+                const rawCol = ch.node.color.replace('#', '');
+                // White (#FFFFFF) lines are invisible on light backgrounds, use black instead
+                const col = rawCol.toUpperCase() === 'FFFFFF' ? '000000' : rawCol;
                 return (
                   <path
                     key={`${n.node.id}->${ch.node.id}`}

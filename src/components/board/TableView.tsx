@@ -227,7 +227,7 @@ export default function TableView() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <AvatarStack users={assignees} max={3} size="sm" showOnline onlineUsers={onlineUsers} />
+                      <AvatarStack users={assignees} max={3} size="sm" />
                     </td>
                     <td className="px-4 py-3">
                       {dueStatus ? (

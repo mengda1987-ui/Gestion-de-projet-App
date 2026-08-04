@@ -473,7 +473,7 @@ export default function CardDetailModal({
                 <div className="mt-3 flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <Users size={14} className="text-slate-500" />
-                    <AvatarStack users={assignees} max={5} size="md" showOnline onlineUsers={onlineUsers} />
+                    <AvatarStack users={assignees} max={5} size="md" />
                   </div>
                   {assignees.map(u => (
                     <span key={u.id} className="text-xs text-slate-600 dark:text-slate-300">{u.name}</span>
@@ -1216,7 +1216,7 @@ export default function CardDetailModal({
                                 active ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                               )}
                             >
-                              <Avatar user={user} size="sm" showOnline online={onlineUsers.includes(user.id)} />
+                              <Avatar user={user} size="sm" />
                               <span className="text-xs text-slate-700 dark:text-slate-200 flex-1 text-left">
                                 {user.name}
                               </span>

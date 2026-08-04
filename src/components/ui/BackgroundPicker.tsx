@@ -5,8 +5,6 @@ import { useLang } from '@/context/LangContext';
 import { Upload, X, RotateCcw, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const IMG_API = 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image';
-
 const PRESET_GRADIENTS = [
   { label: 'ocean', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%)' },
   { label: 'sunset', gradient: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)' },
@@ -20,25 +18,6 @@ const PRESET_GRADIENTS = [
   { label: 'arctic', gradient: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)' },
   { label: 'golden', gradient: 'linear-gradient(135deg, #f59e0b 0%, #d946ef 100%)' },
   { label: 'berry', gradient: 'linear-gradient(135deg, #c026d3 0%, #ec4899 100%)' },
-];
-
-const NATURE_SCENES = [
-  { name: 'misty mountains', prompt: 'breathtaking%20sunrise%20over%20misty%20mountains%20with%20fog%20valley%20warm%20golden%20light%20professional%20landscape%20photography' },
-  { name: 'tropical beach', prompt: 'beautiful%20tropical%20beach%20at%20sunset%20palm%20trees%20crystal%20clear%20turquoise%20water%20soft%20pastel%20sky%20professional%20photography' },
-  { name: 'cherry blossoms', prompt: 'japanese%20cherry%20blossom%20garden%20in%20full%20bloom%20pink%20petals%20stone%20path%20traditional%20temple%20spring%20sunlight%20professional%20photography' },
-  { name: 'aurora borealis', prompt: 'aurora%20borealis%20northern%20lights%20over%20snowy%20mountain%20peaks%20green%20purple%20sky%20reflection%20on%20frozen%20lake%20professional%20photography' },
-  { name: 'lavender field', prompt: 'endless%20lavender%20field%20in%20Provence%20at%20golden%20hour%20purple%20flowers%20rolling%20hills%20warm%20sunset%20light%20professional%20photography' },
-  { name: 'bamboo forest', prompt: 'serene%20bamboo%20forest%20with%20sunbeams%20streaming%20through%20tall%20green%20stalks%20peaceful%20meditative%20atmosphere%20professional%20photography' },
-  { name: 'autumn maple', prompt: 'beautiful%20autumn%20maple%20forest%20path%20vibrant%20red%20orange%20yellow%20leaves%20sunlight%20filtering%20through%20trees%20professional%20photography' },
-  { name: 'starry lake', prompt: 'starry%20night%20sky%20over%20mountain%20lake%20milky%20way%20galaxy%20reflection%20on%20calm%20water%20snow%20capped%20peaks%20professional%20photography' },
-  { name: 'ocean waves', prompt: 'turquoise%20ocean%20waves%20crashing%20on%20white%20sand%20beach%20aerial%20view%20crystal%20clear%20water%20gradient%20blue%20depths%20professional%20photography' },
-  { name: 'winter pines', prompt: 'snowy%20pine%20forest%20in%20winter%20morning%20light%20fresh%20snow%20covering%20trees%20soft%20fog%20peaceful%20atmosphere%20professional%20photography' },
-  { name: 'desert dunes', prompt: 'golden%20sand%20dunes%20in%20the%20Sahara%20desert%20at%20sunset%20dramatic%20shadows%20warm%20orange%20light%20wind%20ripples%20professional%20photography' },
-  { name: 'tea plantation', prompt: 'lush%20green%20tea%20plantation%20terraces%20on%20rolling%20hills%20sunrise%20mist%20geometric%20patterns%20peaceful%20landscape%20professional%20photography' },
-  { name: 'tropical waterfall', prompt: 'majestic%20waterfall%20in%20tropical%20rainforest%20lush%20green%20vegetation%20rainbow%20in%20mist%20crystal%20pool%20below%20professional%20photography' },
-  { name: 'wildflower meadow', prompt: 'beautiful%20wildflower%20meadow%20under%20blue%20summer%20sky%20colorful%20flowers%20daisies%20poppies%20rolling%20hills%20fluffy%20clouds%20professional%20photography' },
-  { name: 'norwegian fjord', prompt: 'dramatic%20Norwegian%20fjord%20with%20towering%20cliffs%20emerald%20water%20waterfall%20cascading%20down%20sunrise%20golden%20light%20professional%20photography' },
-  { name: 'wheat field', prompt: 'golden%20wheat%20field%20at%20golden%20hour%20sunset%20warm%20amber%20light%20gentle%20breeze%20rippling%20through%20grain%20distant%20trees%20professional%20photography' },
 ];
 
 const PRESET_SOLIDS = [
@@ -180,40 +159,6 @@ export default function BackgroundPicker({ current, defaultBg, onSelect, onClose
             {error}
           </p>
         )}
-      </div>
-
-      {/* Nature Scenes */}
-      <div>
-        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
-          {lang === 'zh' ? '自然风景封面' : 'Nature scenes'}
-        </div>
-        <div className="grid grid-cols-4 gap-2">
-          {NATURE_SCENES.map((scene) => {
-            const imgUrl = `${IMG_API}?prompt=${scene.prompt}&image_size=landscape_16_9`;
-            const bgValue = `url(${imgUrl})`;
-            return (
-              <button
-                key={scene.name}
-                onClick={() => { onSelect(bgValue); onClose(); }}
-                className={cn(
-                  'relative h-16 rounded-xl overflow-hidden transition-all hover:scale-105 active:scale-95 group',
-                  current.includes(scene.prompt) && 'ring-2 ring-[#007AFF] ring-offset-2'
-                )}
-              >
-                <img
-                  src={imgUrl}
-                  alt={scene.name}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-center pb-0.5">
-                  <span className="text-[9px] text-white font-medium capitalize truncate px-1">{scene.name}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* Preset Gradients */}

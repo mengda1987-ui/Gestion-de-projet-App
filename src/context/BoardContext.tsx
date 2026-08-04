@@ -1376,7 +1376,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           color: u.color || '#3B82F6',
           role: u.role || 'member',
           password: u.password,
-          lang: u.lang || 'en',
+          lang: u.lang || 'zh',
         }));
 
         const mappedBoards: Board[] = (boardsData || []).map((b: any) => ({

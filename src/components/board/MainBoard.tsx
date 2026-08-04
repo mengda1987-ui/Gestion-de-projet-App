@@ -222,7 +222,7 @@ export default function MainBoard() {
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-0.5 hover:bg-slate-200/60 dark:hover:bg-white/10 rounded-full p-0.5 pr-1.5 transition-colors"
             >
-              <Avatar user={currentUser!} size="sm" showOnline online className="ring-2 ring-slate-200/60 dark:ring-white/40" />
+              <Avatar user={currentUser!} size="sm" className="ring-2 ring-slate-200/60 dark:ring-white/40" />
             <ChevronDown size={12} className="text-slate-500 dark:text-slate-200 hidden sm:block" />
           </button>
 
@@ -292,7 +292,6 @@ export default function MainBoard() {
                   users={users.filter(u => onlineUsers.includes(u.id))}
                   max={6}
                   size="sm"
-                  showOnline
                   onlineUsers={onlineUsers}
                 />
               </div>
