@@ -268,7 +268,7 @@ export default function GanttView() {
   }
 
   return (
-    <div className="h-full flex flex-col p-4 gap-3 overflow-hidden">
+    <div className="h-full flex flex-col p-4 gap-3">
       <div className="glass rounded-xl p-3 flex flex-wrap items-center gap-3 shrink-0">
         <div className="flex items-center gap-2 pr-3 border-r border-slate-200 dark:border-slate-700">
           <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950 flex items-center justify-center text-amber-600 dark:text-amber-400">

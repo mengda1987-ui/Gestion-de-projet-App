@@ -118,7 +118,7 @@ export default function TableView() {
   const selectedCard = selectedCardId ? findCard(selectedCardId) : null;
 
   return (
-    <div className="h-full flex flex-col p-4 overflow-hidden">
+    <div className="h-full flex flex-col p-4">
       <div className="glass rounded-xl overflow-hidden flex-1 flex flex-col min-h-0">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60">

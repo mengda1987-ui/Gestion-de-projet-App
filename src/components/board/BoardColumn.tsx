@@ -64,7 +64,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
   return (
     <div
       className={cn(
-        'glass rounded-2xl overflow-hidden flex flex-col max-h-full',
+        'glass rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-120px)]',
         isDragging ? 'ring-2 ring-[#007AFF] ring-offset-2' : '',
         column.archived && 'opacity-60'
       )}
