@@ -1058,7 +1058,7 @@ export default function CardDetailModal({
                     <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.labels')}</h3>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
-                    {getLabels().map(l => (
+                    {board.labels.map(l => (
                       <button
                         key={l.id}
                         onClick={() => updateCard({ labels: latestCard.labels.includes(l.id) ? latestCard.labels.filter(lid => lid !== l.id) : [...latestCard.labels, l.id] })}
