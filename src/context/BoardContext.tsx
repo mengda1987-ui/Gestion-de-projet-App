@@ -2,8 +2,9 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
 import { Board, Card, Column, Label, ViewMode, FilterState, User, Comment, Attachment, MindMapNode, Checklist } from '@/types';
-import { MOCK_BOARD, MOCK_BOARDS, MOCK_USERS } from '@/data/mockData';
 import { generateId } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
+import { MOCK_BOARD, MOCK_BOARDS, MOCK_USERS } from '@/data/mockData';
 
 interface BoardState {
   boards: Board[];
@@ -17,6 +18,7 @@ interface BoardState {
   onlineUsers: string[];
   workspaceBackground: string;
   loginBackground: string;
+  _loaded?: boolean;
 }
 
 type Action =
@@ -68,7 +70,8 @@ type Action =
   | { type: 'CLEAR_ALL_MM_POSITIONS' }
   | { type: 'APPLY_REMOTE_UPDATE'; payload: Partial<BoardState> }
   | { type: 'UPDATE_WORKSPACE_BG'; payload: string }
-  | { type: 'UPDATE_LOGIN_BG'; payload: string };
+  | { type: 'UPDATE_LOGIN_BG'; payload: string }
+  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string } };
 
 function initialState(): BoardState {
   return {
@@ -131,6 +134,21 @@ function baseReducer(state: BoardState, action: Action): BoardState {
 
     case 'UPDATE_LOGIN_BG':
       return { ...state, loginBackground: action.payload };
+
+    case 'LOAD_ALL_DATA': {
+      const { users, boards, workspaceBackground, loginBackground } = action.payload;
+      const firstBoard = boards.length > 0 ? boards[0] : { ...initialState().board, id: '', title: '' };
+      return {
+        ...state,
+        users,
+        boards,
+        board: firstBoard,
+        currentBoardId: firstBoard.id,
+        workspaceBackground,
+        loginBackground,
+        _loaded: true,
+      };
+    }
 
     case 'UPDATE_BOARD':
       return { ...state, board: { ...state.board, ...action.payload, updatedAt: new Date().toISOString() } };
@@ -1146,6 +1164,7 @@ interface BoardContextType extends BoardState {
   dispatch: React.Dispatch<Action>;
   findCard: (cardId: string) => { card: Card; columnId: string } | null;
   broadcastChange: (action: Action) => void;
+  loading: boolean;
 }
 
 const BoardContext = createContext<BoardContextType | null>(null);
@@ -1224,6 +1243,208 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.darkMode]);
 
+  // --- Supabase: Load initial data ---
+  const [loading, setLoading] = useState(true);
+  const loadedRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (loadedRef.current) return;
+    async function loadData() {
+      try {
+        // Fetch users
+        const { data: users } = await supabase.from('users').select('*').order('created_at');
+        // Fetch workspace settings
+        const { data: settingsData } = await supabase.from('workspace_settings').select('*').limit(1).single();
+        // Fetch boards
+        const { data: boardsData } = await supabase.from('boards').select('*').order('created_at');
+
+        const mappedUsers: User[] = (users || []).map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email || '',
+          avatar: u.avatar || '',
+          color: u.color || '#3B82F6',
+          role: u.role || 'member',
+          password: u.password,
+        }));
+
+        const mappedBoards: Board[] = (boardsData || []).map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          background: b.background || '#f5f5f7',
+          labels: b.labels || [],
+          columns: b.data?.columns || [],
+          mindmap: b.data?.mindmap || { nodes: [], scale: 1, offsetX: 0, offsetY: 0 },
+          createdAt: b.created_at,
+          updatedAt: b.updated_at,
+        }));
+
+        dispatch({
+          type: 'LOAD_ALL_DATA',
+          payload: {
+            users: mappedUsers.length > 0 ? mappedUsers : initialState().users,
+            boards: mappedBoards,
+            workspaceBackground: settingsData?.workspace_background || '#f5f5f7',
+            loginBackground: settingsData?.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+          },
+        });
+      } catch (e) {
+        console.error('Supabase load error:', e);
+      } finally {
+        loadedRef.current = true;
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  // --- Supabase: Save board data (debounced) ---
+  const prevBoardRef = useRef(state.board);
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    const board = state.board;
+    if (!board.id) return;
+
+    // Only save if board data actually changed
+    const prev = prevBoardRef.current;
+    if (prev.columns === board.columns && prev.labels === board.labels &&
+        prev.title === board.title && prev.background === board.background &&
+        prev.mindmap === board.mindmap) return;
+
+    prevBoardRef.current = board;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await supabase.from('boards').upsert({
+          id: board.id,
+          title: board.title,
+          background: board.background,
+          labels: board.labels,
+          data: { columns: board.columns, mindmap: board.mindmap },
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error('Supabase save error:', e);
+      }
+    }, 500);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [state.board.columns, state.board.labels, state.board.title, state.board.background, state.board.mindmap]);
+
+  // --- Supabase: Save boards list when boards array changes ---
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    // Save each board's core metadata
+    state.boards.forEach(async (b) => {
+      try {
+        await supabase.from('boards').upsert({
+          id: b.id,
+          title: b.title,
+          background: b.background,
+          labels: b.labels || [],
+          data: { columns: b.columns || [], mindmap: b.mindmap || { nodes: [], scale: 1, offsetX: 0, offsetY: 0 } },
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {}
+    });
+  }, [state.boards]);
+
+  // --- Supabase: Save users ---
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    state.users.forEach(async (u) => {
+      try {
+        await supabase.from('users').upsert({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatar: u.avatar,
+          color: u.color,
+          role: u.role,
+          password: u.password,
+        });
+      } catch (e) {}
+    });
+  }, [state.users]);
+
+  // --- Supabase: Save workspace settings ---
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    const save = async () => {
+      try {
+        await supabase.from('workspace_settings').upsert({
+          id: '00000000-0000-0000-0000-000000000001',
+          workspace_background: state.workspaceBackground,
+          login_background: state.loginBackground,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {}
+    };
+    save();
+  }, [state.workspaceBackground, state.loginBackground]);
+
+  // --- Supabase Realtime: Subscribe to board changes ---
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    const channel = supabase
+      .channel('boards-realtime')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'boards' },
+        async (payload: any) => {
+          const changedBoard = payload.new;
+          if (!changedBoard?.id) return;
+          // Skip if we're the ones who made the change (debounced save in progress)
+          if (saveTimerRef.current) return;
+
+          try {
+            const { data: fresh } = await supabase
+              .from('boards')
+              .select('*')
+              .eq('id', changedBoard.id)
+              .single();
+            if (!fresh) return;
+
+            const updatedBoard: Board = {
+              id: fresh.id,
+              title: fresh.title,
+              background: fresh.background || '#f5f5f7',
+              labels: fresh.labels || [],
+              columns: fresh.data?.columns || [],
+              mindmap: fresh.data?.mindmap || { nodes: [], scale: 1, offsetX: 0, offsetY: 0 },
+              createdAt: fresh.created_at,
+              updatedAt: fresh.updated_at,
+            };
+
+            // Update the board if it's the currently viewed one
+            const current = stateRef.current;
+            if (current.currentBoardId === updatedBoard.id) {
+              dispatch({ type: 'SET_CURRENT_BOARD', payload: updatedBoard.id });
+            }
+            // Also update the boards list
+            const newBoards = current.boards.map(b =>
+              b.id === updatedBoard.id ? updatedBoard : b
+            );
+            // Use a quick update
+            // We need to update both board and boards list
+            setTimeout(() => {
+              const latest = stateRef.current;
+              if (latest.currentBoardId === updatedBoard.id) {
+                dispatch({ type: 'UPDATE_BOARD', payload: updatedBoard as any });
+              }
+            }, 100);
+          } catch (e) {}
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const findCard = useCallback((cardId: string) => {
     for (const col of stateRef.current.board.columns) {
       for (const card of col.cards) {
@@ -1254,7 +1475,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <BoardContext.Provider value={{ ...state, dispatch, findCard, broadcastChange }}>
+    <BoardContext.Provider value={{ ...state, dispatch, findCard, broadcastChange, loading }}>
       {children}
     </BoardContext.Provider>
   );
