@@ -256,7 +256,7 @@ export default function BoardHome() {
                   onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
                 >
                   <div className="h-1.5 w-full" style={{ background: board.background || bg }} />
-                  <div className="p-5">
+                  <div className="p-4">
                     <div className="flex items-start gap-3.5 mb-3">
                       <button
                         className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer overflow-hidden"
@@ -320,7 +320,7 @@ export default function BoardHome() {
                     </div>
 
                     {/* Updated time & three-dot menu */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-2.5">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1.5">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
                       <div className="ml-auto">
@@ -336,7 +336,7 @@ export default function BoardHome() {
                               setMenuOpenId(board.id);
                             }
                           }}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                          className="p-0.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                         >
                           <MoreHorizontal size={14} />
                         </button>
