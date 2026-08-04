@@ -19,15 +19,17 @@ export const MOCK_USERS: User[] = [
     color: '#3B82F6',
     role: 'admin',
     password: '123456',
+    lang: 'zh',
   },
   {
     id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
-    name: '李娜',
-    email: 'lina@example.com',
-    avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20fluffy%20bunny%20rabbit%20avatar%20kawaii%20style%20pink%20ears%20big%20sparkle%20eyes%20soft%20pastel%20background&image_size=square',
+    name: 'Laure Gouhier',
+    email: 'laure@example.com',
+    avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20cat%20avatar%20kawaii%20style%20big%20green%20eyes%20round%20face%20pastel%20background&image_size=square',
     color: '#EC4899',
     role: 'member',
     password: '123456',
+    lang: 'en',
   },
   {
     id: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
@@ -37,6 +39,7 @@ export const MOCK_USERS: User[] = [
     color: '#8B5CF6',
     role: 'member',
     password: '123456',
+    lang: 'zh',
   },
 ];
 

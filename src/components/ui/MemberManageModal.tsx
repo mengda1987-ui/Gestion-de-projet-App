@@ -15,6 +15,7 @@ import {
   Users,
   Key,
   Mail,
+  Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,7 @@ export default function MemberManageModal({ onClose }: Props) {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newLang, setNewLang] = useState<'zh' | 'en'>('en');
 
   const handleAddUser = () => {
     const name = newName.trim();
@@ -45,6 +47,7 @@ export default function MemberManageModal({ onClose }: Props) {
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       role: 'member' as const,
       password: newPassword.trim(),
+      lang: newLang,
     };
 
     // 检查重名
@@ -191,6 +194,31 @@ export default function MemberManageModal({ onClose }: Props) {
                   placeholder={lang === 'zh' ? '登录密码（必填）' : 'Login password (required)'}
                   className="flex-1 bg-transparent border-0 text-slate-600 placeholder:text-slate-300 focus:outline-none"
                 />
+              </div>
+
+              <div className="flex items-center gap-2 px-1 text-[11px] text-slate-400">
+                <Globe size={10} />
+                <span className="shrink-0">{lang === 'zh' ? '语言' : 'Language'}</span>
+                <div className="flex rounded-lg bg-slate-100 p-0.5">
+                  <button
+                    onClick={() => setNewLang('zh')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all',
+                      newLang === 'zh' ? 'bg-white shadow-sm text-slate-700' : 'text-slate-400 hover:text-slate-600'
+                    )}
+                  >
+                    中文
+                  </button>
+                  <button
+                    onClick={() => setNewLang('en')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all',
+                      newLang === 'en' ? 'bg-white shadow-sm text-slate-700' : 'text-slate-400 hover:text-slate-600'
+                    )}
+                  >
+                    English
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">

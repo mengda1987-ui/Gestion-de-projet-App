@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
@@ -18,6 +18,7 @@ import {
   Users,
   Image,
   LogOut,
+  Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
@@ -39,7 +40,7 @@ const BOARD_BG_GRADIENTS = [
 ];
 
 export default function BoardHome() {
-  const { boards, currentUser, dispatch, workspaceBackground } = useBoard();
+  const { boards, currentUser, dispatch, workspaceBackground, logo } = useBoard();
   const { t, lang, toggleLang } = useLang();
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export default function BoardHome() {
   const [createTitle, setCreateTitle] = useState('');
   const [showMemberManage, setShowMemberManage] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const bgRef = [...BOARD_BG_GRADIENTS];
   let bgIdx = 0;
@@ -67,6 +69,36 @@ export default function BoardHome() {
       return { background: bg };
     }
     return { backgroundColor: bg };
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const size = Math.min(img.width, img.height, 256);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
+        }
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        dispatch({ type: 'UPDATE_LOGO', payload: dataUrl });
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleCreate = () => {
@@ -127,6 +159,21 @@ export default function BoardHome() {
                   <Image size={14} />
                   <span className="hidden sm:inline">{lang === 'zh' ? '背景' : 'Background'}</span>
                 </button>
+                <button
+                  onClick={() => logo ? dispatch({ type: 'UPDATE_LOGO', payload: '' }) : logoInputRef.current?.click()}
+                  className="btn-secondary text-xs"
+                  title={lang === 'zh' ? '公司 Logo' : 'Company Logo'}
+                >
+                  {logo ? <Trash2 size={14} /> : <Upload size={14} />}
+                  <span className="hidden sm:inline">{logo ? (lang === 'zh' ? '删除Logo' : 'Del Logo') : 'Logo'}</span>
+                </button>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
               </>
             )}
             <button

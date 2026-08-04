@@ -6,6 +6,7 @@ export interface User {
   color: string;
   role: 'admin' | 'member';
   password: string;
+  lang: 'zh' | 'en';
 }
 
 export interface Label {

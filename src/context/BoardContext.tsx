@@ -18,6 +18,7 @@ interface BoardState {
   onlineUsers: string[];
   workspaceBackground: string;
   loginBackground: string;
+  logo: string;
   _loaded?: boolean;
 }
 
@@ -71,7 +72,8 @@ type Action =
   | { type: 'APPLY_REMOTE_UPDATE'; payload: Partial<BoardState> }
   | { type: 'UPDATE_WORKSPACE_BG'; payload: string }
   | { type: 'UPDATE_LOGIN_BG'; payload: string }
-  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string } };
+  | { type: 'UPDATE_LOGO'; payload: string }
+  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string; logo: string } };
 
 function initialState(): BoardState {
   return {
@@ -91,6 +93,7 @@ function initialState(): BoardState {
     onlineUsers: [],
     workspaceBackground: '#f5f5f7',
     loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+    logo: '',
   };
 }
 
@@ -135,8 +138,11 @@ function baseReducer(state: BoardState, action: Action): BoardState {
     case 'UPDATE_LOGIN_BG':
       return { ...state, loginBackground: action.payload };
 
+    case 'UPDATE_LOGO':
+      return { ...state, logo: action.payload };
+
     case 'LOAD_ALL_DATA': {
-      const { users, boards, workspaceBackground, loginBackground } = action.payload;
+      const { users, boards, workspaceBackground, loginBackground, logo } = action.payload;
       const firstBoard = boards.length > 0 ? boards[0] : { ...initialState().board, id: '', title: '' };
       return {
         ...state,
@@ -146,6 +152,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         currentBoardId: '', // don't auto-select — let session restore handle it
         workspaceBackground,
         loginBackground,
+        logo,
         _loaded: true,
       };
     }
@@ -1269,6 +1276,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           color: u.color || '#3B82F6',
           role: u.role || 'member',
           password: u.password,
+          lang: u.lang || 'en',
         }));
 
         const mappedBoards: Board[] = (boardsData || []).map((b: any) => ({
@@ -1289,6 +1297,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             boards: mappedBoards,
             workspaceBackground: settingsData?.workspace_background || '#f5f5f7',
             loginBackground: settingsData?.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            logo: settingsData?.logo || '',
           },
         });
       } catch (e) {
@@ -1421,6 +1430,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           color: u.color,
           role: u.role,
           password: u.password,
+          lang: u.lang,
         });
       } catch (e) {}
     });
@@ -1446,12 +1456,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           id: '00000000-0000-0000-0000-000000000001',
           workspace_background: state.workspaceBackground,
           login_background: state.loginBackground,
+          logo: state.logo,
           updated_at: new Date().toISOString(),
         });
       } catch (e) {}
     };
     save();
-  }, [state.workspaceBackground, state.loginBackground]);
+  }, [state.workspaceBackground, state.loginBackground, state.logo]);
 
   // --- Supabase Realtime: Subscribe to board changes ---
   useEffect(() => {

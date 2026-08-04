@@ -9,8 +9,8 @@ import { cn } from '@/lib/utils';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function LoginPage() {
-  const { users, dispatch, loginBackground } = useBoard();
-  const { lang, toggleLang, t } = useLang();
+  const { users, dispatch, loginBackground, logo } = useBoard();
+  const { lang, toggleLang, t, setLang } = useLang();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [isLogging, setIsLogging] = useState(false);
@@ -44,6 +44,7 @@ export default function LoginPage() {
     }
     dispatch({ type: 'SET_CURRENT_USER', payload: user });
     dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
+    setLang(user.lang || 'en');
   };
 
   const getBgStyle = (bg: string): React.CSSProperties => {
@@ -95,9 +96,13 @@ export default function LoginPage() {
         <div className="apple-card p-8 animate-slide-up">
           {/* Logo */}
           <div className="text-center mb-7">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#007AFF] text-white mb-5"
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#007AFF] text-white mb-5 overflow-hidden"
               style={{ boxShadow: '0 4px 16px rgba(0,122,255,0.3)' }}>
-              <Sparkles className="w-7 h-7" />
+              {logo ? (
+                <img src={logo} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                <Sparkles className="w-7 h-7" />
+              )}
             </div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
               LES FRANCOPHILES
