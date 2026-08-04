@@ -469,7 +469,7 @@ export default function MindMapView() {
             title: t('mindmap.defaultCard'),
             description: '',
             labels: [], assignees: [],
-            completed: false, archived: false,
+            archived: false,
             checklists: [], comments: [], attachments: [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
