@@ -493,25 +493,29 @@ export default function CardDetailModal({
                     )}
                   </div>
                   <div className="flex items-center gap-2 ml-2">
-                    <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
-                      {(['todo', 'in_progress', 'complete'] as const).map(s => (
-                        <button
-                          key={s}
-                          onClick={() => updateCard({ status: s })}
-                          className={cn(
-                            'px-2.5 py-1 rounded-md text-xs font-medium transition-all',
-                            latestCard.status === s
-                              ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white'
-                              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                          )}
-                        >
-                          {s === 'todo' ? (lang === 'zh' ? '待办' : 'To Do')
-                            : s === 'in_progress' ? (lang === 'zh' ? '进行中' : 'In Progress')
-                            : (lang === 'zh' ? '已完成' : 'Complete')}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
+                  {(['todo', 'in_progress', 'complete'] as const).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => updateCard({ status: s })}
+                      className={cn(
+                        'px-2.5 py-1 rounded-md text-xs font-medium transition-all',
+                        latestCard.status === s
+                          ? s === 'todo'
+                            ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white'
+                            : s === 'in_progress'
+                              ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 shadow-sm'
+                              : 'bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                      )}
+                    >
+                      {s === 'todo' ? (lang === 'zh' ? '待办' : 'To Do')
+                        : s === 'in_progress' ? (lang === 'zh' ? '进行中' : 'In Progress')
+                        : (lang === 'zh' ? '已完成' : 'Complete')}
+                    </button>
+                  ))}
+                </div>
+              </div>
                 </div>
               </div>
             )}
@@ -1172,9 +1176,8 @@ export default function CardDetailModal({
                     </div>
                   )}
 
-                  <button
+                  <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group"
                     onClick={() => setShowDueDate(!showDueDate)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group"
                   >
                     <Calendar size={15} className="text-slate-500 group-hover:text-[#007AFF]" />
                     <span className="flex-1 text-left">{t('card.dueDate')}</span>
@@ -1190,7 +1193,11 @@ export default function CardDetailModal({
                         <input
                           type="date"
                           value={startDateValue}
-                          onChange={(e) => setStartDateValue(e.target.value)}
+                          onChange={(e) => {
+                            setStartDateValue(e.target.value);
+                            const updates: Partial<Card> = { startDate: e.target.value ? new Date(e.target.value).toISOString() : undefined };
+                            updateCard(updates);
+                          }}
                           className="input text-xs py-1.5"
                         />
                       </div>
@@ -1199,12 +1206,18 @@ export default function CardDetailModal({
                         <input
                           type="date"
                           value={dueDateValue}
-                          onChange={(e) => setDueDateValue(e.target.value)}
+                          onChange={(e) => {
+                            setDueDateValue(e.target.value);
+                            const updates: Partial<Card> = {};
+                            if (e.target.value) updates.dueDate = new Date(e.target.value + 'T23:59:59').toISOString();
+                            else updates.dueDate = undefined;
+                            updateCard(updates);
+                            setShowDueDate(false);
+                          }}
                           className="input text-xs py-1.5"
                         />
                       </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button onClick={handleSaveDates} className="btn-primary text-xs py-1.5 flex-1">{t('common.save')}</button>
+                      {latestCard.dueDate && (
                         <button
                           onClick={() => {
                             setDueDateValue('');
@@ -1212,23 +1225,13 @@ export default function CardDetailModal({
                             updateCard({ dueDate: undefined, startDate: undefined });
                             setShowDueDate(false);
                           }}
-                          className="btn-ghost text-xs py-1.5"
+                          className="btn-ghost text-xs py-1.5 w-full"
                         >
                           {t('card.clearDue')}
                         </button>
-                      </div>
+                      )}
                     </div>
                   )}
-
-                  <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group">
-                    <CheckSquare size={15} className="text-slate-500 group-hover:text-[#007AFF]" />
-                    <span className="flex-1 text-left">{t('card.checklist')}</span>
-                  </button>
-
-                  <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group">
-                    <Paperclip size={15} className="text-slate-500 group-hover:text-[#007AFF]" />
-                    <span className="flex-1 text-left">{t('card.attachments')}</span>
-                  </button>
                 </div>
 
                 <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">

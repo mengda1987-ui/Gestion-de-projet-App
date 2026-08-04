@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
 import { Card, User } from '@/types';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
@@ -15,6 +16,7 @@ import {
   Circle,
   CircleDot,
   CheckCircle2,
+  ChevronDown,
 } from 'lucide-react';
 import { cn, calculateChecklistProgress, getDueDateStatus } from '@/lib/utils';
 
@@ -27,6 +29,19 @@ interface CardItemProps {
 export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const { t, lang } = useLang();
   const { board, users, onlineUsers, broadcastChange } = useBoard();
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const statusBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showStatusMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (statusBtnRef.current && !statusBtnRef.current.contains(e.target as Node)) {
+        setShowStatusMenu(false);
+      }
+    };
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [showStatusMenu]);
 
   const allChecklistItems = card.checklists.flatMap(cl => cl.items);
   const checklistProgress = calculateChecklistProgress(allChecklistItems);
@@ -72,6 +87,50 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
       >
         <Trash2 size={14} />
       </button>
+
+      {/* Status Dropdown - compact, in top-right */}
+      <div className="absolute top-2 right-10 z-10 opacity-0 group-hover:opacity-100 transition-all duration-200" ref={statusBtnRef as any}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowStatusMenu(!showStatusMenu); }}
+          className={cn(
+            'flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-medium shadow-sm border transition-colors',
+            card.status === 'todo' ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-500' :
+            card.status === 'in_progress' ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300' :
+            'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+          )}
+        >
+          {card.status === 'todo' ? <Circle size={10} /> : card.status === 'in_progress' ? <CircleDot size={10} /> : <CheckCircle2 size={10} />}
+          <span className="hidden sm:inline">{card.status === 'todo' ? (lang === 'zh' ? '待办' : 'ToDo') : card.status === 'in_progress' ? (lang === 'zh' ? '进行中' : 'Progress') : (lang === 'zh' ? '完成' : 'Done')}</span>
+          <ChevronDown size={9} />
+        </button>
+        {showStatusMenu && (
+          <div className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 animate-slide-up overflow-hidden z-20">
+            {(['todo', 'in_progress', 'complete'] as const).map(s => (
+              <button
+                key={s}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: s } } });
+                  setShowStatusMenu(false);
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors',
+                  card.status === s ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                )}
+              >
+                {s === 'todo' ? <Circle size={12} className="text-slate-400" /> : s === 'in_progress' ? <CircleDot size={12} className="text-amber-500" /> : <CheckCircle2 size={12} className="text-emerald-500" />}
+                <span className={cn(
+                  s === 'todo' ? 'text-slate-700 dark:text-slate-200' :
+                  s === 'in_progress' ? 'text-amber-700 dark:text-amber-300' :
+                  'text-emerald-700 dark:text-emerald-300'
+                )}>
+                  {s === 'todo' ? (lang === 'zh' ? '待办' : 'ToDo') : s === 'in_progress' ? (lang === 'zh' ? '进行中' : 'Progress') : (lang === 'zh' ? '完成' : 'Done')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Cover Image */}
       {card.coverImage && (
@@ -197,55 +256,6 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
           {assignees.length > 0 && (
             <AvatarStack users={assignees} max={3} size="sm" showOnline onlineUsers={onlineUsers} />
           )}
-        </div>
-
-        {/* Status Buttons */}
-        <div className="flex items-center gap-1 pt-1.5 border-t border-slate-100 dark:border-slate-700/50">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: 'todo' } } });
-            }}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all',
-              card.status === 'todo'
-                ? 'bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200'
-                : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700/50'
-            )}
-          >
-            <Circle size={11} />
-            {lang === 'zh' ? '待办' : 'ToDo'}
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: 'in_progress' } } });
-            }}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all',
-              card.status === 'in_progress'
-                ? 'bg-amber-200 dark:bg-amber-800/60 text-amber-800 dark:text-amber-200'
-                : 'text-slate-400 dark:text-slate-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-            )}
-          >
-            <CircleDot size={11} />
-            {lang === 'zh' ? '进行中' : 'Progress'}
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: 'complete' } } });
-            }}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all',
-              card.status === 'complete'
-                ? 'bg-emerald-200 dark:bg-emerald-800/60 text-emerald-800 dark:text-emerald-200'
-                : 'text-slate-400 dark:text-slate-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
-            )}
-          >
-            <CheckCircle2 size={11} />
-            {lang === 'zh' ? '完成' : 'Done'}
-          </button>
         </div>
       </div>
     </div>
