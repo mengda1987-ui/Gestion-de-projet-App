@@ -1303,6 +1303,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   // --- Persist login session to localStorage ---
   useEffect(() => {
+    if (!loadedRef.current) return; // skip initial render to avoid clearing saved session
     if (state.currentUser) {
       localStorage.setItem('trello_user_id', state.currentUser.id);
     } else {
