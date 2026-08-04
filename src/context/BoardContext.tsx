@@ -1616,6 +1616,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           } catch (e) {
             console.error('Supabase realtime sync error:', e);
           }
+        }
       )
       .subscribe();
 
