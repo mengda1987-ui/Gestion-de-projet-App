@@ -99,11 +99,11 @@ export default function LoginPage() {
               style={{ boxShadow: '0 4px 16px rgba(0,122,255,0.3)' }}>
               <Sparkles className="w-7 h-7" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1.5">
-              {t('app.name')}
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
+              LES FRANCOPHILES
             </h1>
-            <p className="text-sm text-slate-500">
-              {lang === 'zh' ? '输入管理员创建的账号登录' : 'Log in with your account'}
+            <p className="text-base font-semibold text-[#007AFF]">
+              Gestion de projet
             </p>
           </div>
 
