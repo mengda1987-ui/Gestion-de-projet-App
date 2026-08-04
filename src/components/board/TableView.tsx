@@ -60,8 +60,8 @@ export default function TableView() {
     }
 
     result.sort((a, b) => {
-      let va: any = '';
-      let vb: any = '';
+      let va: string | number = '';
+      let vb: string | number = '';
       switch (sortField) {
         case 'title':
           va = a.card.title;

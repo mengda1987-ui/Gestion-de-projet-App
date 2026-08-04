@@ -430,7 +430,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         ...col,
         cards: col.cards.map(c => {
           if (c.id === action.payload.cardId) {
-            currentStatus = (c as any).status || ((c as any).completed ? 'complete' : 'todo');
+            currentStatus = c.status || 'todo';
             const nextIdx = (statusOrder.indexOf(currentStatus) + 1) % statusOrder.length;
             return { ...c, status: statusOrder[nextIdx], updatedAt: new Date().toISOString() };
           }
@@ -1276,7 +1276,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     return () => {
       try {
         if (bc) bc.close();
-      } catch (e) {}
+      } catch {
+        // Channel already closed, ignore
+      }
       channelRef.current = null;
     };
   }, []);
@@ -1314,6 +1316,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSavingRef = useRef(false);
   const prevUserIdsRef = useRef<Set<string>>(new Set());
   const prevBoardIdsRef = useRef<Set<string>>(new Set());
 
@@ -1355,7 +1358,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             try {
               const deletedIds: string[] = JSON.parse(deleted);
               return !deletedIds.includes(b.id);
-            } catch {}
+            } catch {
+              return true;
+            }
           }
           return true;
         });
@@ -1432,6 +1437,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     prevBoardRef.current = board;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    isSavingRef.current = true;
     saveTimerRef.current = setTimeout(async () => {
       try {
         await supabase.from('boards').upsert({
@@ -1444,6 +1450,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         });
       } catch (e) {
         console.error('Supabase save error:', e);
+      } finally {
+        isSavingRef.current = false;
       }
     }, 500);
     return () => {
@@ -1459,41 +1467,41 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
     // Delete boards that were removed FIRST (before upsert, to avoid re-creation race)
     const toDelete = [...prevIds].filter(id => !currentIds.has(id));
-    toDelete.forEach(async (id) => {
-      try {
-        const { error } = await supabase.from('boards').delete().eq('id', id);
-        if (error) console.error('Supabase delete board error:', id, error);
-      } catch (e) {
-        console.error('Supabase delete board exception:', id, e);
-      }
-    });
-
-    // Save deleted IDs to localStorage as safety net
     if (toDelete.length > 0) {
+      await Promise.all(toDelete.map(async (id) => {
+        try {
+          const { error } = await supabase.from('boards').delete().eq('id', id);
+          if (error) console.error('Supabase delete board error:', id, error);
+        } catch (e) {
+          console.error('Supabase delete board exception:', id, e);
+        }
+      }));
+
+      // Save deleted IDs to localStorage as safety net
       try {
         const existing = JSON.parse(localStorage.getItem('trello_deleted_boards') || '[]');
         const updated = [...new Set([...existing, ...toDelete])];
         localStorage.setItem('trello_deleted_boards', JSON.stringify(updated));
-      } catch {}
+      } catch {
+        localStorage.setItem('trello_deleted_boards', JSON.stringify(toDelete));
+      }
     }
 
-    // Upsert current boards
-    if (toDelete.length === 0) {
-      state.boards.forEach(async (b) => {
-        try {
-          await supabase.from('boards').upsert({
-            id: b.id,
-            title: b.title,
-            background: b.background,
-            labels: b.labels || [],
-            data: { columns: b.columns || [], mindmap: b.mindmap || [] },
-            updated_at: new Date().toISOString(),
-          });
-        } catch (e) {
-          console.error('Supabase upsert board error:', b.id, e);
-        }
-      });
-    }
+    // Upsert current boards after deletes complete
+    await Promise.all(state.boards.map(async (b) => {
+      try {
+        await supabase.from('boards').upsert({
+          id: b.id,
+          title: b.title,
+          background: b.background,
+          labels: b.labels || [],
+          data: { columns: b.columns || [], mindmap: b.mindmap || [] },
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error('Supabase upsert board error:', b.id, e);
+      }
+    }));
 
     prevBoardIdsRef.current = currentIds;
   }, [state.boards]);
@@ -1505,7 +1513,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const prevIds = prevUserIdsRef.current;
 
     // Upsert current users
-    state.users.forEach(async (u) => {
+    await Promise.all(state.users.map(async (u) => {
       try {
         await supabase.from('users').upsert({
           id: u.id,
@@ -1517,17 +1525,22 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           password: u.password,
           lang: u.lang,
         });
-      } catch (e) {}
-    });
+      } catch (e) {
+        console.error('Supabase upsert user error:', u.id, e);
+      }
+    }));
 
     // Delete users that were removed
-    prevIds.forEach(async (id) => {
-      if (!currentIds.has(id)) {
+    const usersToDelete = [...prevIds].filter(id => !currentIds.has(id));
+    if (usersToDelete.length > 0) {
+      await Promise.all(usersToDelete.map(async (id) => {
         try {
           await supabase.from('users').delete().eq('id', id);
-        } catch (e) {}
-      }
-    });
+        } catch (e) {
+          console.error('Supabase delete user error:', id, e);
+        }
+      }));
+    }
 
     prevUserIdsRef.current = currentIds;
   }, [state.users]);
@@ -1544,7 +1557,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           logo: state.logo,
           updated_at: new Date().toISOString(),
         });
-      } catch (e) {}
+      } catch (e) {
+        console.error('Supabase save workspace settings error:', e);
+      }
     };
     save();
   }, [state.workspaceBackground, state.loginBackground, state.logo]);
@@ -1560,7 +1575,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           const changedBoard = payload.new;
           if (!changedBoard?.id) return;
           // Skip if we're the ones who made the change (debounced save in progress)
-          if (saveTimerRef.current) return;
+          if (isSavingRef.current) return;
 
           try {
             const { data: fresh } = await supabase
@@ -1595,11 +1610,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             setTimeout(() => {
               const latest = stateRef.current;
               if (latest.currentBoardId === updatedBoard.id) {
-                dispatch({ type: 'UPDATE_BOARD', payload: updatedBoard as any });
+                dispatch({ type: 'UPDATE_BOARD', payload: updatedBoard });
               }
             }, 100);
-          } catch (e) {}
-        }
+          } catch (e) {
+            console.error('Supabase realtime sync error:', e);
+          }
       )
       .subscribe();
 
@@ -1632,9 +1648,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             sender: curUser.id,
             boardState: { board: latest.board, boards: latest.boards, onlineUsers: latest.onlineUsers },
           });
-        } catch (e) {}
+        } catch (e) {
+          // BroadcastChannel may fail if state is not cloneable
+          console.debug('BroadcastChannel postMessage failed:', e);
+        }
       });
-    } catch (e) {}
+    } catch (e) {
+      // queueMicrotask may fail in rare edge cases
+      console.debug('BroadcastChannel send error:', e);
+    }
   }, []);
 
   return (

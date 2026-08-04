@@ -44,7 +44,6 @@ import {
   formatFileSize,
   generateId,
 } from '@/lib/utils';
-import { cn } from '@/lib/utils';
 import { parseISO, format } from 'date-fns';
 
 interface CardDetailModalProps {
@@ -347,11 +346,11 @@ export default function CardDetailModal({
     setChecklistNewItems({ ...checklistNewItems, [clId]: '' });
   };
 
-  const assignees = latestCard.assignees.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
+  const assignees = latestCard.assignees.map(id => users.find(u => u.id === id)).filter((u): u is User => u !== undefined);
   const dueStatus = getDueDateStatus(latestCard.dueDate, latestCard.status);
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-start justify-center md:items-center p-0 md:p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-[99999] flex items-start justify-center md:items-center p-0 md:p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
       <div
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}

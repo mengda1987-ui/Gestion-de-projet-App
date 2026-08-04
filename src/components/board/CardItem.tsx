@@ -34,7 +34,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
       : rawDueStatus.status === 'due-soon' ? t('date.soon')
       : rawDueStatus.label
   } : null;
-  const assignees = card.assignees.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
+  const assignees = card.assignees.map(id => users.find(u => u.id === id)).filter((u): u is User => u !== undefined);
 
   const checklistDueAlerts = allChecklistItems
     .filter(item => !item.completed && item.dueDate)

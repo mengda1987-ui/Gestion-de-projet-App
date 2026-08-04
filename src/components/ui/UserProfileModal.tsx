@@ -178,7 +178,7 @@ export default function UserProfileModal({ onClose }: UserProfileModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div
         className="relative w-full max-w-lg glass rounded-2xl overflow-hidden shadow-2xl animate-slide-up"
         style={{ isolation: 'isolate' }}

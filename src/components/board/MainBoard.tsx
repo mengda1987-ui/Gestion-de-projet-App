@@ -88,7 +88,7 @@ export default function MainBoard() {
   };
 
   const goToWorkspace = useCallback(() => {
-    dispatch({ type: 'SET_CURRENT_BOARD', payload: '' } as any);
+    dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
   }, [dispatch]);
 
   // Keyboard shortcut: Esc or B to go back to workspace (when no modal open)
@@ -292,7 +292,7 @@ export default function MainBoard() {
             <div className="flex-1 overflow-y-auto py-3">
               {/* Back to Workspace */}
               <button
-                onClick={() => { dispatch({ type: 'SET_CURRENT_BOARD', payload: '' } as any); setShowAppMenu(false); }}
+                onClick={() => { dispatch({ type: 'SET_CURRENT_BOARD', payload: '' }); setShowAppMenu(false); }}
                 className="w-full flex items-center gap-3 px-5 py-3 text-sm text-slate-700 dark:text-white/80 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
               >
                 <ArrowLeft size={18} className="text-slate-500 dark:text-white/70" />

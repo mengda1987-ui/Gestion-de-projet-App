@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, formatDistanceToNow, isBefore, isToday, differenceInDays, parseISO } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { zhCN, enUS } from 'date-fns/locale';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -9,15 +9,18 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(date: string, lang?: string) {
   const fmt = lang === 'en' ? 'MMM dd, yyyy' : 'yyyy年MM月dd日';
-  return format(parseISO(date), fmt, { locale: zhCN });
+  const locale = lang === 'en' ? enUS : zhCN;
+  return format(parseISO(date), fmt, { locale });
 }
 
-export function formatDateTime(date: string) {
-  return format(parseISO(date), 'yyyy-MM-dd HH:mm', { locale: zhCN });
+export function formatDateTime(date: string, lang?: string) {
+  const locale = lang === 'en' ? enUS : zhCN;
+  return format(parseISO(date), 'yyyy-MM-dd HH:mm', { locale });
 }
 
-export function relativeTime(date: string) {
-  return formatDistanceToNow(parseISO(date), { addSuffix: true, locale: zhCN });
+export function relativeTime(date: string, lang?: string) {
+  const locale = lang === 'en' ? enUS : zhCN;
+  return formatDistanceToNow(parseISO(date), { addSuffix: true, locale });
 }
 
 export function getDueDateStatus(dueDate?: string, status?: boolean | string, lang?: string) {
