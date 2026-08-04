@@ -224,7 +224,7 @@ export default function MindMapView() {
       const kids = collapsed[`k-${root.id}`] ? [] : rawKids;
       const width = nodeWidthFor(root.text, depth);
       const height = depth === 0 ? ROOT_HEIGHT : NODE_HEIGHT;
-      const rootOverridden = !!root.posOverride;
+      const rootOverridden = !!root.posOverride && (root.posOverride.x !== 0 || root.posOverride.y !== 0);
       let x = forceX ?? (40 + depth * (NODE_H_GAP + NODE_MIN_WIDTH + 30));
       let y = yCursor;
       if (rootOverridden) {
@@ -239,11 +239,14 @@ export default function MindMapView() {
         // 父被拖走时：子节点紧贴父节点下方堆叠，不做居中重排（避免落盘跳动）
         let childrenYStart = yCursor;
         if (rootOverridden) {
-          childrenYStart = y + height + NODE_V_GAP;
+          // 改进：如果父节点被手动定位，子节点默认在父节点右侧垂直居中分布，而不是全部堆在下方
+          const totalKidsHeight = kids.length * (NODE_HEIGHT + NODE_V_GAP) - NODE_V_GAP;
+          childrenYStart = y + height / 2 - totalKidsHeight / 2;
         }
         let cur = childrenYStart;
         for (const k of kids) {
-          if (k.posOverride) {
+          const kOverridden = !!k.posOverride && (k.posOverride.x !== 0 || k.posOverride.y !== 0);
+          if (kOverridden) {
             const sub = lay(k, childDepth, 0);
             layKids.push({ ...sub, x: k.posOverride!.x, y: k.posOverride!.y });
             if (!rootOverridden) {
@@ -275,7 +278,8 @@ export default function MindMapView() {
     let y = 48;
     const result: LayoutedNode[] = [];
     for (const r of roots) {
-      if (r.posOverride) {
+      const rOverridden = !!r.posOverride && (r.posOverride.x !== 0 || r.posOverride.y !== 0);
+      if (rOverridden) {
         const lr = lay(r, 0, 0);
         result.push(lr);
         y = Math.max(y, lr.y + lr.subtreeHeight + 32);
