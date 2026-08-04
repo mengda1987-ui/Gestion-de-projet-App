@@ -399,9 +399,9 @@ export default function CardDetailModal({
                 )}
                 {latestCard.status !== 'todo' && (
                   <span className={cn(
-                    'badge text-white ml-1',
-                    latestCard.status === 'complete' && 'bg-emerald-500',
-                    latestCard.status === 'in_progress' && 'bg-amber-500',
+                    'badge ml-1',
+                    latestCard.status === 'complete' && 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+                    latestCard.status === 'in_progress' && 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
                   )}>
                     {latestCard.status === 'complete' ? (lang === 'zh' ? '已完成' : 'Done') : (lang === 'zh' ? '进行中' : 'In Progress')}
                   </span>
@@ -479,8 +479,11 @@ export default function CardDetailModal({
                 <div className="flex items-center gap-2">
                   <Calendar size={14} className="text-slate-500 shrink-0" />
                   <div className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-white',
-                    dueStatus.color
+                    'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium',
+                    dueStatus.status === 'completed' && 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+                    dueStatus.status === 'overdue' && 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+                    dueStatus.status === 'due-soon' && 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+                    dueStatus.status === 'normal' && 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
                   )}>
                     {dueStatus.status === 'overdue' && <Clock size={12} />}
                     {dueStatus.label}
@@ -1262,7 +1265,7 @@ export default function CardDetailModal({
                 </div>
 
                 {/* Card Meta */}
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1.5 text-[11px] text-slate-400">
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1.5 text-[11px] text-slate-500">
                   <div className="flex items-center justify-between">
                     <span>{t('table.created')}</span>
                     <span title={formatDateTime(latestCard.createdAt)}>{relativeTime(latestCard.createdAt)}</span>
