@@ -55,7 +55,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         'group relative rounded-2xl border border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-800 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
         card.archived && 'opacity-50 line-through decoration-slate-400',
         card.status === 'complete' && 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800',
-        card.status === 'in_progress' && 'bg-amber-100 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700',
+        card.status === 'in_progress' && 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
         isDragging && 'ring-2 ring-[#007AFF] shadow-2xl'
       )}
     >
@@ -214,7 +214,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
             )}
           >
             <Circle size={11} />
-            ToDo
+            {lang === 'zh' ? '待办' : 'ToDo'}
           </button>
           <button
             onClick={(e) => {

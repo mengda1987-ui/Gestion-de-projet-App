@@ -40,6 +40,7 @@ interface VirtualNode {
   completed: boolean;
   description?: string;
   dueDate?: string;
+  status?: Card['status']; // for card nodes: todo / in_progress / complete
   posOverride?: { x: number; y: number };
 }
 
@@ -159,6 +160,8 @@ export default function MindMapView() {
             if (lbl?.color) color = lbl.color;
           } else if (card.status === 'complete') {
             color = '#10B981';
+          } else if (card.status === 'in_progress') {
+            color = '#F59E0B';
           }
           list.push({
             id: `card-${card.id}`,
@@ -172,6 +175,7 @@ export default function MindMapView() {
             completed: card.status === 'complete',
             description: card.description,
             dueDate: card.dueDate,
+            status: card.status,
             posOverride: (card as any).mmPosition,
           });
           card.checklists.forEach(cl => {
@@ -1050,6 +1054,16 @@ export default function MindMapView() {
                       )}
                       title={n.node.text + (n.node.description ? `\n---\n${n.node.description.slice(0, 200)}` : '')}
                     >
+                      {n.node.kind === 'card' && n.node.status && (
+                        <span className={cn(
+                          'inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium mr-1 align-middle',
+                          n.node.status === 'todo' ? 'bg-white/20 text-white/90' :
+                          n.node.status === 'in_progress' ? 'bg-white/30 text-white' :
+                          'bg-white/30 text-white'
+                        )}>
+                          {n.node.status === 'todo' ? '⬜' : n.node.status === 'in_progress' ? '🔄' : '✅'}
+                        </span>
+                      )}
                       {n.node.text}
                     </div>
                   ) : (

@@ -336,8 +336,8 @@ export default function GanttView() {
               ) : (
                 columnGroups.map(({ column, tasks: colTasks }) => (
                   <div key={column.id}>
-                    <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50 text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider sticky z-10">
-                      {column.title} <span className="text-slate-400 font-normal">({colTasks.length})</span>
+                    <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50 text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider sticky z-10 h-[28px] flex items-center">
+                      {column.title} <span className="text-slate-400 font-normal ml-1">({colTasks.length})</span>
                     </div>
                     {colTasks.map(task => {
                       const assignees = task.card.assignees.map(id => users.find(u => u.id === id)).filter((u): u is User => u !== undefined);
@@ -413,7 +413,7 @@ export default function GanttView() {
               <div className="pt-[72px]">
                 {columnGroups.map(({ column, tasks: colTasks }) => (
                   <div key={column.id}>
-                    <div className="h-[22px] bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50" />
+                    <div className="h-[28px] bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50" />
                     {colTasks.map(task => {
                       const pos = getTaskPosition(task);
                       const dueStatus = getDueDateStatus(task.card.dueDate, task.card.status);

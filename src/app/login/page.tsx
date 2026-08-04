@@ -96,14 +96,15 @@ export default function LoginPage() {
         <div className="apple-card p-8 animate-slide-up">
           {/* Logo */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#007AFF] mb-5 overflow-hidden"
-              style={{ boxShadow: '0 4px 16px rgba(0,122,255,0.3)' }}>
-              {logo ? (
-                <img src={logo} alt="Logo" className="w-full h-full object-contain p-1" />
-              ) : (
-                <Sparkles className="w-9 h-9 text-white" />
-              )}
-            </div>
+            {logo ? (
+              <img src={logo} alt="Logo" className="h-16 mx-auto mb-5" style={{ maxWidth: '220px' }} />
+            ) : (
+              <div className="mb-5">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-100">
+                  <Sparkles className="w-7 h-7 text-slate-400" />
+                </div>
+              </div>
+            )}
             <h1 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
               LES FRANCOPHILES
             </h1>
@@ -189,7 +190,7 @@ export default function LoginPage() {
       </div>
 
       {/* Version */}
-      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.8</p>
+      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.9</p>
 
       {/* Background Picker */}
       {showBgPicker && createPortal(
