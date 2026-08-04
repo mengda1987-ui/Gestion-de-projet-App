@@ -122,7 +122,7 @@ export default function MainBoard() {
   );
 
   return (
-    <div className="h-screen flex flex-col" style={getBgStyle(board.background)}>
+    <div className="h-dvh flex flex-col" style={getBgStyle(board.background)}>
       {/* Top Header */}
       <header className="glass border-b border-slate-200/60 dark:border-slate-700/50 shrink-0 relative z-[9000]">
         <div className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-4 py-2">
@@ -213,8 +213,9 @@ export default function MainBoard() {
               className="flex items-center gap-0.5 hover:bg-slate-200/60 dark:hover:bg-white/10 rounded-full p-0.5 pr-1.5 transition-colors"
             >
               <Avatar user={currentUser!} size="sm" showOnline online className="ring-2 ring-slate-200/60 dark:ring-white/40" />
-              <ChevronDown size={12} className="text-slate-500 dark:text-slate-200 hidden sm:block" />
-            </button>
+            <ChevronDown size={12} className="text-slate-500 dark:text-slate-200 hidden sm:block" />
+            <span className="absolute -bottom-1 -right-1 text-[8px] text-slate-400 opacity-50">v1.1</span>
+          </button>
 
             {showUserMenu && (
               <div
@@ -457,7 +458,7 @@ export default function MainBoard() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
         {viewMode === 'board' && <BoardView />}
         {viewMode === 'table' && <TableView />}
         {viewMode === 'gantt' && <GanttView />}

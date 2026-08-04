@@ -181,8 +181,8 @@ export default function BoardHome() {
   };
 
   return (
-    <div className="min-h-screen" style={getBgStyle(workspaceBackground)}>
-      <div className="min-h-screen backdrop-blur-sm bg-white/50 dark:bg-slate-900/50">
+    <div className="min-h-dvh flex flex-col" style={getBgStyle(workspaceBackground)}>
+      <div className="flex-1 backdrop-blur-sm bg-white/50 dark:bg-slate-900/50 overflow-y-auto">
       <div className="max-w-6xl mx-auto px-6 sm:px-8 py-10 sm:py-14">
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
