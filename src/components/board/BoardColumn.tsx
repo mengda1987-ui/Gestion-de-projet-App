@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Droppable, Draggable, DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import { Column, Card as CardType } from '@/types';
 import { useBoard } from '@/context/BoardContext';
@@ -32,6 +33,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
   const [showMenu, setShowMenu] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(column.title);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleAddCard = () => {
     if (!newCardTitle.trim()) {
@@ -105,6 +107,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
 
         <div className="relative">
           <button
+            ref={menuBtnRef}
             onClick={(e) => {
               e.stopPropagation();
               setShowMenu(!showMenu);
@@ -114,9 +117,13 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
             <MoreHorizontal size={16} />
           </button>
 
-          {showMenu && (
+          {showMenu && menuBtnRef.current && createPortal(
             <div
-              className="absolute right-0 top-full mt-1 w-44 apple-card rounded-xl shadow-xl overflow-hidden z-[9500] animate-slide-up"
+              className="fixed apple-card rounded-xl shadow-xl overflow-hidden z-[99999] animate-slide-up w-44"
+              style={{
+                left: Math.min(menuBtnRef.current.getBoundingClientRect().right - 176, window.innerWidth - 192),
+                top: menuBtnRef.current.getBoundingClientRect().bottom + 4,
+              }}
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -187,7 +194,8 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
                 <Trash2 size={14} />
                 {t('board.delete')}
               </button>
-            </div>
+            </div>,
+            document.body
           )}
         </div>
       </div>
