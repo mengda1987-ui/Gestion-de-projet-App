@@ -398,7 +398,6 @@ export default function MindMapView() {
             description: '',
             labels: [],
             assignees: [],
-            completed: false,
             archived: false,
             checklists: [],
             comments: [],
