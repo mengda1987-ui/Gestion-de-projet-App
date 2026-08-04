@@ -11,6 +11,7 @@ import {
   Paperclip,
   Calendar,
   Clock,
+  Trash2,
 } from 'lucide-react';
 import { cn, calculateChecklistProgress, getDueDateStatus } from '@/lib/utils';
 
@@ -22,7 +23,7 @@ interface CardItemProps {
 
 export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const { t, lang } = useLang();
-  const { board, users, onlineUsers } = useBoard();
+  const { board, users, onlineUsers, broadcastChange } = useBoard();
 
   const allChecklistItems = card.checklists.flatMap(cl => cl.items);
   const checklistProgress = calculateChecklistProgress(allChecklistItems);
@@ -48,13 +49,27 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
     <div
       onClick={onClick}
       className={cn(
-        'group rounded-2xl border border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-800 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
+        'group relative rounded-2xl border border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-800 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
         card.archived && 'opacity-50 line-through decoration-slate-400',
         card.status === 'complete' && 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800',
         card.status === 'in_progress' && 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
         isDragging && 'ring-2 ring-[#007AFF] shadow-2xl'
       )}
     >
+      {/* Delete Button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (confirm(`确定要删除卡片「${card.title}」吗？`)) {
+            broadcastChange({ type: 'DELETE_CARD', payload: { cardId: card.id } });
+          }
+        }}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm"
+        title="删除卡片"
+      >
+        <Trash2 size={14} />
+      </button>
+
       {/* Cover Image */}
       {card.coverImage && (
         <div className="h-24 bg-slate-100 dark:bg-slate-700 overflow-hidden relative">

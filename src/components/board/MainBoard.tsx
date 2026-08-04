@@ -210,7 +210,6 @@ export default function MainBoard() {
             >
               <Avatar user={currentUser!} size="sm" showOnline online className="ring-2 ring-slate-200/60 dark:ring-white/40" />
             <ChevronDown size={12} className="text-slate-500 dark:text-slate-200 hidden sm:block" />
-            <span className="absolute -bottom-1 -right-1 text-[8px] text-slate-400 opacity-50">v1.1</span>
           </button>
 
             {showUserMenu && (
