@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import {
   Plus,
-  Pencil,
   Trash2,
   ListTodo,
   X,
@@ -19,6 +18,7 @@ import {
   Image,
   LogOut,
   Upload,
+  MoreHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
@@ -50,6 +50,7 @@ export default function BoardHome() {
   const [createTitle, setCreateTitle] = useState('');
   const [showMemberManage, setShowMemberManage] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const bgRef = [...BOARD_BG_GRADIENTS];
@@ -70,6 +71,14 @@ export default function BoardHome() {
     }
     return { backgroundColor: bg };
   };
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const handler = () => setMenuOpenId(null);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpenId]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -290,33 +299,49 @@ export default function BoardHome() {
                       )}
                     </div>
 
-                    {/* Updated time */}
+                    {/* Updated time & menu */}
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2.5">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
-                      <span className="flex items-center ml-auto gap-0.5">
+                      <div className="relative ml-auto">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setRenameId(board.id);
-                            setRenameText(board.title);
+                            setMenuOpenId(menuOpenId === board.id ? null : board.id);
                           }}
                           className="p-0.5 rounded text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
-                          title={t('home.renameBoard')}
                         >
-                          <Pencil size={12} />
+                          <MoreHorizontal size={14} />
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget(board.id);
-                          }}
-                          className="p-0.5 rounded text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors"
-                          title={t('home.deleteBoard')}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </span>
+                        {menuOpenId === board.id && (
+                          <div
+                            className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 animate-slide-up"
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={() => {
+                                setRenameId(board.id);
+                                setRenameText(board.title);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            >
+                              <MoreHorizontal size={13} className="rotate-90" />
+                              {lang === 'zh' ? '重命名' : 'Rename'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDeleteTarget(board.id);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              <Trash2 size={13} />
+                              {lang === 'zh' ? '删除' : 'Delete'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                 </div>
               );
