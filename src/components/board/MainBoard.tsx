@@ -23,9 +23,7 @@ import {
   UserCircle2,
   Network,
   Languages,
-  BrainCircuit,
   Menu,
-  Sparkles,
   ArrowLeft,
   Archive,
   Image,
@@ -36,7 +34,6 @@ import BoardView from './BoardView';
 import TableView from './TableView';
 import GanttView from './GanttView';
 import MindMapView from './MindMapView';
-import AIAssistant from '@/components/ai/AIAssistant';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function MainBoard() {
@@ -56,7 +53,6 @@ export default function MainBoard() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showAI, setShowAI] = useState(false);
   const [showAppMenu, setShowAppMenu] = useState(false);
   const [showBoardBgPicker, setShowBoardBgPicker] = useState(false);
 
@@ -98,7 +94,7 @@ export default function MainBoard() {
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       // Only go back if not typing in an input and no modals are open
       if (isInput) return;
-      if (showAppMenu || showUserMenu || showFilterMenu || showProfile || showAI || showBoardBgPicker) return;
+      if (showAppMenu || showUserMenu || showFilterMenu || showProfile || showBoardBgPicker) return;
       if (e.key === 'Escape' || (e.key === 'b' && !e.metaKey && !e.ctrlKey)) {
         e.preventDefault();
         goToWorkspace();
@@ -106,7 +102,7 @@ export default function MainBoard() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showAppMenu, showUserMenu, showFilterMenu, showProfile, showAI, showBoardBgPicker, goToWorkspace]);
+  }, [showAppMenu, showUserMenu, showFilterMenu, showProfile, showBoardBgPicker, goToWorkspace]);
 
   const filteredColumnCount = board.columns.filter(c => !c.archived || filters.showArchived).length;
   const totalCardCount = board.columns.reduce(
@@ -302,15 +298,6 @@ export default function MainBoard() {
               </button>
 
               <div className="mx-5 my-2 border-t border-slate-200/50 dark:border-slate-700/50" />
-              {/* AI Analysis */}
-              <button
-                onClick={() => { setShowAI(true); setShowAppMenu(false); }}
-                className="w-full flex items-center gap-3 px-5 py-3 text-sm text-slate-700 dark:text-white/80 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
-              >
-                <BrainCircuit size={18} className="text-violet-500 dark:text-violet-300" />
-                <span>{t('nav.aiAnalysis')}</span>
-                <Sparkles size={14} className="ml-auto text-violet-400 dark:text-violet-300 opacity-60" />
-              </button>
 
               {/* Dark Mode */}
               <button
@@ -467,9 +454,6 @@ export default function MainBoard() {
 
       {showProfile && (
         <UserProfileModal onClose={() => setShowProfile(false)} />
-      )}
-      {showAI && (
-        <AIAssistant onClose={() => setShowAI(false)} />
       )}
 
       {/* Board Background Picker */}

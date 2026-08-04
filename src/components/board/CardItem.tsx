@@ -1,6 +1,6 @@
 'use client';
 
-import { Card } from '@/types';
+import { Card, User } from '@/types';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { AvatarStack } from '@/components/ui/Avatar';

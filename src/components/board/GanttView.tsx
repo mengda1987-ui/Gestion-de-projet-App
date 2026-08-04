@@ -13,7 +13,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn, getDueDateStatus, formatDate } from '@/lib/utils';
-import { Card, Column } from '@/types';
+import { Card, Column, User } from '@/types';
 import { startOfWeek, addWeeks, eachDayOfInterval, format as f, isSameDay, parseISO, isBefore, startOfDay, differenceInDays, addDays } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
 

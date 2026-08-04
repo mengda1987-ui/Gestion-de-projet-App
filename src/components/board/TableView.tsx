@@ -16,7 +16,7 @@ import {
   Columns3,
 } from 'lucide-react';
 import { cn, formatDate, calculateChecklistProgress, getDueDateStatus, relativeTime } from '@/lib/utils';
-import { Card } from '@/types';
+import { Card, User } from '@/types';
 
 type SortField = 'title' | 'dueDate' | 'createdAt' | 'updatedAt' | 'checklist';
 type SortOrder = 'asc' | 'desc';
