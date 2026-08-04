@@ -1071,7 +1071,7 @@ export default function CardDetailModal({
                         {l.name}
                       </button>
                     ))}
-                    <button onClick={() => setShowLabelManager(true)} className="px-2 py-1.5 rounded-full text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400">
+                    <button onClick={() => setManageLabelsMode(true)} className="px-2 py-1.5 rounded-full text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400">
                       + {lang === 'zh' ? '管理' : 'Manage'}
                     </button>
                   </div>
