@@ -56,7 +56,6 @@ export default function BoardHome() {
   const bgRef = [...BOARD_BG_GRADIENTS];
   let bgIdx = 0;
 
-  // Compute the background CSS style
   const getBgStyle = (bg: string): React.CSSProperties => {
     if (bg.startsWith('url(') || bg.startsWith('data:')) {
       return {
@@ -72,7 +71,6 @@ export default function BoardHome() {
     return { backgroundColor: bg };
   };
 
-  // Close dropdown on click outside
   useEffect(() => {
     const handler = () => setMenuOpenId(null);
     if (menuOpenId) {
@@ -83,7 +81,7 @@ export default function BoardHome() {
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) { return; }
     if (file.size > 2 * 1024 * 1024) {
       alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
       return;
@@ -155,17 +153,11 @@ export default function BoardHome() {
             </button>
             {currentUser?.role === 'admin' && (
               <>
-                <button
-                  onClick={() => setShowMemberManage(true)}
-                  className="btn-secondary text-xs"
-                >
+                <button onClick={() => setShowMemberManage(true)} className="btn-secondary text-xs">
                   <Users size={14} />
                   <span className="hidden sm:inline">{lang === 'zh' ? '成员管理' : 'Members'}</span>
                 </button>
-                <button
-                  onClick={() => setShowBgPicker(true)}
-                  className="btn-secondary text-xs"
-                >
+                <button onClick={() => setShowBgPicker(true)} className="btn-secondary text-xs">
                   <Image size={14} />
                   <span className="hidden sm:inline">{lang === 'zh' ? '背景' : 'Background'}</span>
                 </button>
@@ -177,25 +169,13 @@ export default function BoardHome() {
                   {logo ? <Trash2 size={14} /> : <Upload size={14} />}
                   <span className="hidden sm:inline">{logo ? (lang === 'zh' ? '删除Logo' : 'Del Logo') : 'Logo'}</span>
                 </button>
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
+                <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
               </>
             )}
-            <button
-              onClick={toggleLang}
-              className="px-3 py-2 rounded-full text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 transition-all"
-            >
+            <button onClick={toggleLang} className="px-3 py-2 rounded-full text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 transition-all">
               {lang === 'zh' ? 'EN' : '中'}
             </button>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="btn-primary text-sm"
-            >
+            <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
               <Plus size={15} />
               <span className="hidden sm:inline">{t('home.createBoard')}</span>
             </button>
@@ -209,12 +189,8 @@ export default function BoardHome() {
               <Sparkles size={28} className="text-slate-400" />
             </div>
             <p className="text-slate-500 text-base mb-5">{lang === 'zh' ? '还没有看板，创建一个吧' : 'No boards yet. Create one!'}</p>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="btn-primary"
-            >
-              <Plus size={18} />
-              {t('home.createBoard')}
+            <button onClick={() => setShowCreate(true)} className="btn-primary">
+              <Plus size={18} />{t('home.createBoard')}
             </button>
           </div>
         ) : (
@@ -232,15 +208,10 @@ export default function BoardHome() {
                   className="group apple-card cursor-pointer overflow-hidden"
                   onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
                 >
-                  {/* Header gradient bar */}
                   <div className="h-1.5 w-full" style={{ background: board.background || bg }} />
-
-                  {/* Content */}
                   <div className="p-5">
-                    {/* Title */}
-                    <div className="flex items-start gap-3.5 mb-4">
-                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm"
-                        style={{ background: board.background || bg }}>
+                    <div className="flex items-start gap-3.5 mb-3">
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm" style={{ background: board.background || bg }}>
                         <span>{emoji}</span>
                       </div>
                       <div className="min-w-0 flex-1 pt-0.5">
@@ -250,9 +221,9 @@ export default function BoardHome() {
                               value={renameText}
                               onChange={(e) => setRenameText(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameId(null); }}
-                              placeholder={t('home.renamePlaceholder')}
                               autoFocus
                               className="flex-1 bg-slate-100 text-slate-800 text-sm font-semibold px-2.5 py-1 rounded-lg border border-slate-300 focus:outline-none focus:border-[#007AFF] placeholder:text-slate-400"
+                              placeholder={t('home.renamePlaceholder')}
                             />
                             <button onClick={handleRename} className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"><Check size={14} /></button>
                             <button onClick={() => setRenameId(null)} className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"><X size={14} /></button>
@@ -263,78 +234,47 @@ export default function BoardHome() {
                       </div>
                     </div>
 
-                    {/* Column preview - mini bars */}
-                    <div className="flex gap-1.5 mb-5">
+                    <div className="flex gap-1.5 mb-4">
                       {board.columns.slice(0, 6).map((col, i) => (
                         <div
                           key={col.id}
                           className="flex-1 h-1.5 rounded-full"
-                          style={{
-                            background: board.background || bg,
-                            opacity: 0.35 + (i / board.columns.length) * 0.4,
-                          }}
+                          style={{ background: board.background || bg, opacity: 0.35 + (i / board.columns.length) * 0.4 }}
                         />
                       ))}
-                      {board.columns.length === 0 && (
-                        <div className="flex-1 h-1.5 rounded-full bg-slate-200" />
-                      )}
+                      {board.columns.length === 0 && <div className="flex-1 h-1.5 rounded-full bg-slate-200" />}
                     </div>
 
-                    {/* Stats */}
-                    <div className="flex items-center gap-4">
-                      <span className="flex items-center gap-1.5 text-sm text-slate-500">
-                        <LayoutGrid size={14} />
-                        <span className="font-semibold text-slate-700">{colCount}</span>
-                        <span className="text-xs text-slate-400">{lang === 'zh' ? '列表' : 'lists'}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5 text-sm text-slate-500">
-                        <ListTodo size={14} />
-                        <span className="font-semibold text-slate-700">{cardCount}</span>
-                        <span className="text-xs text-slate-400">{lang === 'zh' ? '卡片' : 'cards'}</span>
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1 text-sm text-slate-500"><LayoutGrid size={13} /><span className="font-semibold text-slate-700">{colCount}</span></span>
+                      <span className="flex items-center gap-1 text-sm text-slate-500"><ListTodo size={13} /><span className="font-semibold text-slate-700">{cardCount}</span></span>
                       {completedCount > 0 && (
-                        <span className="flex items-center gap-1.5 text-sm text-emerald-600 ml-auto">
-                          <CheckSquare size={14} />
-                          <span className="font-semibold">{completedCount}</span>
-                        </span>
+                        <span className="flex items-center gap-1 text-sm text-emerald-600 ml-auto"><CheckSquare size={13} /><span className="font-semibold">{completedCount}</span></span>
                       )}
                     </div>
 
-                    {/* Updated time & menu */}
+                    {/* Updated time & three-dot menu */}
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2.5">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
                       <div className="relative ml-auto">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuOpenId(menuOpenId === board.id ? null : board.id);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === board.id ? null : board.id); }}
                           className="p-0.5 rounded text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
                         >
                           <MoreHorizontal size={14} />
                         </button>
                         {menuOpenId === board.id && (
-                          <div
-                            className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 animate-slide-up"
-                            onMouseDown={(e) => e.stopPropagation()}
-                          >
+                          <div className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50 animate-slide-up" onMouseDown={(e) => e.stopPropagation()}>
                             <button
-                              onClick={() => {
-                                setRenameId(board.id);
-                                setRenameText(board.title);
-                                setMenuOpenId(null);
-                              }}
+                              onClick={() => { setRenameId(board.id); setRenameText(board.title); setMenuOpenId(null); }}
                               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                             >
                               <MoreHorizontal size={13} className="rotate-90" />
                               {lang === 'zh' ? '重命名' : 'Rename'}
                             </button>
                             <button
-                              onClick={() => {
-                                setDeleteTarget(board.id);
-                                setMenuOpenId(null);
-                              }}
+                              onClick={() => { setDeleteTarget(board.id); setMenuOpenId(null); }}
                               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                             >
                               <Trash2 size={13} />
@@ -344,6 +284,7 @@ export default function BoardHome() {
                         )}
                       </div>
                     </div>
+                  </div>
                 </div>
               );
             })}
@@ -352,9 +293,7 @@ export default function BoardHome() {
               onClick={() => setShowCreate(true)}
               className="rounded-2xl border-2 border-dashed border-slate-300 hover:border-[#007AFF]/40 text-slate-400 hover:text-[#007AFF] transition-all flex flex-col items-center justify-center gap-3 py-14 bg-white/40 hover:bg-white/60"
             >
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
-                <Plus size={24} />
-              </div>
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center"><Plus size={24} /></div>
               <span className="text-sm font-medium">{t('home.createBoard')}</span>
             </button>
           </div>
@@ -376,19 +315,11 @@ export default function BoardHome() {
               className="input mb-4"
             />
             <div className="flex gap-2.5">
-              <button
-                onClick={() => setShowCreate(false)}
-                className="btn-secondary flex-1"
-              >
-                {lang === 'zh' ? '取消' : 'Cancel'}
-              </button>
+              <button onClick={() => setShowCreate(false)} className="btn-secondary flex-1">{lang === 'zh' ? '取消' : 'Cancel'}</button>
               <button
                 onClick={handleCreate}
                 disabled={!createTitle.trim()}
-                className={cn(
-                  'btn-primary flex-1',
-                  !createTitle.trim() && '!bg-slate-300 !shadow-none cursor-not-allowed opacity-50'
-                )}
+                className={cn('btn-primary flex-1', !createTitle.trim() && '!bg-slate-300 !shadow-none cursor-not-allowed opacity-50')}
               >
                 {lang === 'zh' ? '创建' : 'Create'}
               </button>
@@ -408,20 +339,16 @@ export default function BoardHome() {
               {t('home.deleteConfirm', { name: boards.find(b => b.id === deleteTarget)?.title || '' })}
             </p>
             <div className="flex gap-2.5">
-              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">
-                {lang === 'zh' ? '取消' : 'Cancel'}
-              </button>
-              <button onClick={handleDelete} className="btn-danger flex-1">
-                {lang === 'zh' ? '删除' : 'Delete'}
-              </button>
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">{lang === 'zh' ? '取消' : 'Cancel'}</button>
+              <button onClick={handleDelete} className="btn-danger flex-1">{lang === 'zh' ? '删除' : 'Delete'}</button>
             </div>
           </div>
         </div>,
         document.body
       )}
+
       {showMemberManage && <MemberManageModal onClose={() => setShowMemberManage(false)} />}
 
-      {/* Background Picker */}
       {showBgPicker && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowBgPicker(false)} />
@@ -430,10 +357,7 @@ export default function BoardHome() {
               <h3 className="font-bold text-slate-900 text-lg">
                 {lang === 'zh' ? '工作区背景设置' : 'Workspace background'}
               </h3>
-              <button
-                onClick={() => setShowBgPicker(false)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-              >
+              <button onClick={() => setShowBgPicker(false)} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={18} />
               </button>
             </div>
