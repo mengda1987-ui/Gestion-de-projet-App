@@ -1,0 +1,1269 @@
+'use client';
+
+import React, { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
+import { Board, Card, Column, Label, ViewMode, FilterState, User, Comment, Attachment, MindMapNode, Checklist } from '@/types';
+import { MOCK_BOARD, MOCK_BOARDS, MOCK_USERS } from '@/data/mockData';
+import { generateId } from '@/lib/utils';
+
+interface BoardState {
+  boards: Board[];
+  currentBoardId: string;
+  board: Board;
+  users: User[];
+  currentUser: User | null;
+  viewMode: ViewMode;
+  filters: FilterState;
+  darkMode: boolean;
+  onlineUsers: string[];
+  workspaceBackground: string;
+  loginBackground: string;
+}
+
+type Action =
+  | { type: 'SET_CURRENT_USER'; payload: User | null }
+  | { type: 'SET_VIEW_MODE'; payload: ViewMode }
+  | { type: 'SET_FILTERS'; payload: Partial<FilterState> }
+  | { type: 'TOGGLE_DARK_MODE' }
+  | { type: 'SET_DARK_MODE'; payload: boolean }
+  | { type: 'UPDATE_BOARD'; payload: Partial<Board> }
+  | { type: 'CREATE_BOARD'; payload: { title: string; background: string } }
+  | { type: 'SET_CURRENT_BOARD'; payload: string }
+  | { type: 'DELETE_BOARD'; payload: string }
+  | { type: 'RENAME_BOARD'; payload: { boardId: string; title: string } }
+  | { type: 'REORDER_COLUMNS'; payload: { fromIndex: number; toIndex: number } }
+  | { type: 'ADD_COLUMN'; payload: { title: string; id?: string } }
+  | { type: 'UPDATE_COLUMN'; payload: { columnId: string; updates: Partial<Column> } }
+  | { type: 'DELETE_COLUMN'; payload: { columnId: string } }
+  | { type: 'ARCHIVE_COLUMN'; payload: { columnId: string } }
+  | { type: 'REORDER_CARDS'; payload: { columnId: string; fromIndex: number; toIndex: number } }
+  | { type: 'MOVE_CARD'; payload: { fromColumnId: string; toColumnId: string; fromIndex: number; toIndex: number } }
+  | { type: 'ADD_CARD'; payload: { columnId: string; card: Partial<Card> } }
+  | { type: 'UPDATE_CARD'; payload: { cardId: string; updates: Partial<Card> } }
+  | { type: 'DELETE_CARD'; payload: { cardId: string } }
+  | { type: 'ARCHIVE_CARD'; payload: { cardId: string } }
+  | { type: 'DUPLICATE_CARD'; payload: { cardId: string } }
+  | { type: 'ADD_LABEL'; payload: { label: Omit<Label, 'id'> } }
+  | { type: 'UPDATE_LABEL'; payload: { labelId: string; updates: Partial<Label> } }
+  | { type: 'DELETE_LABEL'; payload: { labelId: string } }
+  | { type: 'TOGGLE_CARD_LABEL'; payload: { cardId: string; labelId: string } }
+  | { type: 'TOGGLE_CARD_ASSIGNEE'; payload: { cardId: string; userId: string } }
+  | { type: 'TOGGLE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string } }
+  | { type: 'UPDATE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string; updates: Partial<import('@/types').ChecklistItem> } }
+  | { type: 'ADD_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; text: string } }
+  | { type: 'ADD_CHECKLIST'; payload: { cardId: string; name: string } }
+  | { type: 'DELETE_CHECKLIST'; payload: { cardId: string; checklistId: string } }
+  | { type: 'DELETE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string } }
+  | { type: 'ADD_COMMENT'; payload: { cardId: string; text: string; userId: string } }
+  | { type: 'ADD_ATTACHMENT'; payload: { cardId: string; attachment: Omit<Attachment, 'id' | 'uploadedAt'> } }
+  | { type: 'DELETE_ATTACHMENT'; payload: { cardId: string; attachmentId: string } }
+  | { type: 'SET_COVER_IMAGE'; payload: { cardId: string; url: string | null } }
+  | { type: 'UPDATE_USER'; payload: { userId: string; updates: Partial<User> } }
+  | { type: 'ADD_USER'; payload: { user: User } }
+  | { type: 'DELETE_USER'; payload: { userId: string } }
+  | { type: 'SET_ONLINE_USERS'; payload: string[] }
+  | { type: 'ADD_MINDMAP_NODE'; payload: { node: Omit<MindMapNode, 'id' | 'createdAt' | 'updatedAt' | 'order'> & { order?: number } } }
+  | { type: 'UPDATE_MINDMAP_NODE'; payload: { nodeId: string; updates: Partial<MindMapNode> } }
+  | { type: 'DELETE_MINDMAP_NODE'; payload: { nodeId: string } }
+  | { type: 'CONVERT_MINDMAP_TO_CARDS'; payload: { rootNodeId: string; mode: 'rootAsColumn' | 'rootAsCard' } }
+  | { type: 'CLEAR_ALL_MM_POSITIONS' }
+  | { type: 'APPLY_REMOTE_UPDATE'; payload: Partial<BoardState> }
+  | { type: 'UPDATE_WORKSPACE_BG'; payload: string }
+  | { type: 'UPDATE_LOGIN_BG'; payload: string };
+
+function initialState(): BoardState {
+  return {
+    boards: MOCK_BOARDS,
+    currentBoardId: '',
+    board: MOCK_BOARD,
+    users: MOCK_USERS,
+    currentUser: null,
+    viewMode: 'board',
+    filters: {
+      search: '',
+      labels: [],
+      assignees: [],
+      showArchived: false,
+    },
+    darkMode: false,
+    onlineUsers: [],
+    workspaceBackground: '#f5f5f7',
+    loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+  };
+}
+
+function boardReducer(state: BoardState, action: Action): BoardState {
+  const skipSync = (action as { _skipSync?: boolean })._skipSync === true;
+  let newState = baseReducer(state, action);
+  if (!skipSync) newState = syncMindMapCards(newState, action);
+  newState = syncBoardInList(newState);
+  return newState;
+}
+
+function syncBoardInList(state: BoardState): BoardState {
+  if (state.boards.some(b => b.id === state.board.id)) {
+    return {
+      ...state,
+      boards: state.boards.map(b => b.id === state.board.id ? state.board : b),
+    };
+  }
+  return state;
+}
+
+function baseReducer(state: BoardState, action: Action): BoardState {
+  switch (action.type) {
+    case 'SET_CURRENT_USER':
+      return { ...state, currentUser: action.payload };
+
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.payload };
+
+    case 'SET_FILTERS':
+      return { ...state, filters: { ...state.filters, ...action.payload } };
+
+    case 'TOGGLE_DARK_MODE':
+      return { ...state, darkMode: !state.darkMode };
+
+    case 'SET_DARK_MODE':
+      return { ...state, darkMode: action.payload };
+
+    case 'UPDATE_WORKSPACE_BG':
+      return { ...state, workspaceBackground: action.payload };
+
+    case 'UPDATE_LOGIN_BG':
+      return { ...state, loginBackground: action.payload };
+
+    case 'UPDATE_BOARD':
+      return { ...state, board: { ...state.board, ...action.payload, updatedAt: new Date().toISOString() } };
+
+    case 'CREATE_BOARD': {
+      const newBoard: Board = {
+        id: generateId(),
+        title: action.payload.title,
+        background: action.payload.background,
+        columns: [],
+        labels: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        mindmap: [],
+      };
+      return {
+        ...state,
+        boards: [...state.boards, newBoard],
+        board: newBoard,
+        currentBoardId: newBoard.id,
+        viewMode: 'board',
+      };
+    }
+
+    case 'SET_CURRENT_BOARD': {
+      if (!action.payload) {
+        // Empty string = go back to workspace (deselect current board)
+        return { ...state, currentBoardId: '' };
+      }
+      const board = state.boards.find(b => b.id === action.payload);
+      if (!board) return state;
+      return { ...state, board, currentBoardId: board.id, viewMode: 'board' };
+    }
+
+    case 'DELETE_BOARD': {
+      const remaining = state.boards.filter(b => b.id !== action.payload);
+      if (remaining.length === 0) return state;
+      const nextBoard = remaining[0];
+      return {
+        ...state,
+        boards: remaining,
+        board: nextBoard,
+        currentBoardId: nextBoard.id,
+        viewMode: 'board',
+      };
+    }
+
+    case 'RENAME_BOARD': {
+      const renamed = state.boards.map(b =>
+        b.id === action.payload.boardId ? { ...b, title: action.payload.title, updatedAt: new Date().toISOString() } : b
+      );
+      return {
+        ...state,
+        boards: renamed,
+        board: state.board.id === action.payload.boardId
+          ? { ...state.board, title: action.payload.title, updatedAt: new Date().toISOString() }
+          : state.board,
+      };
+    }
+
+    case 'REORDER_COLUMNS': {
+      const columns = [...state.board.columns];
+      const from = Math.max(0, Math.min(action.payload.fromIndex, columns.length - 1));
+      const to = Math.max(0, Math.min(action.payload.toIndex, columns.length - 1));
+      if (from === to) return state;
+      const [removed] = columns.splice(from, 1);
+      columns.splice(to, 0, removed);
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ADD_COLUMN': {
+      const newColumn: Column = {
+        id: action.payload.id || generateId(),
+        title: action.payload.title,
+        cards: [],
+        order: state.board.columns.length,
+        archived: false,
+      };
+      return {
+        ...state,
+        board: { ...state.board, columns: [...state.board.columns, newColumn], updatedAt: new Date().toISOString() },
+      };
+    }
+
+    case 'UPDATE_COLUMN': {
+      const columns = state.board.columns.map(c =>
+        c.id === action.payload.columnId ? { ...c, ...action.payload.updates } : c
+      );
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'DELETE_COLUMN': {
+      const columns = state.board.columns.filter(c => c.id !== action.payload.columnId);
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ARCHIVE_COLUMN': {
+      const columns = state.board.columns.map(c =>
+        c.id === action.payload.columnId ? { ...c, archived: !c.archived } : c
+      );
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'REORDER_CARDS': {
+      const columns = state.board.columns.map(col => {
+        if (col.id !== action.payload.columnId) return col;
+        const cards = [...col.cards];
+        const from = Math.max(0, Math.min(action.payload.fromIndex, cards.length - 1));
+        const to = Math.max(0, Math.min(action.payload.toIndex, cards.length));
+        if (from === to) return col;
+        const [removed] = cards.splice(from, 1);
+        cards.splice(to, 0, removed);
+        return { ...col, cards: cards.map((c, i) => ({ ...c, order: i })) };
+      });
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'MOVE_CARD': {
+      const columns = state.board.columns.map(col => ({ ...col, cards: [...col.cards] }));
+      const fromCol = columns.find(c => c.id === action.payload.fromColumnId);
+      const toCol = columns.find(c => c.id === action.payload.toColumnId);
+      if (!fromCol || !toCol) return state;
+      const from = Math.max(0, Math.min(action.payload.fromIndex, fromCol.cards.length - 1));
+      const to = Math.max(0, Math.min(action.payload.toIndex, toCol.cards.length));
+      if (from < 0) return state;
+      const [movedCard] = fromCol.cards.splice(from, 1);
+      if (!movedCard) return state;
+      toCol.cards.splice(to, 0, { ...movedCard, updatedAt: new Date().toISOString() });
+      columns.forEach(col => {
+        col.cards = col.cards.map((c, i) => ({ ...c, order: i }));
+      });
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ADD_CARD': {
+      const now = new Date().toISOString();
+      const newCard: Card = {
+        id: generateId(),
+        title: action.payload.card.title || '新卡片',
+        description: action.payload.card.description || '',
+        coverImage: action.payload.card.coverImage,
+        labels: action.payload.card.labels || [],
+        assignees: action.payload.card.assignees || [],
+        dueDate: action.payload.card.dueDate,
+        startDate: action.payload.card.startDate,
+        completed: false,
+        archived: false,
+        checklists: action.payload.card.checklists || [],
+        comments: [],
+        attachments: action.payload.card.attachments || [],
+        createdAt: now,
+        updatedAt: now,
+        order: 0,
+      };
+      const columns = state.board.columns.map(col => {
+        if (col.id !== action.payload.columnId) return col;
+        return { ...col, cards: [...col.cards, { ...newCard, order: col.cards.length }] };
+      });
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
+    }
+
+    case 'UPDATE_CARD': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c =>
+          c.id === action.payload.cardId ? { ...c, ...action.payload.updates, updatedAt: new Date().toISOString() } : c
+        ),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'DELETE_CARD': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.filter(c => c.id !== action.payload.cardId),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ARCHIVE_CARD': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c =>
+          c.id === action.payload.cardId ? { ...c, archived: !c.archived, updatedAt: new Date().toISOString() } : c
+        ),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'DUPLICATE_CARD': {
+      let cardToDuplicate: Card | null = null;
+      let sourceColumnId: string | null = null;
+      state.board.columns.forEach(col => {
+        col.cards.forEach(c => {
+          if (c.id === action.payload.cardId) {
+            cardToDuplicate = c;
+            sourceColumnId = col.id;
+          }
+        });
+      });
+      if (!cardToDuplicate || !sourceColumnId) return state;
+      const now = new Date().toISOString();
+      const dup = cardToDuplicate as Card;
+      const duplicated: Card = {
+        ...dup,
+        id: generateId(),
+        title: `${dup.title} (副本)`,
+        createdAt: now,
+        updatedAt: now,
+        comments: [],
+        checklists: dup.checklists.map(cl => ({
+          ...cl,
+          id: generateId(),
+          items: cl.items.map(item => ({ ...item, id: generateId() })),
+        })),
+        attachments: [],
+      };
+      const columns = state.board.columns.map(col => {
+        if (col.id !== sourceColumnId) return col;
+        return { ...col, cards: [...col.cards, { ...duplicated, order: col.cards.length }] };
+      });
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
+    }
+
+    case 'ADD_LABEL': {
+      const newLabel: Label = { id: generateId(), ...action.payload.label };
+      return { ...state, board: { ...state.board, labels: [...state.board.labels, newLabel] } };
+    }
+
+    case 'UPDATE_LABEL': {
+      const labels = state.board.labels.map(l =>
+        l.id === action.payload.labelId ? { ...l, ...action.payload.updates } : l
+      );
+      return { ...state, board: { ...state.board, labels } };
+    }
+
+    case 'DELETE_LABEL': {
+      const labels = state.board.labels.filter(l => l.id !== action.payload.labelId);
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => ({
+          ...c,
+          labels: c.labels.filter(lid => lid !== action.payload.labelId),
+          updatedAt: new Date().toISOString(),
+        })),
+      }));
+      return { ...state, board: { ...state.board, labels, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'TOGGLE_CARD_LABEL': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          const has = c.labels.includes(action.payload.labelId);
+          return {
+            ...c,
+            labels: has ? c.labels.filter(l => l !== action.payload.labelId) : [...c.labels, action.payload.labelId],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'TOGGLE_CARD_ASSIGNEE': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          const has = c.assignees.includes(action.payload.userId);
+          return {
+            ...c,
+            assignees: has ? c.assignees.filter(u => u !== action.payload.userId) : [...c.assignees, action.payload.userId],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'TOGGLE_CHECKLIST_ITEM': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            checklists: c.checklists.map(cl => {
+              if (cl.id !== action.payload.checklistId) return cl;
+              return {
+                ...cl,
+                items: cl.items.map(item =>
+                  item.id === action.payload.itemId ? { ...item, completed: !item.completed } : item
+                ),
+              };
+            }),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'UPDATE_CHECKLIST_ITEM': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            checklists: c.checklists.map(cl => {
+              if (cl.id !== action.payload.checklistId) return cl;
+              return {
+                ...cl,
+                items: cl.items.map(item =>
+                  item.id === action.payload.itemId ? { ...item, ...action.payload.updates } : item
+                ),
+              };
+            }),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ADD_CHECKLIST_ITEM': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            checklists: c.checklists.map(cl => {
+              if (cl.id !== action.payload.checklistId) return cl;
+              return {
+                ...cl,
+                items: [
+                  ...cl.items,
+                  { id: generateId(), text: action.payload.text, completed: false },
+                ],
+              };
+            }),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ADD_CHECKLIST': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            checklists: [
+              ...c.checklists,
+              { id: generateId(), name: action.payload.name, items: [] },
+            ],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'DELETE_CHECKLIST': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            checklists: c.checklists.filter(cl => cl.id !== action.payload.checklistId),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ADD_ATTACHMENT': {
+      const newAttachment: Attachment = {
+        id: generateId(),
+        ...action.payload.attachment,
+        uploadedAt: new Date().toISOString(),
+      };
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            attachments: [...c.attachments, newAttachment],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'DELETE_ATTACHMENT': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            attachments: c.attachments.filter(a => a.id !== action.payload.attachmentId),
+            coverImage: c.coverImage === c.attachments.find(a => a.id === action.payload.attachmentId)?.url ? undefined : c.coverImage,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'SET_COVER_IMAGE': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            coverImage: action.payload.url || undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'ADD_COMMENT': {
+      const newComment: Comment = {
+        id: generateId(),
+        userId: action.payload.userId,
+        text: action.payload.text,
+        createdAt: new Date().toISOString(),
+      };
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          return {
+            ...c,
+            comments: [...c.comments, newComment],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
+    case 'UPDATE_USER': {
+      const users = state.users.map(u =>
+        u.id === action.payload.userId ? { ...u, ...action.payload.updates } : u
+      );
+      const currentUser =
+        state.currentUser && state.currentUser.id === action.payload.userId
+          ? { ...state.currentUser, ...action.payload.updates }
+          : state.currentUser;
+      return { ...state, users, currentUser };
+    }
+
+    case 'ADD_USER':
+      return { ...state, users: [...state.users, action.payload.user] };
+
+    case 'DELETE_USER':
+      return { ...state, users: state.users.filter(u => u.id !== action.payload.userId) };
+
+    case 'SET_ONLINE_USERS':
+      return { ...state, onlineUsers: action.payload };
+
+    case 'ADD_MINDMAP_NODE': {
+      const parentId = action.payload.node.parentId;
+      const siblings = state.board.mindmap.filter(n => n.parentId === parentId);
+      const maxOrder = siblings.length > 0 ? Math.max(...siblings.map(s => s.order)) : -1;
+      const now = new Date().toISOString();
+      const node: MindMapNode = {
+        id: generateId(),
+        text: action.payload.node.text,
+        description: action.payload.node.description,
+        parentId,
+        color: action.payload.node.color,
+        collapsed: action.payload.node.collapsed,
+        order: action.payload.node.order ?? (maxOrder + 1),
+        createdAt: now,
+        updatedAt: now,
+      };
+      return { ...state, board: { ...state.board, mindmap: [...state.board.mindmap, node], updatedAt: now } };
+    }
+
+    case 'UPDATE_MINDMAP_NODE': {
+      const now = new Date().toISOString();
+      const mindmap = state.board.mindmap.map(n =>
+        n.id === action.payload.nodeId ? { ...n, ...action.payload.updates, updatedAt: now } : n
+      );
+      return { ...state, board: { ...state.board, mindmap, updatedAt: now } };
+    }
+
+    case 'DELETE_MINDMAP_NODE': {
+      const idsToRemove = new Set<string>();
+      const walk = (id: string) => {
+        if (idsToRemove.has(id)) return;
+        idsToRemove.add(id);
+        state.board.mindmap.filter(n => n.parentId === id).forEach(c => walk(c.id));
+      };
+      walk(action.payload.nodeId);
+      const mindmap = state.board.mindmap.filter(n => !idsToRemove.has(n.id));
+      const now = new Date().toISOString();
+      return { ...state, board: { ...state.board, mindmap, updatedAt: now } };
+    }
+
+    case 'CONVERT_MINDMAP_TO_CARDS': {
+      const nodes = state.board.mindmap;
+      const root = nodes.find(n => n.id === action.payload.rootNodeId);
+      if (!root) return state;
+      const now = new Date().toISOString();
+      const childrenOf = (id: string) => nodes.filter(n => n.parentId === id).sort((a, b) => a.order - b.order);
+      const newColumns: Column[] = [];
+      const newCards: { card: Card; columnId: string }[] = [];
+
+      const buildCardFromNode = (node: MindMapNode, depth: number, parentTitle?: string): Card => {
+        const kids = childrenOf(node.id);
+        const checklists = kids.length > 0 ? [
+          {
+            id: generateId(),
+            name: '子任务（来自脑图）',
+            items: kids.map(k => ({
+              id: generateId(),
+              text: k.text,
+              completed: false,
+              mmNodeId: k.id,
+            })),
+          },
+        ] : [];
+        const descendants = (() => {
+          const all: string[] = [];
+          const stack = [...kids];
+          while (stack.length) {
+            const cur = stack.pop()!;
+            all.push(cur.text);
+            stack.push(...childrenOf(cur.id));
+          }
+          return all;
+        })();
+        const desc = [
+          `# ${node.text}`,
+          '',
+          node.description ? node.description + '\n' : '',
+          depth > 0 && parentTitle ? `> 来自脑图父节点：${parentTitle}\n` : '',
+          descendants.length > 0 ? `\n## 层级子节点总数：${descendants.length}\n` : '',
+        ].filter(Boolean).join('\n');
+        return {
+          id: generateId(),
+          title: node.text,
+          description: desc,
+          labels: [],
+          assignees: [],
+          completed: false,
+          archived: false,
+          checklists,
+          comments: [],
+          attachments: [],
+          createdAt: now,
+          updatedAt: now,
+          order: 0,
+          mmNodeId: node.id,
+        };
+      };
+
+      const rootKids = childrenOf(root.id);
+
+      if (action.payload.mode === 'rootAsColumn') {
+        const columnId = generateId();
+        const cardsFromFirstLevel = rootKids.map((k, i) => {
+          const c = buildCardFromNode(k, 1, root.text);
+          c.order = i;
+          newCards.push({ card: c, columnId });
+          return c;
+        });
+        if (cardsFromFirstLevel.length === 0) {
+          const onlyCard = buildCardFromNode(root, 0);
+          onlyCard.order = 0;
+          newCards.push({ card: onlyCard, columnId });
+        }
+        newColumns.push({
+          id: columnId,
+          title: root.text,
+          cards: newCards.filter(x => x.columnId === columnId).map(x => x.card),
+          order: state.board.columns.length,
+          archived: false,
+          mmRootId: root.id,
+        });
+      } else {
+        // rootAsCard
+        const columnId = generateId();
+        const rootCard = buildCardFromNode(root, 0);
+        rootCard.order = 0;
+        const subCards = rootKids.map((k, i) => {
+          const c = buildCardFromNode(k, 1, root.text);
+          c.order = i + 1;
+          return c;
+        });
+        const allCardsForCol = [rootCard, ...subCards];
+        newCards.push(...allCardsForCol.map(c => ({ card: c, columnId })));
+        newColumns.push({
+          id: columnId,
+          title: `🧠 ${root.text}`,
+          cards: allCardsForCol,
+          order: state.board.columns.length,
+          archived: false,
+          mmRootId: root.id,
+        });
+      }
+
+      const columns = [...state.board.columns, ...newColumns];
+      return {
+        ...state,
+        board: { ...state.board, columns, updatedAt: now },
+        viewMode: 'board',
+      };
+    }
+
+    case 'CLEAR_ALL_MM_POSITIONS': {
+      const now = new Date().toISOString();
+      return {
+        ...state,
+        board: {
+          ...state.board,
+          columns: state.board.columns.map(col => {
+            const { mmPosition: _c1, ...colRest } = col as any;
+            return {
+              ...colRest,
+              cards: col.cards.map(card => {
+                const { mmPosition: _c2, ...cardRest } = card as any;
+                return {
+                  ...cardRest,
+                  checklists: card.checklists.map(cl => ({
+                    ...cl,
+                    items: cl.items.map(it => {
+                      const { mmPosition: _i, ...itRest } = it as any;
+                      return itRest;
+                    }),
+                  })),
+                };
+              }),
+            };
+          }),
+          updatedAt: now,
+        },
+      };
+    }
+
+    case 'APPLY_REMOTE_UPDATE':
+      return { ...state, ...action.payload };
+
+    default:
+      return state;
+  }
+}
+
+function syncMindMapCards(state: BoardState, action: Action): BoardState {
+  const now = new Date().toISOString();
+  const next: BoardState = {
+    ...state,
+    board: { ...state.board, columns: state.board.columns.map(c => ({ ...c, cards: [...c.cards] })), mindmap: [...state.board.mindmap] },
+  };
+  const wrap = <T,>(arr: T[]) => [...arr];
+  const childrenOf = (parentId: string | null) => state.board.mindmap.filter(n => n.parentId === parentId).sort((a,b)=>a.order-b.order);
+  const nextChildrenOf = (parentId: string | null) => next.board.mindmap.filter(n => n.parentId === parentId).sort((a,b)=>a.order-b.order);
+
+  const withSkip: <A>(act: A) => A & { _skipSync: true } = (act) => ({ ...(act as any), _skipSync: true } as any);
+
+  switch (action.type) {
+    case 'UPDATE_COLUMN': {
+      const col = next.board.columns.find(c => c.id === action.payload.columnId);
+      if (!col?.mmRootId) return state;
+      if (action.payload.updates?.title !== undefined && col.title !== action.payload.updates.title) {
+        next.board = {
+          ...next.board,
+          mindmap: next.board.mindmap.map(n => n.id === col.mmRootId ? { ...n, text: action.payload.updates.title!, updatedAt: now } : n),
+          updatedAt: now,
+        };
+      }
+      return next;
+    }
+
+    case 'ADD_CARD': {
+      const col = next.board.columns.find(c => c.id === action.payload.columnId);
+      if (!col?.mmRootId) return state;
+      // 新卡片若没有 mmNodeId → 创建对应一级子节点（挂在根节点下）
+      if (action.payload.card.mmNodeId) return state;
+      const siblings = nextChildrenOf(col.mmRootId);
+      const order = siblings.length > 0 ? Math.max(...siblings.map(s=>s.order)) + 1 : 0;
+      const newNode: MindMapNode = {
+        id: `mm-auto-${action.payload.card.id}`,
+        text: action.payload.card.title || '',
+        description: action.payload.card.description ? action.payload.card.description.slice(0, 200) : undefined,
+        parentId: col.mmRootId,
+        color: '#6366F1',
+        collapsed: false,
+        order,
+        createdAt: now,
+        updatedAt: now,
+      };
+      next.board.mindmap = [...next.board.mindmap, newNode];
+      // 反向写回卡片的 mmNodeId
+      next.board.columns = next.board.columns.map(c => c.id !== col.id ? c : {
+        ...c,
+        cards: c.cards.map(card => card.id === action.payload.card.id ? { ...card, mmNodeId: newNode.id } : card),
+      });
+      // 自动生成 checklist items 对应卡片已有子节点
+      next.board.updatedAt = now;
+      return next;
+    }
+
+    case 'UPDATE_CARD': {
+      const cardInfo = (() => {
+        for (const col of next.board.columns) for (const card of col.cards) if (card.id === action.payload.cardId) return { card, col };
+        return null;
+      })();
+      if (!cardInfo) return state;
+      const { card } = cardInfo;
+      if (!card.mmNodeId) return state;
+      const updates = action.payload.updates;
+      let mutated = false;
+      next.board.mindmap = next.board.mindmap.map(n => {
+        if (n.id !== card.mmNodeId) return n;
+        let merged = { ...n };
+        if (updates.title !== undefined && updates.title !== n.text) { merged.text = updates.title; mutated = true; }
+        if (updates.description !== undefined && updates.description !== n.description) { merged.description = updates.description?.slice(0, 200); mutated = true; }
+        if (mutated) merged.updatedAt = now;
+        return merged;
+      });
+      if (mutated) next.board.updatedAt = now;
+      return mutated ? next : state;
+    }
+
+    case 'ARCHIVE_CARD':
+    case 'DELETE_CARD': {
+      const id = action.payload.cardId;
+      const findCard = () => {
+        for (const col of next.board.columns) for (const card of col.cards) if (card.id === id) return card;
+        return null;
+      };
+      const card = findCard();
+      if (!card?.mmNodeId) return state;
+      // 删除该脑图节点及其所有子孙
+      const idsToRemove = new Set<string>();
+      const walk = (nid: string) => { if (idsToRemove.has(nid)) return; idsToRemove.add(nid); next.board.mindmap.filter(n => n.parentId === nid).forEach(c => walk(c.id)); };
+      walk(card.mmNodeId);
+      next.board.mindmap = next.board.mindmap.filter(n => !idsToRemove.has(n.id));
+      next.board.updatedAt = now;
+      return next;
+    }
+
+    case 'ADD_CHECKLIST_ITEM': {
+      const findC = (): { card: Card; colId: string } | null => {
+        for (const col of next.board.columns) for (const card of col.cards) if (card.id === action.payload.cardId) return { card, colId: col.id };
+        return null;
+      };
+      const info = findC();
+      if (!info?.card.mmNodeId) return state;
+      const mmNodeId = info.card.mmNodeId;
+      const siblings = nextChildrenOf(mmNodeId);
+      const order = siblings.length > 0 ? Math.max(...siblings.map(s=>s.order)) + 1 : 0;
+      const newItemId = (action.payload as any).itemId || generateId();
+      const newNode: MindMapNode = {
+        id: `mm-auto-${newItemId}`,
+        text: action.payload.text,
+        parentId: mmNodeId,
+        color: '#10B981',
+        collapsed: false,
+        order,
+        createdAt: now,
+        updatedAt: now,
+      };
+      next.board.mindmap = [...next.board.mindmap, newNode];
+      // 反向写 mmNodeId 回 checklist item
+      next.board.columns = next.board.columns.map(c => c.id !== info.colId ? c : {
+        ...c,
+        cards: c.cards.map(card => {
+          if (card.id !== info.card.id) return card;
+          return {
+            ...card,
+            checklists: card.checklists.map(cl => cl.id !== action.payload.checklistId ? cl : {
+              ...cl,
+              items: cl.items.map(it => it.id === newItemId ? { ...it, mmNodeId: newNode.id } : it),
+            }),
+          };
+        }),
+      });
+      next.board.updatedAt = now;
+      return next;
+    }
+
+    case 'UPDATE_CHECKLIST_ITEM': {
+      const findC = (): { card: Card; item: Checklist['items'][number] } | null => {
+        for (const col of next.board.columns) for (const card of col.cards) if (card.id === action.payload.cardId) {
+          for (const cl of card.checklists) {
+            const it = cl.items.find(x => x.id === action.payload.itemId);
+            if (it) return { card, item: it };
+          }
+        }
+        return null;
+      };
+      const info = findC();
+      if (!info?.item.mmNodeId) return state;
+      let mutated = false;
+      next.board.mindmap = next.board.mindmap.map(n => {
+        if (n.id !== info.item.mmNodeId) return n;
+        const merged = { ...n };
+        if (action.payload.updates.text !== undefined && action.payload.updates.text !== n.text) { merged.text = action.payload.updates.text; mutated = true; }
+        if (mutated) merged.updatedAt = now;
+        return merged;
+      });
+      if (mutated) next.board.updatedAt = now;
+      return mutated ? next : state;
+    }
+
+    case 'DELETE_CHECKLIST_ITEM': {
+      const findC = (): { item: Checklist['items'][number] } | null => {
+        for (const col of next.board.columns) for (const card of col.cards) if (card.id === action.payload.cardId) {
+          for (const cl of card.checklists) {
+            const it = cl.items.find(x => x.id === action.payload.itemId);
+            if (it) return { item: it };
+          }
+        }
+        return null;
+      };
+      const info = findC();
+      if (!info?.item.mmNodeId) return state;
+      // 删除该节点 + 子孙（虽然清单通常无子，但保持健壮）
+      const idsToRemove = new Set<string>();
+      const walk = (nid: string) => { if (idsToRemove.has(nid)) return; idsToRemove.add(nid); next.board.mindmap.filter(n => n.parentId === nid).forEach(c => walk(c.id)); };
+      walk(info.item.mmNodeId);
+      next.board.mindmap = next.board.mindmap.filter(n => !idsToRemove.has(n.id));
+      next.board.updatedAt = now;
+      return next;
+    }
+
+    case 'ADD_MINDMAP_NODE': {
+      const parentId = action.payload.node.parentId;
+      // 父节点是什么？
+      // Case 1: parentId === null 或 parentId 是某个节点且对应 mmRootId 的列存在？
+      // 简单同步策略：
+      // - parentId === null → 暂不自动生成列（避免每次新建根节点就生成列；需用户显式转）
+      // - parentId 对应某张卡片的 mmNodeId → 在该卡片清单里新增 checklist item
+      // - parentId 对应某列的 mmRootId → 在该列新增一张卡片
+      if (parentId !== null) {
+        // 看看 parent 有没有对应卡片
+        let parentCard: Card | null = null;
+        let parentColId: string | null = null;
+        for (const col of next.board.columns) for (const card of col.cards) if (card.mmNodeId === parentId) { parentCard = card; parentColId = col.id; break; }
+        if (parentCard && parentColId) {
+          // 对应：卡片 checklist 新增 item
+          const col = next.board.columns.find(c => c.id === parentColId!)!;
+          const nextCard = parentCard;
+          let cl = nextCard.checklists.find(x => x.name === '子任务（来自脑图）');
+          if (!cl) {
+            cl = { id: generateId(), name: '子任务（来自脑图）', items: [] };
+            nextCard.checklists = [...nextCard.checklists, cl];
+          }
+          const itemId = generateId();
+          const newItem: Checklist['items'][number] = {
+            id: itemId,
+            text: action.payload.node.text,
+            completed: false,
+            mmNodeId: '', // 稍后写回（ADD_MINDMAP_NODE返回state没有node.id）
+          };
+          // 注意：ADD_MINDMAP_NODE 的 mindmap node id 是 reducer 内部生成的；但 sync 返回后不知道 mm 新id
+          // 替代策略：用 mmNodeId = node.id → 我们把 sync 后的 mindmap node 取出来匹配
+          const createdNode = next.board.mindmap.slice().sort((a,b)=> a.createdAt.localeCompare(b.createdAt)).pop(); // 不保险
+          // 更稳妥：这里暂时先不加反向链接，下次 UPDATE 时再补
+          cl.items = [...cl.items, newItem];
+          // 更新 col.cards
+          next.board.columns = next.board.columns.map(c => c.id !== col.id ? c : {
+            ...c,
+            cards: c.cards.map(card => card.id === nextCard.id ? { ...nextCard } : card),
+          });
+          next.board.updatedAt = now;
+          return next;
+        }
+        // 有没有对应列？
+        const col = next.board.columns.find(c => c.mmRootId === parentId);
+        if (col) {
+          // 新增卡片
+          const cardId = generateId();
+          const maxOrder = col.cards.length > 0 ? Math.max(...col.cards.map(c => c.order)) : -1;
+          const newCard: Card = {
+            id: cardId,
+            title: action.payload.node.text,
+            description: action.payload.node.description ? action.payload.node.description : '',
+            labels: [],
+            assignees: [],
+            completed: false,
+            archived: false,
+            checklists: [],
+            comments: [],
+            attachments: [],
+            createdAt: now,
+            updatedAt: now,
+            order: maxOrder + 1,
+          };
+          // mmNodeId 等 sync 返回后写回（临时先不写）
+          next.board.columns = next.board.columns.map(c => c.id !== col.id ? c : { ...c, cards: [...c.cards, newCard] });
+          next.board.updatedAt = now;
+          return next;
+        }
+      }
+      return state;
+    }
+
+    case 'UPDATE_MINDMAP_NODE': {
+      const nid = action.payload.nodeId;
+      const updates = action.payload.updates;
+      // 找对应列
+      const col = next.board.columns.find(c => c.mmRootId === nid);
+      if (col && updates.text !== undefined) {
+        next.board.columns = next.board.columns.map(c => c.id === col.id ? { ...c, title: updates.text! } : c);
+        next.board.updatedAt = now;
+      }
+      // 找对应卡片
+      for (const col of next.board.columns) {
+        let cardsChanged = false;
+        const cards = col.cards.map(card => {
+          if (card.mmNodeId !== nid) return card;
+          const out = { ...card };
+          if (updates.text !== undefined && updates.text !== card.title) { out.title = updates.text; cardsChanged = true; }
+          if (updates.description !== undefined && updates.description !== card.description) { out.description = updates.description ?? ''; cardsChanged = true; }
+          return out;
+        });
+        if (cardsChanged) {
+          next.board.columns = next.board.columns.map(c => c.id === col.id ? { ...c, cards } : c);
+          next.board.updatedAt = now;
+        }
+        // 找对应 checklist item
+        let clChanged = false;
+        const cards2 = col.cards.map(card => ({
+          ...card,
+          checklists: card.checklists.map(cl => ({
+            ...cl,
+            items: cl.items.map(it => {
+              if (it.mmNodeId !== nid) return it;
+              const out = { ...it };
+              if (updates.text !== undefined && updates.text !== it.text) { out.text = updates.text; clChanged = true; }
+              return out;
+            }),
+          })),
+        }));
+        if (clChanged) {
+          next.board.columns = next.board.columns.map(c => c.id === col.id ? { ...c, cards: cards2 } : c);
+          next.board.updatedAt = now;
+        }
+      }
+      return next;
+    }
+
+    case 'DELETE_MINDMAP_NODE': {
+      // state.board.mindmap 已被 baseReducer 删除了节点+子孙，现在同步删除对应的卡片 / 列 / checklist item
+      const removed = action.payload.nodeId;
+      const removedSet = new Set<string>([removed]);
+      // 原始 state 的旧 mindmap 才知道哪些被删（因为 next 已经没了）
+      const oldChildren = (id: string) => state.board.mindmap.filter(n => n.parentId === id).sort((a,b)=>a.order-b.order);
+      const stack = [removed];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        oldChildren(cur).forEach(ch => { removedSet.add(ch.id); stack.push(ch.id); });
+      }
+      let changed = false;
+      // 删除列：mmRootId ∈ removedSet
+      let cols = next.board.columns.filter(c => {
+        if (c.mmRootId && removedSet.has(c.mmRootId)) { changed = true; return false; }
+        return true;
+      });
+      // 删除卡片 & 清单 item
+      cols = cols.map(c => {
+        let cardsChanged = false;
+        let cards = c.cards.filter(card => {
+          if (card.mmNodeId && removedSet.has(card.mmNodeId)) { cardsChanged = true; changed = true; return false; }
+          return true;
+        });
+        cards = cards.map(card => {
+          let clChanged = false;
+          const checklists = card.checklists.map(cl => {
+            let itemsChanged = false;
+            const items = cl.items.filter(it => {
+              if (it.mmNodeId && removedSet.has(it.mmNodeId)) { itemsChanged = true; changed = true; clChanged = true; return false; }
+              return true;
+            });
+            return itemsChanged ? { ...cl, items } : cl;
+          });
+          return clChanged ? { ...card, checklists } : card;
+        });
+        return cardsChanged ? { ...c, cards } : c;
+      });
+      if (changed) {
+        next.board.columns = cols;
+        next.board.updatedAt = now;
+        return next;
+      }
+      return state;
+    }
+  }
+  return state;
+}
+
+interface BoardContextType extends BoardState {
+  dispatch: React.Dispatch<Action>;
+  findCard: (cardId: string) => { card: Card; columnId: string } | null;
+  broadcastChange: (action: Action) => void;
+}
+
+const BoardContext = createContext<BoardContextType | null>(null);
+
+export function BoardProvider({ children }: { children: React.ReactNode }) {
+  const [state, dispatch] = useReducer(boardReducer, undefined, initialState);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const currentUserRef = useRef(state.currentUser);
+  currentUserRef.current = state.currentUser;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('trello-clone-sync');
+      channelRef.current = bc;
+      bc.onmessage = (event) => {
+        try {
+          const data = event.data || {};
+          const curUser = currentUserRef.current;
+          if (data.type === 'STATE_UPDATE' && data.sender !== curUser?.id) {
+            if (data.boardState) {
+              dispatch({ type: 'APPLY_REMOTE_UPDATE', payload: data.boardState });
+            }
+          }
+          if (data.type === 'USER_ONLINE') {
+            const cur = stateRef.current;
+            dispatch({
+              type: 'SET_ONLINE_USERS',
+              payload: Array.from(new Set([...cur.onlineUsers, data.userId])),
+            });
+          }
+        } catch (e) {
+          // ignore message errors
+        }
+      };
+    } catch (e) {
+      channelRef.current = null;
+    }
+    return () => {
+      try {
+        if (bc) bc.close();
+      } catch (e) {}
+      channelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!state.currentUser) return;
+    const userId = state.currentUser.id;
+    const safeSend = () => {
+      try {
+        channelRef.current?.postMessage({ type: 'USER_ONLINE', userId });
+      } catch (e) {}
+    };
+    safeSend();
+    const interval = setInterval(safeSend, 5000);
+    return () => clearInterval(interval);
+  }, [state.currentUser]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const allIds = stateRef.current.users.map(u => u.id);
+      dispatch({ type: 'SET_ONLINE_USERS', payload: allIds });
+    }, 2000);
+    return () => clearTimeout(timeout);
+  }, [state.users]);
+
+  useEffect(() => {
+    if (state.darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [state.darkMode]);
+
+  const findCard = useCallback((cardId: string) => {
+    for (const col of stateRef.current.board.columns) {
+      for (const card of col.cards) {
+        if (card.id === cardId) {
+          return { card, columnId: col.id };
+        }
+      }
+    }
+    return null;
+  }, []);
+
+  const broadcastChange = useCallback((action: Action) => {
+    dispatch(action);
+    const curUser = currentUserRef.current;
+    if (!curUser) return;
+    try {
+      queueMicrotask(() => {
+        const latest = stateRef.current;
+        try {
+          channelRef.current?.postMessage({
+            type: 'STATE_UPDATE',
+            sender: curUser.id,
+            boardState: { board: latest.board, boards: latest.boards, onlineUsers: latest.onlineUsers },
+          });
+        } catch (e) {}
+      });
+    } catch (e) {}
+  }, []);
+
+  return (
+    <BoardContext.Provider value={{ ...state, dispatch, findCard, broadcastChange }}>
+      {children}
+    </BoardContext.Provider>
+  );
+}
+
+export function useBoard() {
+  const context = useContext(BoardContext);
+  if (!context) {
+    throw new Error('useBoard must be used within a BoardProvider');
+  }
+  return context;
+}
