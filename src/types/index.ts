@@ -22,6 +22,7 @@ export interface ChecklistItem {
   dueDate?: string;
   mmNodeId?: string;
   mmPosition?: { x: number; y: number };
+  visibleTo?: string[]; // Admin: user IDs who can see this card (empty/undefined = visible to all)
 }
 
 export interface Checklist {

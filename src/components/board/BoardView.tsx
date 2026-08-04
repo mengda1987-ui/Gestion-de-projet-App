@@ -18,7 +18,7 @@ import CardDetailModal from '../card/CardDetailModal';
 
 export default function BoardView() {
   const { t, lang } = useLang();
-  const { board, dispatch, filters, broadcastChange, findCard } = useBoard();
+  const { board, currentUser, dispatch, filters, broadcastChange, findCard } = useBoard();
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -50,6 +50,9 @@ export default function BoardView() {
             const hasAssignee = filters.assignees.some(a => card.assignees.includes(a));
             if (!hasAssignee) return false;
           }
+
+          // Admin visibility control
+          if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return false;
 
           return true;
         }),

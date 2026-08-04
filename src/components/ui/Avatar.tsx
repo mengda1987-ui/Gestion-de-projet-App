@@ -13,9 +13,9 @@ interface AvatarProps {
 }
 
 const sizeClasses = {
-  sm: 'w-6 h-6 text-[10px]',
-  md: 'w-8 h-8 text-xs',
-  lg: 'w-10 h-10 text-sm',
+  sm: 'w-7 h-7 text-[11px]',
+  md: 'w-9 h-9 text-sm',
+  lg: 'w-12 h-12 text-base',
 };
 
 const dotClasses = {

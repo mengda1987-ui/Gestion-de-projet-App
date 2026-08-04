@@ -108,9 +108,10 @@ export default function LoginPage() {
                 <img
                   src={logo}
                   alt="Logo"
-                  className="h-auto mx-auto cursor-pointer"
+                  className="mx-auto cursor-pointer max-w-full"
                   style={{ maxWidth: `${logoWidth}px`, maxHeight: '80px' }}
                   onClick={() => setShowLogoSlider(!showLogoSlider)}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                   title={lang === 'zh' ? '点击调整大小' : 'Click to resize'}
                 />
                 {showLogoSlider && (
@@ -228,7 +229,7 @@ export default function LoginPage() {
       </div>
 
       {/* Version */}
-      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.19</p>
+      <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-black font-medium">v1.0.21</p>
 
       {/* Background Picker */}
       {showBgPicker && createPortal(

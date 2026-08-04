@@ -152,6 +152,10 @@ export default function MindMapView() {
         });
         const cardsSorted = [...col.cards]
           .filter(card => !card.archived)
+          .filter(card => {
+            if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return false;
+            return true;
+          })
           .sort((a, b) => a.order - b.order);
         cardsSorted.forEach((card) => {
           let color = colColor;

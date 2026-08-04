@@ -63,7 +63,7 @@ interface CardDetailModalProps {
   onDelete: () => void;
 }
 
-type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments';
+type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'duedate';
 
 const LABEL_COLOR_PALETTE = [
   '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
@@ -563,7 +563,9 @@ export default function CardDetailModal({
                 { id: 'activity' as SectionTab, label: t('card.activity'), icon: MessageSquare },
                 { id: 'checklist' as SectionTab, label: t('card.checklist'), icon: CheckSquare },
                 { id: 'description' as SectionTab, label: t('card.description'), icon: AlignLeft },
-                { id: 'attachments' as SectionTab, label: t('card.attachments'), icon: Paperclip },
+                { id: 'labels' as SectionTab, label: t('card.labels'), icon: Tags },
+                { id: 'members' as SectionTab, label: t('card.members'), icon: Users },
+                { id: 'duedate' as SectionTab, label: t('card.dueDate'), icon: Calendar },
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -595,72 +597,6 @@ export default function CardDetailModal({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Main Content */}
               <div className="md:col-span-2 space-y-6">
-                {/* Description */}
-                <section className={cn(activeTab !== 'description' && 'hidden md:block')}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlignLeft size={16} className="text-slate-500" />
-                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.description')}</h3>
-                  </div>
-                  {editingDesc ? (
-                    <div className="space-y-2">
-                      {/* Formatting Toolbar */}
-                      <div className="flex items-center gap-0.5 flex-wrap p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                        {formatButtons.map(btn => (
-                          <button
-                            key={btn.label}
-                            type="button"
-                            onClick={btn.action}
-                            className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors"
-                            title={btn.label}
-                          >
-                            <btn.icon size={14} />
-                          </button>
-                        ))}
-                      </div>
-                      <textarea
-                        ref={descTextareaRef}
-                        autoFocus
-                        value={descValue}
-                        onChange={(e) => setDescValue(e.target.value)}
-                        className="input min-h-[160px] resize-y font-mono text-xs leading-relaxed"
-                        placeholder={t('card.desc.placeholder')}
-                      />
-                      <div className="flex items-center gap-2">
-                        <button onClick={handleSaveDesc} className="btn-primary text-xs py-1.5">
-                          {t('common.save')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setDescValue(latestCard.description);
-                            setEditingDesc(false);
-                          }}
-                          className="btn-ghost text-xs py-1.5"
-                        >
-                          {t('common.cancel')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : latestCard.description ? (
-                    <div
-                      onClick={() => setEditingDesc(true)}
-                      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 cursor-text hover:border-[#007AFF]/50 transition-colors"
-                    >
-                      <div className="markdown-body text-slate-700 dark:text-slate-200">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {latestCard.description}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setEditingDesc(true)}
-                      className="w-full text-left p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50 hover:bg-blue-50/30 dark:hover:bg-sky-950/20 transition-all text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                    >
-                      + {lang === 'zh' ? '添加更详细的描述...（支持 Markdown）' : 'Add a more detailed description… (Markdown supported)'}
-                    </button>
-                  )}
-                </section>
-
                 {/* Checklists */}
                 <section className={cn(activeTab !== 'checklist' && 'hidden md:block')}>
                   <div className="flex items-center justify-between mb-3">
@@ -927,6 +863,72 @@ export default function CardDetailModal({
                   </div>
                 </section>
 
+                {/* Description */}
+                <section className={cn(activeTab !== 'description' && 'hidden md:block')}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlignLeft size={16} className="text-slate-500" />
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.description')}</h3>
+                  </div>
+                  {editingDesc ? (
+                    <div className="space-y-2">
+                      {/* Formatting Toolbar */}
+                      <div className="flex items-center gap-0.5 flex-wrap p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        {formatButtons.map(btn => (
+                          <button
+                            key={btn.label}
+                            type="button"
+                            onClick={btn.action}
+                            className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                            title={btn.label}
+                          >
+                            <btn.icon size={14} />
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        ref={descTextareaRef}
+                        autoFocus
+                        value={descValue}
+                        onChange={(e) => setDescValue(e.target.value)}
+                        className="input min-h-[160px] resize-y font-mono text-xs leading-relaxed"
+                        placeholder={t('card.desc.placeholder')}
+                      />
+                      <div className="flex items-center gap-2">
+                        <button onClick={handleSaveDesc} className="btn-primary text-xs py-1.5">
+                          {t('common.save')}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDescValue(latestCard.description);
+                            setEditingDesc(false);
+                          }}
+                          className="btn-ghost text-xs py-1.5"
+                        >
+                          {t('common.cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : latestCard.description ? (
+                    <div
+                      onClick={() => setEditingDesc(true)}
+                      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 cursor-text hover:border-[#007AFF]/50 transition-colors"
+                    >
+                      <div className="markdown-body text-slate-700 dark:text-slate-200">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {latestCard.description}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditingDesc(true)}
+                      className="w-full text-left p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50 hover:bg-blue-50/30 dark:hover:bg-sky-950/20 transition-all text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    >
+                      + {lang === 'zh' ? '添加更详细的描述...（支持 Markdown）' : 'Add a more detailed description… (Markdown supported)'}
+                    </button>
+                  )}
+                </section>
+
                 {/* Attachments */}
                 <section className={cn(activeTab !== 'attachments' && 'hidden md:block')}>
                   <div className="flex items-center justify-between mb-3">
@@ -971,7 +973,7 @@ export default function CardDetailModal({
 
                   {latestCard.coverImage && (
                     <div className="mb-3 relative rounded-lg overflow-hidden">
-                      <img src={latestCard.coverImage} alt="Cover" className="w-full h-24 object-cover rounded-lg" />
+                      <img src={latestCard.coverImage} alt="Cover" className="w-full h-24 object-cover rounded-lg" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                       <button
                         onClick={() => broadcastChange({
                           type: 'SET_COVER_IMAGE',
@@ -1047,6 +1049,100 @@ export default function CardDetailModal({
                       ))}
                     </div>
                   )}
+                </section>
+
+                {/* Labels (mobile accessible) */}
+                <section className={cn(activeTab !== 'labels' && 'hidden md:block')}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Tags size={16} className="text-slate-500" />
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.labels')}</h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {getLabels().map(l => (
+                      <button
+                        key={l.id}
+                        onClick={() => updateCard({ labels: latestCard.labels.includes(l.id) ? latestCard.labels.filter(lid => lid !== l.id) : [...latestCard.labels, l.id] })}
+                        className={cn(
+                          'px-3 py-1.5 rounded-full text-xs font-medium transition-all border-2',
+                          latestCard.labels.includes(l.id) ? 'border-current shadow-sm' : 'border-transparent opacity-70 hover:opacity-100'
+                        )}
+                        style={{ backgroundColor: l.color + '22', color: l.color, borderColor: latestCard.labels.includes(l.id) ? l.color : 'transparent' }}
+                      >
+                        {l.name}
+                      </button>
+                    ))}
+                    <button onClick={() => setShowLabelManager(true)} className="px-2 py-1.5 rounded-full text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400">
+                      + {lang === 'zh' ? '管理' : 'Manage'}
+                    </button>
+                  </div>
+                </section>
+
+                {/* Members (mobile accessible) */}
+                <section className={cn(activeTab !== 'members' && 'hidden md:block')}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users size={16} className="text-slate-500" />
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.members')}</h3>
+                  </div>
+                  <div className="space-y-1.5">
+                    {users.map(u => {
+                      const assigned = assignees.some(a => a.id === u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => updateCard({ assignees: assigned ? latestCard.assignees.filter(id => id !== u.id) : [...latestCard.assignees, u.id] })}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs',
+                            assigned ? 'bg-blue-50 dark:bg-sky-950/20 border-[#007AFF]/30' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                          )}
+                        >
+                          <Avatar user={u} size="sm" />
+                          <span className="flex-1 text-left text-slate-700 dark:text-slate-200">{u.name}</span>
+                          {assigned && <Check size={14} className="text-[#007AFF]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Due Date (mobile accessible) */}
+                <section className={cn(activeTab !== 'duedate' && 'hidden md:block')}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar size={16} className="text-slate-500" />
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.dueDate')}</h3>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{lang === 'zh' ? '开始日期' : 'Start date'}</label>
+                      <input
+                        type="date"
+                        value={startDateValue}
+                        onChange={(e) => {
+                          setStartDateValue(e.target.value);
+                          updateCard({ startDate: e.target.value ? new Date(e.target.value).toISOString() : undefined });
+                        }}
+                        className="input text-xs py-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{t('card.dueDate')}</label>
+                      <input
+                        type="date"
+                        value={dueDateValue}
+                        onChange={(e) => {
+                          setDueDateValue(e.target.value);
+                          if (e.target.value) updateCard({ dueDate: new Date(e.target.value + 'T23:59:59').toISOString() });
+                          else updateCard({ dueDate: undefined });
+                        }}
+                        className="input text-xs py-1.5"
+                      />
+                    </div>
+                    {latestCard.dueDate && (
+                      <button onClick={() => { setDueDateValue(''); setStartDateValue(''); updateCard({ dueDate: undefined, startDate: undefined }); }}
+                        className="btn-ghost text-xs py-1.5 w-full">
+                        {t('card.clearDue')}
+                      </button>
+                    )}
+                  </div>
                 </section>
 
                 {/* Activity / Comments */}
@@ -1285,6 +1381,50 @@ export default function CardDetailModal({
                     </div>
                   )}
                 </div>
+
+                {/* Admin: Card visibility control */}
+                {currentUser?.role === 'admin' && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <h4 className="text-[11px] font-semibold uppercase text-slate-400 dark:text-slate-500 tracking-wider px-1 mb-1">
+                      {lang === 'zh' ? '👁️ 可见性（仅管理员）' : '👁️ Visibility (Admin only)'}
+                    </h4>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      <button
+                        onClick={() => updateCard({ visibleTo: undefined })}
+                        className={cn(
+                          'w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors',
+                          !latestCard.visibleTo?.length ? 'bg-[#007AFF]/10 text-[#007AFF] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        )}
+                      >
+                        {lang === 'zh' ? '🌐 所有人可见' : '🌐 Visible to everyone'}
+                      </button>
+                      {users.map(u => {
+                        const isVisible = !latestCard.visibleTo?.length || latestCard.visibleTo?.includes(u.id);
+                        return (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              const current = latestCard.visibleTo || users.map(x => x.id);
+                              const next = isVisible
+                                ? current.filter(id => id !== u.id)
+                                : [...current, u.id];
+                              // If all selected, set to undefined (everyone)
+                              updateCard({ visibleTo: next.length === users.length ? undefined : next });
+                            }}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors',
+                              isVisible ? 'text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 line-through'
+                            )}
+                          >
+                            <Avatar user={u} size="sm" />
+                            <span className="flex-1 text-left">{u.name}</span>
+                            {isVisible ? <Check size={12} className="text-emerald-500" /> : <X size={12} className="text-red-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
                   <h4 className="text-[11px] font-semibold uppercase text-slate-400 dark:text-slate-500 tracking-wider px-1 mb-1">

@@ -29,7 +29,7 @@ interface CardWithMeta {
 
 export default function TableView() {
   const { t, lang } = useLang();
-  const { board, users, onlineUsers, filters, dispatch, findCard, broadcastChange } = useBoard();
+  const { board, users, onlineUsers, currentUser, filters, dispatch, findCard, broadcastChange } = useBoard();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -55,6 +55,8 @@ export default function TableView() {
           const has = filters.assignees.some(a => card.assignees.includes(a));
           if (!has) continue;
         }
+        // Admin visibility control
+        if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) continue;
         result.push({ card, columnId: col.id, columnTitle: col.title });
       }
     }

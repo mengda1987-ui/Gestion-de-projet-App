@@ -42,7 +42,7 @@ interface GanttTask {
 export default function GanttView() {
   const { t, lang } = useLang();
   const dateLocale = lang === 'zh' ? zhCN : enUS;
-  const { board, users, onlineUsers, filters, findCard, broadcastChange } = useBoard();
+  const { board, users, onlineUsers, currentUser, filters, findCard, broadcastChange } = useBoard();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomLevel>('week');
   const [viewStart, setViewStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -75,6 +75,8 @@ export default function GanttView() {
         }
         if (filters.labels.length > 0 && !filters.labels.some(l => card.labels.includes(l))) continue;
         if (filters.assignees.length > 0 && !filters.assignees.some(a => card.assignees.includes(a))) continue;
+        // Admin visibility control
+        if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) continue;
 
         let s = card.startDate ? parseISO(card.startDate) : card.createdAt ? parseISO(card.createdAt) : new Date();
         let e = card.dueDate ? parseISO(card.dueDate) : addDays(s, 3);
