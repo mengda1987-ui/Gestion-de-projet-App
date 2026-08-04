@@ -99,11 +99,8 @@ export default function BoardHome() {
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">✨</span>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('home.title')}</h1>
-            </div>
-            <p className="text-slate-500 text-sm mt-2 ml-11">{t('home.subtitle')}</p>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('home.title')}</h1>
+            <p className="text-slate-500 text-sm mt-2">{t('home.subtitle')}</p>
           </div>
           <div className="flex items-center gap-2.5">
             {currentUser?.role === 'admin' && (
