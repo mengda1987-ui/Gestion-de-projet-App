@@ -27,6 +27,7 @@ import {
   ArrowLeft,
   Archive,
   Image,
+  Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ViewMode } from '@/types';
@@ -55,6 +56,7 @@ export default function MainBoard() {
   const [showProfile, setShowProfile] = useState(false);
   const [showAppMenu, setShowAppMenu] = useState(false);
   const [showBoardBgPicker, setShowBoardBgPicker] = useState(false);
+  const [showArchivePanel, setShowArchivePanel] = useState(false);
 
   const viewOptions = useMemo<{ id: ViewMode; label: string; icon: typeof LayoutGrid }[]>(() => [
     { id: 'board', label: t('nav.kanban'), icon: LayoutDashboard },
@@ -116,6 +118,18 @@ export default function MainBoard() {
     ),
     0
   );
+
+  const archivedColumns = useMemo(() => board.columns.filter(c => c.archived), [board.columns]);
+  const archivedCards = useMemo(() => {
+    const cards: Array<{ card: typeof board.columns[number]['cards'][number]; columnTitle: string }> = [];
+    board.columns.forEach(col => {
+      col.cards.forEach(card => {
+        if (card.archived) cards.push({ card, columnTitle: col.title });
+      });
+    });
+    return cards;
+  }, [board.columns]);
+  const totalArchived = archivedColumns.length + archivedCards.length;
 
   return (
     <div className="h-dvh flex flex-col" style={getBgStyle(board.background)}>
@@ -327,6 +341,20 @@ export default function MainBoard() {
                   <span>{lang === 'zh' ? '更换看板背景' : 'Change board background'}</span>
                 </button>
               )}
+
+              {/* Archiver Items */}
+              <button
+                onClick={() => { setShowArchivePanel(true); setShowAppMenu(false); }}
+                className="w-full flex items-center gap-3 px-5 py-3 text-sm text-slate-700 dark:text-white/80 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
+              >
+                <Archive size={18} className="text-slate-500 dark:text-white/70" />
+                <span>{lang === 'zh' ? '归档内容' : 'Archived Items'}</span>
+                {totalArchived > 0 && (
+                  <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                    {totalArchived}
+                  </span>
+                )}
+              </button>
             </div>
 
             {/* Close button */}
@@ -477,6 +505,109 @@ export default function MainBoard() {
               onSelect={(bg) => dispatch({ type: 'UPDATE_BOARD', payload: { background: bg } })}
               onClose={() => setShowBoardBgPicker(false)}
             />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Archive Panel */}
+      {showArchivePanel && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowArchivePanel(false)} />
+          <div className="relative w-full max-w-md apple-card p-6 animate-slide-up max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4 shrink-0">
+              <div className="flex items-center gap-2">
+                <Archive size={20} className="text-amber-500" />
+                <h3 className="font-bold text-slate-900 text-lg">
+                  {lang === 'zh' ? '归档内容' : 'Archived Items'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowArchivePanel(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto -mx-2 px-2">
+              {totalArchived === 0 ? (
+                <div className="text-center py-12">
+                  <Archive size={40} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                  <p className="text-slate-500 text-sm">
+                    {lang === 'zh' ? '暂无归档内容' : 'No archived items'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Archived Columns */}
+                  {archivedColumns.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-semibold text-slate-500 dark:text-white/50 uppercase tracking-wider mb-2">
+                        {lang === 'zh' ? '已归档列表' : 'Archived Lists'} ({archivedColumns.length})
+                      </div>
+                      <div className="space-y-1.5">
+                        {archivedColumns.map(col => (
+                          <div
+                            key={col.id}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                                {col.title}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {col.cards.length} {lang === 'zh' ? '张卡片' : 'cards'}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => dispatch({ type: 'ARCHIVE_COLUMN', payload: { columnId: col.id } })}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                            >
+                              <Undo2 size={12} />
+                              {lang === 'zh' ? '恢复' : 'Restore'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Archived Cards */}
+                  {archivedCards.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-semibold text-slate-500 dark:text-white/50 uppercase tracking-wider mb-2">
+                        {lang === 'zh' ? '已归档卡片' : 'Archived Cards'} ({archivedCards.length})
+                      </div>
+                      <div className="space-y-1.5">
+                        {archivedCards.map(({ card, columnTitle }) => (
+                          <div
+                            key={card.id}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                                {card.title}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {lang === 'zh' ? '列表：' : 'List: '}{columnTitle}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => dispatch({ type: 'ARCHIVE_CARD', payload: { cardId: card.id } })}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                            >
+                              <Undo2 size={12} />
+                              {lang === 'zh' ? '恢复' : 'Restore'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>,
         document.body
