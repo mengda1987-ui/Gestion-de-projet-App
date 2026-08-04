@@ -1465,43 +1465,46 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const currentIds = new Set(state.boards.map(b => b.id));
     const prevIds = prevBoardIdsRef.current;
 
-    // Delete boards that were removed FIRST (before upsert, to avoid re-creation race)
-    const toDelete = [...prevIds].filter(id => !currentIds.has(id));
-    if (toDelete.length > 0) {
-      await Promise.all(toDelete.map(async (id) => {
+    const syncBoards = async () => {
+      // Delete boards that were removed FIRST (before upsert, to avoid re-creation race)
+      const toDelete = [...prevIds].filter(id => !currentIds.has(id));
+      if (toDelete.length > 0) {
+        await Promise.all(toDelete.map(async (id) => {
+          try {
+            const { error } = await supabase.from('boards').delete().eq('id', id);
+            if (error) console.error('Supabase delete board error:', id, error);
+          } catch (e) {
+            console.error('Supabase delete board exception:', id, e);
+          }
+        }));
+
+        // Save deleted IDs to localStorage as safety net
         try {
-          const { error } = await supabase.from('boards').delete().eq('id', id);
-          if (error) console.error('Supabase delete board error:', id, error);
+          const existing = JSON.parse(localStorage.getItem('trello_deleted_boards') || '[]');
+          const updated = [...new Set([...existing, ...toDelete])];
+          localStorage.setItem('trello_deleted_boards', JSON.stringify(updated));
+        } catch {
+          localStorage.setItem('trello_deleted_boards', JSON.stringify(toDelete));
+        }
+      }
+
+      // Upsert current boards after deletes complete
+      await Promise.all(state.boards.map(async (b) => {
+        try {
+          await supabase.from('boards').upsert({
+            id: b.id,
+            title: b.title,
+            background: b.background,
+            labels: b.labels || [],
+            data: { columns: b.columns || [], mindmap: b.mindmap || [] },
+            updated_at: new Date().toISOString(),
+          });
         } catch (e) {
-          console.error('Supabase delete board exception:', id, e);
+          console.error('Supabase upsert board error:', b.id, e);
         }
       }));
-
-      // Save deleted IDs to localStorage as safety net
-      try {
-        const existing = JSON.parse(localStorage.getItem('trello_deleted_boards') || '[]');
-        const updated = [...new Set([...existing, ...toDelete])];
-        localStorage.setItem('trello_deleted_boards', JSON.stringify(updated));
-      } catch {
-        localStorage.setItem('trello_deleted_boards', JSON.stringify(toDelete));
-      }
-    }
-
-    // Upsert current boards after deletes complete
-    await Promise.all(state.boards.map(async (b) => {
-      try {
-        await supabase.from('boards').upsert({
-          id: b.id,
-          title: b.title,
-          background: b.background,
-          labels: b.labels || [],
-          data: { columns: b.columns || [], mindmap: b.mindmap || [] },
-          updated_at: new Date().toISOString(),
-        });
-      } catch (e) {
-        console.error('Supabase upsert board error:', b.id, e);
-      }
-    }));
+    };
+    syncBoards();
 
     prevBoardIdsRef.current = currentIds;
   }, [state.boards]);
@@ -1512,35 +1515,38 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const currentIds = new Set(state.users.map(u => u.id));
     const prevIds = prevUserIdsRef.current;
 
-    // Upsert current users
-    await Promise.all(state.users.map(async (u) => {
-      try {
-        await supabase.from('users').upsert({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar,
-          color: u.color,
-          role: u.role,
-          password: u.password,
-          lang: u.lang,
-        });
-      } catch (e) {
-        console.error('Supabase upsert user error:', u.id, e);
-      }
-    }));
-
-    // Delete users that were removed
-    const usersToDelete = [...prevIds].filter(id => !currentIds.has(id));
-    if (usersToDelete.length > 0) {
-      await Promise.all(usersToDelete.map(async (id) => {
+    const syncUsers = async () => {
+      // Upsert current users
+      await Promise.all(state.users.map(async (u) => {
         try {
-          await supabase.from('users').delete().eq('id', id);
+          await supabase.from('users').upsert({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            avatar: u.avatar,
+            color: u.color,
+            role: u.role,
+            password: u.password,
+            lang: u.lang,
+          });
         } catch (e) {
-          console.error('Supabase delete user error:', id, e);
+          console.error('Supabase upsert user error:', u.id, e);
         }
       }));
-    }
+
+      // Delete users that were removed
+      const usersToDelete = [...prevIds].filter(id => !currentIds.has(id));
+      if (usersToDelete.length > 0) {
+        await Promise.all(usersToDelete.map(async (id) => {
+          try {
+            await supabase.from('users').delete().eq('id', id);
+          } catch (e) {
+            console.error('Supabase delete user error:', id, e);
+          }
+        }));
+      }
+    };
+    syncUsers();
 
     prevUserIdsRef.current = currentIds;
   }, [state.users]);
