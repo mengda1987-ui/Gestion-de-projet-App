@@ -115,7 +115,7 @@ function syncBoardInList(state: BoardState): BoardState {
 function baseReducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
     case 'SET_CURRENT_USER':
-      return { ...state, currentUser: action.payload, currentBoardId: '' };
+      return { ...state, currentUser: action.payload };
 
     case 'SET_VIEW_MODE':
       return { ...state, viewMode: action.payload };
@@ -1300,6 +1300,42 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     }
     loadData();
   }, []);
+
+  // --- Persist login session to localStorage ---
+  useEffect(() => {
+    if (state.currentUser) {
+      localStorage.setItem('trello_user_id', state.currentUser.id);
+    } else {
+      localStorage.removeItem('trello_user_id');
+      localStorage.removeItem('trello_board_id');
+    }
+  }, [state.currentUser]);
+
+  // --- Persist current board to localStorage ---
+  useEffect(() => {
+    if (state.currentBoardId) {
+      localStorage.setItem('trello_board_id', state.currentBoardId);
+    }
+  }, [state.currentBoardId]);
+
+  // --- Restore login session after data load ---
+  useEffect(() => {
+    if (!state._loaded) return;
+    if (state.currentUser) return; // already logged in
+    const savedUserId = localStorage.getItem('trello_user_id');
+    if (!savedUserId) return;
+    const user = state.users.find(u => u.id === savedUserId);
+    if (user) {
+      const savedBoardId = localStorage.getItem('trello_board_id');
+      dispatch({ type: 'SET_CURRENT_USER', payload: user });
+      if (savedBoardId && state.boards.some(b => b.id === savedBoardId)) {
+        dispatch({ type: 'SET_CURRENT_BOARD', payload: savedBoardId });
+      }
+    } else {
+      localStorage.removeItem('trello_user_id');
+      localStorage.removeItem('trello_board_id');
+    }
+  }, [state._loaded, state.users]);
 
   // --- Supabase: Save board data (debounced) ---
   const prevBoardRef = useRef(state.board);

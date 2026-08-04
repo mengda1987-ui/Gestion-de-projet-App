@@ -43,6 +43,7 @@ export default function LoginPage() {
       return;
     }
     dispatch({ type: 'SET_CURRENT_USER', payload: user });
+    dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
   };
 
   const getBgStyle = (bg: string): React.CSSProperties => {
