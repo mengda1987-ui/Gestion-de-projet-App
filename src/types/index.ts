@@ -46,6 +46,8 @@ export interface Attachment {
   uploadedAt: string;
 }
 
+export type CardStatus = 'todo' | 'in_progress' | 'complete';
+
 export interface Card {
   id: string;
   title: string;
@@ -55,7 +57,7 @@ export interface Card {
   assignees: string[];
   dueDate?: string;
   startDate?: string;
-  completed: boolean;
+  status: CardStatus;
   archived: boolean;
   checklists: Checklist[];
   comments: Comment[];

@@ -157,7 +157,7 @@ export default function MindMapView() {
           if (card.labels.length > 0) {
             const lbl = board.labels.find(l => l.id === card.labels[0]);
             if (lbl?.color) color = lbl.color;
-          } else if (card.completed) {
+          } else if (card.status === 'complete') {
             color = '#10B981';
           }
           list.push({
@@ -169,7 +169,7 @@ export default function MindMapView() {
             color,
             order: card.order,
             archived: !!card.archived,
-            completed: !!card.completed,
+            completed: card.status === 'complete',
             description: card.description,
             dueDate: card.dueDate,
             posOverride: (card as any).mmPosition,
@@ -524,7 +524,11 @@ export default function MindMapView() {
   const toggleComplete = (n: VirtualNode) => {
     if (n.kind === 'card') {
       const card = findCard(n.refId);
-      if (card) broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: n.refId, updates: { completed: !card.completed } } });
+      if (card) {
+        const next: Record<string, string> = { todo: 'in_progress', in_progress: 'complete', complete: 'todo' };
+        const newStatus = (next[card.status] || 'todo') as Card['status'];
+        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: n.refId, updates: { status: newStatus } } });
+      }
     } else if (n.kind === 'item') {
       const pair = findItem(n.refId);
       if (pair) {

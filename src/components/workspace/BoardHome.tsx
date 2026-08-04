@@ -245,7 +245,7 @@ export default function BoardHome() {
             {boards.map((board) => {
               const colCount = board.columns.length;
               const cardCount = board.columns.reduce((s, c) => s + c.cards.length, 0);
-              const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.completed).length, 0);
+              const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.status === 'complete').length, 0);
               const bg = bgRef[(bgIdx++) % bgRef.length];
               const emojis = ['📋', '🚀', '💡', '🎯', '🔥', '🌟', '💎', '🎨', '⚡', '🛠️', '📦', '🏗️'];
               const emoji = board.emoji || emojis[board.title.length % emojis.length];

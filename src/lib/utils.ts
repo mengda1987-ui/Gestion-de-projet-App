@@ -20,10 +20,11 @@ export function relativeTime(date: string) {
   return formatDistanceToNow(parseISO(date), { addSuffix: true, locale: zhCN });
 }
 
-export function getDueDateStatus(dueDate?: string, completed?: boolean, lang?: string) {
+export function getDueDateStatus(dueDate?: string, status?: boolean | string, lang?: string) {
   if (!dueDate) return null;
   const isZh = lang !== 'en';
-  if (completed) return { status: 'completed', label: isZh ? '已完成' : 'Done', color: 'bg-emerald-500' };
+  const isComplete = status === 'complete' || status === true;
+  if (isComplete) return { status: 'completed', label: isZh ? '已完成' : 'Done', color: 'bg-emerald-500' };
   const due = parseISO(dueDate);
   const now = new Date();
   if (isBefore(due, now)) {

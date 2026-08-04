@@ -75,7 +75,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-1', 'user-2'],
           dueDate: in3Days,
           startDate: yesterday,
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists: [
             {
@@ -111,7 +111,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-1'],
           dueDate: tomorrow,
           startDate: now,
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists: [
             {
@@ -161,7 +161,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-2'],
           dueDate: in1Week,
           startDate: in2Days,
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists: [],
           comments: [],
@@ -186,7 +186,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-3'],
           dueDate: in3Days,
           startDate: yesterday,
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists: [
             {
@@ -231,7 +231,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-1', 'user-2'],
           dueDate: in5Days,
           startDate: now,
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists: [
             {
@@ -267,7 +267,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-1'],
           dueDate: in4Days,
           startDate: lastWeek,
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists: [
             {
@@ -312,7 +312,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-1', 'user-2', 'user-3'],
           dueDate: lastWeek,
           startDate: new Date(Date.now() - 14 * 86400000).toISOString(),
-          completed: true,
+          status: 'complete',
           archived: false,
           checklists: [
             {
@@ -347,7 +347,7 @@ export const MOCK_BOARD: Board = {
           assignees: ['user-3'],
           dueDate: new Date(Date.now() - 3 * 86400000).toISOString(),
           startDate: new Date(Date.now() - 10 * 86400000).toISOString(),
-          completed: true,
+          status: 'complete',
           archived: false,
           checklists: [],
           comments: [

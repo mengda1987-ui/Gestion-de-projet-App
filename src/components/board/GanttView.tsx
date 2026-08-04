@@ -341,7 +341,7 @@ export default function GanttView() {
                     </div>
                     {colTasks.map(task => {
                       const assignees = task.card.assignees.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
-                      const completed = task.card.completed;
+                      const completed = task.card.status === 'complete';
                       return (
                         <div
                           key={task.id}
@@ -418,9 +418,9 @@ export default function GanttView() {
                     <div className="h-[22px] bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50" />
                     {colTasks.map(task => {
                       const pos = getTaskPosition(task);
-                      const dueStatus = getDueDateStatus(task.card.dueDate, task.card.completed);
+                      const dueStatus = getDueDateStatus(task.card.dueDate, task.card.status);
                       const labelColor = board.labels.find(l => l.id === task.card.labels[0])?.color;
-                      const barColor = task.card.completed
+                      const barColor = task.card.status === 'complete'
                         ? 'bg-emerald-500'
                         : dueStatus?.status === 'overdue'
                           ? 'bg-red-500'
@@ -483,7 +483,7 @@ export default function GanttView() {
                                   bottom: 8,
                                   left: curPos.left + 4,
                                   width: curPos.width - 8,
-                                  backgroundColor: !task.card.completed && dueStatus?.status === 'normal' && labelColor ? labelColor : undefined,
+                                  backgroundColor: task.card.status !== 'complete' && dueStatus?.status === 'normal' && labelColor ? labelColor : undefined,
                                 }}
                               >
                                 {/* Left resize handle */}

@@ -181,7 +181,7 @@ export default function TableView() {
               )}
               {cardsWithMeta.map(({ card, columnId, columnTitle }) => {
                 const progress = calculateChecklistProgress(card.checklists.flatMap(cl => cl.items));
-                const rawDueStatus = getDueDateStatus(card.dueDate, card.completed);
+                const rawDueStatus = getDueDateStatus(card.dueDate, card.status);
                 const dueStatus = rawDueStatus ? {
                   ...rawDueStatus,
                   label: rawDueStatus.status === 'completed' ? t('date.done')

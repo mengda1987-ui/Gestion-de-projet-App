@@ -26,7 +26,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
 
   const allChecklistItems = card.checklists.flatMap(cl => cl.items);
   const checklistProgress = calculateChecklistProgress(allChecklistItems);
-  const rawDueStatus = getDueDateStatus(card.dueDate, card.completed);
+  const rawDueStatus = getDueDateStatus(card.dueDate, card.status);
   const dueStatus = rawDueStatus ? {
     ...rawDueStatus,
     label: rawDueStatus.status === 'completed' ? t('date.done')
@@ -50,7 +50,8 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
       className={cn(
         'group rounded-2xl border border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-800 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
         card.archived && 'opacity-50 line-through decoration-slate-400',
-        card.completed && 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800',
+        card.status === 'complete' && 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800',
+        card.status === 'in_progress' && 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
         isDragging && 'ring-2 ring-[#007AFF] shadow-2xl'
       )}
     >
@@ -100,7 +101,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         {/* Title */}
         <h4 className={cn(
           'text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug',
-          card.completed && 'line-through decoration-emerald-500 text-slate-500 dark:text-slate-400'
+          card.status === 'complete' && 'line-through decoration-emerald-500 text-slate-500 dark:text-slate-400'
         )}>
           {card.title}
         </h4>

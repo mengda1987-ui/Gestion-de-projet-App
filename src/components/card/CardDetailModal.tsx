@@ -44,6 +44,7 @@ import {
   formatFileSize,
   generateId,
 } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { parseISO, format } from 'date-fns';
 
 interface CardDetailModalProps {
@@ -347,7 +348,7 @@ export default function CardDetailModal({
   };
 
   const assignees = latestCard.assignees.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
-  const dueStatus = getDueDateStatus(latestCard.dueDate, latestCard.completed);
+  const dueStatus = getDueDateStatus(latestCard.dueDate, latestCard.status);
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-start justify-center md:items-center p-0 md:p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
@@ -396,8 +397,14 @@ export default function CardDetailModal({
                 {latestCard.archived && (
                   <span className="badge bg-slate-500 text-white ml-1">{lang === 'zh' ? '已归档' : 'Archived'}</span>
                 )}
-                {latestCard.completed && (
-                  <span className="badge bg-emerald-500 text-white ml-1">{lang === 'zh' ? '已完成' : 'Done'}</span>
+                {latestCard.status !== 'todo' && (
+                  <span className={cn(
+                    'badge text-white ml-1',
+                    latestCard.status === 'complete' && 'bg-emerald-500',
+                    latestCard.status === 'in_progress' && 'bg-amber-500',
+                  )}>
+                    {latestCard.status === 'complete' ? (lang === 'zh' ? '已完成' : 'Done') : (lang === 'zh' ? '进行中' : 'In Progress')}
+                  </span>
                 )}
               </div>
 
@@ -483,15 +490,26 @@ export default function CardDetailModal({
                       </span>
                     )}
                   </div>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 ml-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={latestCard.completed}
-                      onChange={(e) => updateCard({ completed: e.target.checked })}
-                      className="rounded text-emerald-500 focus:ring-emerald-400"
-                    />
-                    {t('card.complete')}
-                  </label>
+                  <div className="flex items-center gap-2 ml-2">
+                    <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
+                      {(['todo', 'in_progress', 'complete'] as const).map(s => (
+                        <button
+                          key={s}
+                          onClick={() => updateCard({ status: s })}
+                          className={cn(
+                            'px-2.5 py-1 rounded-md text-xs font-medium transition-all',
+                            latestCard.status === s
+                              ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white'
+                              : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          )}
+                        >
+                          {s === 'todo' ? (lang === 'zh' ? '待办' : 'To Do')
+                            : s === 'in_progress' ? (lang === 'zh' ? '进行中' : 'In Progress')
+                            : (lang === 'zh' ? '已完成' : 'Complete')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

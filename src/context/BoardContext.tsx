@@ -47,6 +47,7 @@ type Action =
   | { type: 'DELETE_CARD'; payload: { cardId: string } }
   | { type: 'ARCHIVE_CARD'; payload: { cardId: string } }
   | { type: 'DUPLICATE_CARD'; payload: { cardId: string } }
+  | { type: 'CYCLE_CARD_STATUS'; payload: { cardId: string } }
   | { type: 'ADD_LABEL'; payload: { label: Omit<Label, 'id'> } }
   | { type: 'UPDATE_LABEL'; payload: { labelId: string; updates: Partial<Label> } }
   | { type: 'DELETE_LABEL'; payload: { labelId: string } }
@@ -145,11 +146,22 @@ function baseReducer(state: BoardState, action: Action): BoardState {
 
     case 'LOAD_ALL_DATA': {
       const { users, boards, workspaceBackground, loginBackground, logo } = action.payload;
-      const firstBoard = boards.length > 0 ? boards[0] : { ...initialState().board, id: '', title: '' };
+      // Migrate old cards: completed boolean → status
+      const migratedBoards = boards.map(b => ({
+        ...b,
+        columns: b.columns.map(col => ({
+          ...col,
+          cards: col.cards.map(c => ({
+            ...c,
+            status: (c as any).status || ((c as any).completed ? 'complete' : 'todo'),
+          })),
+        })),
+      }));
+      const firstBoard = migratedBoards.length > 0 ? migratedBoards[0] : { ...initialState().board, id: '', title: '' };
       return {
         ...state,
         users,
-        boards,
+        boards: migratedBoards,
         board: firstBoard,
         currentBoardId: '', // don't auto-select — let session restore handle it
         workspaceBackground,
@@ -332,7 +344,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         assignees: action.payload.card.assignees || [],
         dueDate: action.payload.card.dueDate,
         startDate: action.payload.card.startDate,
-        completed: false,
+        status: 'todo',
         archived: false,
         checklists: action.payload.card.checklists || [],
         comments: [],
@@ -409,6 +421,23 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         return { ...col, cards: [...col.cards, { ...duplicated, order: col.cards.length }] };
       });
       return { ...state, board: { ...state.board, columns, updatedAt: now } };
+    }
+
+    case 'CYCLE_CARD_STATUS': {
+      const statusOrder: Card['status'][] = ['todo', 'in_progress', 'complete'];
+      let currentStatus: Card['status'] = 'todo';
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id === action.payload.cardId) {
+            currentStatus = (c as any).status || ((c as any).completed ? 'complete' : 'todo');
+            const nextIdx = (statusOrder.indexOf(currentStatus) + 1) % statusOrder.length;
+            return { ...c, status: statusOrder[nextIdx], updatedAt: new Date().toISOString() };
+          }
+          return c;
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
     }
 
     case 'ADD_LABEL': {
@@ -749,7 +778,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
           description: desc,
           labels: [],
           assignees: [],
-          completed: false,
+          status: 'todo',
           archived: false,
           checklists,
           comments: [],
@@ -1086,7 +1115,7 @@ function syncMindMapCards(state: BoardState, action: Action): BoardState {
             description: action.payload.node.description ? action.payload.node.description : '',
             labels: [],
             assignees: [],
-            completed: false,
+            status: 'todo',
             archived: false,
             checklists: [],
             comments: [],
