@@ -74,10 +74,11 @@ export default function BoardHome() {
 
   // Close dropdown on click outside
   useEffect(() => {
-    if (!menuOpenId) return;
     const handler = () => setMenuOpenId(null);
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    if (menuOpenId) {
+      document.addEventListener('mousedown', handler);
+      return () => document.removeEventListener('mousedown', handler);
+    }
   }, [menuOpenId]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,7 +113,7 @@ export default function BoardHome() {
 
   const handleCreate = () => {
     const title = createTitle.trim();
-    if (!title) return;
+    if (!title) { return; }
     dispatch({
       type: 'CREATE_BOARD',
       payload: { title, background: BOARD_BG_GRADIENTS[Math.floor(Math.random() * BOARD_BG_GRADIENTS.length)] },
@@ -122,13 +123,13 @@ export default function BoardHome() {
   };
 
   const handleDelete = () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget) { return; }
     dispatch({ type: 'DELETE_BOARD', payload: deleteTarget });
     setDeleteTarget(null);
   };
 
   const handleRename = () => {
-    if (!renameId || !renameText.trim()) return;
+    if (!renameId || !renameText.trim()) { return; }
     dispatch({ type: 'RENAME_BOARD', payload: { boardId: renameId, title: renameText.trim() } });
     setRenameId(null);
     setRenameText('');
