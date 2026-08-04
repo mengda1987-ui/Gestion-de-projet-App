@@ -294,33 +294,30 @@ export default function BoardHome() {
                     <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2.5">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
+                      <span className="flex items-center ml-auto gap-0.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenameId(board.id);
+                            setRenameText(board.title);
+                          }}
+                          className="p-0.5 rounded text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
+                          title={t('home.renameBoard')}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(board.id);
+                          }}
+                          className="p-0.5 rounded text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                          title={t('home.deleteBoard')}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </span>
                     </div>
-                  </div>
-
-                  {/* Hover action buttons */}
-                  <div className="absolute top-3 right-3 flex opacity-0 group-hover:opacity-100 transition-all duration-200">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRenameId(board.id);
-                        setRenameText(board.title);
-                      }}
-                      className="p-1.5 rounded-l-full bg-white/90 shadow-sm ring-1 ring-slate-200/50 text-slate-500 hover:text-slate-700 hover:bg-white transition-all"
-                      title={t('home.renameBoard')}
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteTarget(board.id);
-                      }}
-                      className="p-1.5 rounded-r-full bg-white/90 shadow-sm ring-1 ring-slate-200/50 text-slate-500 hover:text-red-500 hover:bg-red-50 transition-all -ml-px"
-                      title={t('home.deleteBoard')}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
                 </div>
               );
             })}
