@@ -112,7 +112,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
               e.stopPropagation();
               setShowMenu(!showMenu);
             }}
-            className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
+            className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors shrink-0"
           >
             <MoreHorizontal size={16} />
           </button>

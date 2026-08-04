@@ -312,15 +312,15 @@ export default function BoardHome() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1 text-sm text-slate-500"><LayoutGrid size={13} /><span className="font-semibold text-slate-700">{colCount}</span></span>
-                      <span className="flex items-center gap-1 text-sm text-slate-500"><ListTodo size={13} /><span className="font-semibold text-slate-700">{cardCount}</span></span>
+                      <span className="flex items-center gap-1 text-sm text-slate-600"><LayoutGrid size={13} /><span className="font-semibold text-slate-700">{colCount}</span></span>
+                      <span className="flex items-center gap-1 text-sm text-slate-600"><ListTodo size={13} /><span className="font-semibold text-slate-700">{cardCount}</span></span>
                       {completedCount > 0 && (
                         <span className="flex items-center gap-1 text-sm text-emerald-600 ml-auto"><CheckSquare size={13} /><span className="font-semibold">{completedCount}</span></span>
                       )}
                     </div>
 
                     {/* Updated time & three-dot menu */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2.5">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-2.5">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
                       <div className="ml-auto">
@@ -336,7 +336,7 @@ export default function BoardHome() {
                               setMenuOpenId(board.id);
                             }
                           }}
-                          className="p-0.5 rounded text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
+                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                         >
                           <MoreHorizontal size={14} />
                         </button>

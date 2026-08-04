@@ -151,7 +151,7 @@ export default function MainBoard() {
               'bg-white/90 dark:bg-slate-800/90 backdrop-blur',
               searchFocused ? 'ring-2 ring-[#007AFF]/30' : ''
             )}>
-              <Search size={14} className="ml-2 text-slate-400 shrink-0" />
+              <Search size={14} className="ml-2 text-slate-500 shrink-0" />
               <input
                 type="text"
                 value={filters.search}
@@ -164,7 +164,7 @@ export default function MainBoard() {
               {filters.search && (
                 <button
                   onClick={() => dispatch({ type: 'SET_FILTERS', payload: { search: '' } })}
-                  className="mr-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                  className="mr-1.5 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
                 >
                   <X size={13} />
                 </button>
@@ -297,7 +297,7 @@ export default function MainBoard() {
               >
                 <ArrowLeft size={18} className="text-slate-500 dark:text-white/70" />
                 <span>{t('home.backToHome')}</span>
-                <kbd className="ml-auto text-[10px] font-mono text-slate-400 dark:text-white/40 bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 rounded">Esc</kbd>
+                <kbd className="ml-auto text-[10px] font-mono text-slate-500 dark:text-white/50 bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 rounded">Esc</kbd>
               </button>
 
               <div className="mx-5 my-2 border-t border-slate-200/50 dark:border-slate-700/50" />
@@ -327,7 +327,7 @@ export default function MainBoard() {
               >
                 <Languages size={18} className="text-slate-500 dark:text-white/70" />
                 <span>{t('nav.language')}</span>
-                <span className="ml-auto text-xs font-semibold text-slate-400 dark:text-white/50">{lang === 'zh' ? 'EN' : '中'}</span>
+                <span className="ml-auto text-xs font-semibold text-slate-500 dark:text-white/60">{lang === 'zh' ? 'EN' : '中'}</span>
               </button>
 
               {/* Change Background (admin only) */}
