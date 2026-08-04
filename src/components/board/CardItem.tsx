@@ -12,6 +12,9 @@ import {
   Calendar,
   Clock,
   Trash2,
+  Circle,
+  CircleDot,
+  CheckCircle2,
 } from 'lucide-react';
 import { cn, calculateChecklistProgress, getDueDateStatus } from '@/lib/utils';
 
@@ -52,7 +55,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         'group relative rounded-2xl border border-slate-200/60 dark:border-slate-700/60 bg-white dark:bg-slate-800 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
         card.archived && 'opacity-50 line-through decoration-slate-400',
         card.status === 'complete' && 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800',
-        card.status === 'in_progress' && 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
+        card.status === 'in_progress' && 'bg-amber-100 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700',
         isDragging && 'ring-2 ring-[#007AFF] shadow-2xl'
       )}
     >
@@ -194,6 +197,55 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
           {assignees.length > 0 && (
             <AvatarStack users={assignees} max={3} size="sm" showOnline onlineUsers={onlineUsers} />
           )}
+        </div>
+
+        {/* Status Buttons */}
+        <div className="flex items-center gap-1 pt-1.5 border-t border-slate-100 dark:border-slate-700/50">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: 'todo' } } });
+            }}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all',
+              card.status === 'todo'
+                ? 'bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200'
+                : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+            )}
+          >
+            <Circle size={11} />
+            ToDo
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: 'in_progress' } } });
+            }}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all',
+              card.status === 'in_progress'
+                ? 'bg-amber-200 dark:bg-amber-800/60 text-amber-800 dark:text-amber-200'
+                : 'text-slate-400 dark:text-slate-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+            )}
+          >
+            <CircleDot size={11} />
+            {lang === 'zh' ? '进行中' : 'Progress'}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: 'complete' } } });
+            }}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium transition-all',
+              card.status === 'complete'
+                ? 'bg-emerald-200 dark:bg-emerald-800/60 text-emerald-800 dark:text-emerald-200'
+                : 'text-slate-400 dark:text-slate-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+            )}
+          >
+            <CheckCircle2 size={11} />
+            {lang === 'zh' ? '完成' : 'Done'}
+          </button>
         </div>
       </div>
     </div>

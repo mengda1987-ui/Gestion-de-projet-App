@@ -346,9 +346,9 @@ export default function GanttView() {
                         <div
                           key={task.id}
                           onClick={() => setSelectedCardId(task.id)}
-                          className="px-4 py-3 border-b border-slate-100 dark:border-slate-700/50 hover:bg-sky-50/50 dark:hover:bg-sky-950/20 cursor-pointer transition-colors group"
+                          className="px-4 py-2 h-[56px] border-b border-slate-100 dark:border-slate-700/50 hover:bg-sky-50/50 dark:hover:bg-sky-950/20 cursor-pointer transition-colors group flex items-center"
                         >
-                          <div className="flex items-center gap-2 min-h-6">
+                          <div className="flex items-center gap-2 w-full">
                             <div className="flex-1 min-w-0">
                               <div className={cn(
                                 'text-sm font-medium text-slate-800 dark:text-slate-100 truncate',
@@ -356,10 +356,8 @@ export default function GanttView() {
                               )} title={task.card.title}>
                                 {task.card.title}
                               </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[11px] text-slate-400">
-                                  {formatDate(task.card.createdAt)}
-                                </span>
+                              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                                {formatDate(task.card.createdAt)}
                               </div>
                             </div>
                             <AvatarStack users={assignees} max={2} size="sm" showOnline onlineUsers={onlineUsers} />

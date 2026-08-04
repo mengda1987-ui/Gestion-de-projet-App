@@ -252,11 +252,11 @@ export default function BoardHome() {
               return (
                 <div
                   key={board.id}
-                  className="group apple-card cursor-pointer overflow-hidden"
+                  className="group apple-card cursor-pointer overflow-hidden flex flex-col"
                   onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
                 >
-                  <div className="h-1.5 w-full" style={{ background: board.background || bg }} />
-                  <div className="p-4">
+                  <div className="h-1.5 w-full shrink-0" style={{ background: board.background || bg }} />
+                  <div className="p-4 flex flex-col flex-1">
                     <div className="flex items-start gap-3.5 mb-3">
                       <button
                         className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer overflow-hidden"
@@ -319,8 +319,11 @@ export default function BoardHome() {
                       )}
                     </div>
 
+                    {/* Spacer push footer to bottom */}
+                    <div className="flex-1" />
+
                     {/* Updated time & three-dot menu */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1.5">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-2">
                       <Clock size={11} />
                       <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
                       <div className="ml-auto">
@@ -527,7 +530,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="text-center py-2 text-[11px] text-slate-400 shrink-0">
-        v1.0.7
+        v1.0.8
       </div>
     </div>
   );
