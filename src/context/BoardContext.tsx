@@ -1348,7 +1348,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           mindmap: b.data?.mindmap || [],
           createdAt: b.created_at,
           updatedAt: b.updated_at,
-        }));
+        })).filter(b => {
+          // Filter out boards that were locally deleted (safety net)
+          const deleted = localStorage.getItem('trello_deleted_boards');
+          if (deleted) {
+            try {
+              const deletedIds: string[] = JSON.parse(deleted);
+              return !deletedIds.includes(b.id);
+            } catch {}
+          }
+          return true;
+        });
 
         dispatch({
           type: 'LOAD_ALL_DATA',
@@ -1447,28 +1457,43 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const currentIds = new Set(state.boards.map(b => b.id));
     const prevIds = prevBoardIdsRef.current;
 
-    // Upsert current boards
-    state.boards.forEach(async (b) => {
+    // Delete boards that were removed FIRST (before upsert, to avoid re-creation race)
+    const toDelete = [...prevIds].filter(id => !currentIds.has(id));
+    toDelete.forEach(async (id) => {
       try {
-        await supabase.from('boards').upsert({
-          id: b.id,
-          title: b.title,
-          background: b.background,
-          labels: b.labels || [],
-          data: { columns: b.columns || [], mindmap: b.mindmap || [] },
-          updated_at: new Date().toISOString(),
-        });
-      } catch (e) {}
-    });
-
-    // Delete boards that were removed
-    prevIds.forEach(async (id) => {
-      if (!currentIds.has(id)) {
-        try {
-          await supabase.from('boards').delete().eq('id', id);
-        } catch (e) {}
+        const { error } = await supabase.from('boards').delete().eq('id', id);
+        if (error) console.error('Supabase delete board error:', id, error);
+      } catch (e) {
+        console.error('Supabase delete board exception:', id, e);
       }
     });
+
+    // Save deleted IDs to localStorage as safety net
+    if (toDelete.length > 0) {
+      try {
+        const existing = JSON.parse(localStorage.getItem('trello_deleted_boards') || '[]');
+        const updated = [...new Set([...existing, ...toDelete])];
+        localStorage.setItem('trello_deleted_boards', JSON.stringify(updated));
+      } catch {}
+    }
+
+    // Upsert current boards
+    if (toDelete.length === 0) {
+      state.boards.forEach(async (b) => {
+        try {
+          await supabase.from('boards').upsert({
+            id: b.id,
+            title: b.title,
+            background: b.background,
+            labels: b.labels || [],
+            data: { columns: b.columns || [], mindmap: b.mindmap || [] },
+            updated_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error('Supabase upsert board error:', b.id, e);
+        }
+      });
+    }
 
     prevBoardIdsRef.current = currentIds;
   }, [state.boards]);
