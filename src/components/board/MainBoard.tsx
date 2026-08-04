@@ -96,7 +96,7 @@ export default function MainBoard() {
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       // Only go back if not typing in an input and no modals are open
       if (isInput) return;
-      if (showAppMenu || showUserMenu || showFilterMenu || showProfile || showBoardBgPicker) return;
+      if (showAppMenu || showUserMenu || showFilterMenu || showProfile || showBoardBgPicker || showArchivePanel) return;
       if (e.key === 'Escape' || (e.key === 'b' && !e.metaKey && !e.ctrlKey)) {
         e.preventDefault();
         goToWorkspace();
@@ -104,7 +104,21 @@ export default function MainBoard() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showAppMenu, showUserMenu, showFilterMenu, showProfile, showBoardBgPicker, goToWorkspace]);
+  }, [showAppMenu, showUserMenu, showFilterMenu, showProfile, showBoardBgPicker, showArchivePanel, goToWorkspace]);
+
+  // Browser back/forward button support: push history state on mount, go back on popstate
+  useEffect(() => {
+    // Push a state when entering a board so browser back can return to workspace
+    const boardId = board?.id || 'board';
+    if (!history.state?.boardId) {
+      history.pushState({ boardId }, '', `#${boardId}`);
+    }
+    const handlePopState = () => {
+      goToWorkspace();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [board?.id, goToWorkspace]);
 
   const filteredColumnCount = board.columns.filter(c => !c.archived || filters.showArchived).length;
   const totalCardCount = board.columns.reduce(

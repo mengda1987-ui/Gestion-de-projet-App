@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { Card, User } from '@/types';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import { AvatarStack } from '@/components/ui/Avatar';
+import { AvatarStack, Avatar } from '@/components/ui/Avatar';
 import { LabelStrip } from '@/components/ui/LabelBadge';
 import {
   CheckSquare,
@@ -18,6 +18,7 @@ import {
   CircleDot,
   CheckCircle2,
   ChevronDown,
+  Check,
 } from 'lucide-react';
 import { cn, calculateChecklistProgress, getDueDateStatus } from '@/lib/utils';
 
@@ -32,18 +33,24 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const { board, users, onlineUsers, broadcastChange } = useBoard();
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [statusMenuPos, setStatusMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [memberPickerPos, setMemberPickerPos] = useState<{ top: number; left: number } | null>(null);
   const statusBtnRef = useRef<HTMLButtonElement>(null);
+  const memberBtnRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!showStatusMenu) return;
+    if (!showStatusMenu && !showMemberPicker) return;
     const handler = (e: MouseEvent) => {
-      if (statusBtnRef.current && !statusBtnRef.current.contains(e.target as Node)) {
+      if (showStatusMenu && statusBtnRef.current && !statusBtnRef.current.contains(e.target as Node)) {
         setShowStatusMenu(false);
+      }
+      if (showMemberPicker && memberBtnRef.current && !memberBtnRef.current.contains(e.target as Node)) {
+        setShowMemberPicker(false);
       }
     };
     window.addEventListener('click', handler);
     return () => window.removeEventListener('click', handler);
-  }, [showStatusMenu]);
+  }, [showStatusMenu, showMemberPicker]);
 
   const allChecklistItems = card.checklists.flatMap(cl => cl.items);
   const checklistProgress = calculateChecklistProgress(allChecklistItems);
@@ -270,9 +277,61 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
             )}
           </div>
           
-          {assignees.length > 0 && (
-            <AvatarStack users={assignees} max={3} size="sm" />
-          )}
+          {/* Member avatars - clickable to assign members */}
+          <div ref={memberBtnRef} className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = (e.target as HTMLElement).closest('button')?.getBoundingClientRect();
+                if (rect) {
+                  setMemberPickerPos({ top: rect.bottom + 4, left: rect.right - 200 });
+                }
+                setShowMemberPicker(!showMemberPicker);
+              }}
+              className="flex items-center gap-1 group/members"
+            >
+              {assignees.length > 0 ? (
+                <AvatarStack users={assignees} max={3} size="sm" />
+              ) : (
+                <div className="flex -space-x-1.5">
+                  <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 border-2 border-white dark:border-slate-800 flex items-center justify-center opacity-0 group-hover/members:opacity-100 transition-opacity">
+                    <span className="text-[10px] text-slate-400 font-bold">+</span>
+                  </div>
+                </div>
+              )}
+            </button>
+            {showMemberPicker && memberPickerPos && createPortal(
+              <div
+                className="fixed z-[99999] w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 animate-slide-up overflow-hidden max-h-56 overflow-y-auto"
+                style={{ top: memberPickerPos.top, left: memberPickerPos.left }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                  {lang === 'zh' ? '分配成员' : 'Assign members'}
+                </div>
+                {users.map(u => {
+                  const isAssigned = card.assignees.includes(u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        const next = isAssigned
+                          ? card.assignees.filter(id => id !== u.id)
+                          : [...card.assignees, u.id];
+                        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { assignees: next } } });
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-xs transition-colors"
+                    >
+                      <Avatar user={u} size="sm" />
+                      <span className="flex-1 text-left text-slate-700 dark:text-slate-200">{u.name}</span>
+                      {isAssigned && <Check size={12} className="text-[#007AFF]" />}
+                    </button>
+                  );
+                })}
+              </div>,
+              document.body
+            )}
+          </div>
         </div>
       </div>
     </div>

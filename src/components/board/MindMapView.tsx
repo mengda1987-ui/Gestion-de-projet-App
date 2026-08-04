@@ -948,7 +948,9 @@ export default function MindMapView() {
                 const usedColors = new Set<string>();
                 nodesFlat.forEach(n => {
                   n.children.forEach(ch => {
-                    usedColors.add(ch.node.color.replace('#', ''));
+                    const c = ch.node.color.replace('#', '').toUpperCase();
+                    // White lines are invisible, replace with black
+                    usedColors.add(c === 'FFFFFF' ? '000000' : c);
                   });
                 });
                 return Array.from(usedColors).map(c => (
