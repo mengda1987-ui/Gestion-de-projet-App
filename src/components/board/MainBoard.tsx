@@ -144,10 +144,7 @@ export default function MainBoard() {
             <Menu size={18} />
           </button>
 
-          {/* App Logo — cute */}
-          <span className="text-base sm:text-lg shrink-0 select-none">✨</span>
-
-          {/* Search Bar — shortened */}
+          {/* Search Bar */}
           <div className="relative flex-1 sm:flex-none min-w-0">
             <div className={cn(
               'flex items-center gap-1.5 rounded-lg transition-all duration-200',
