@@ -143,7 +143,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
         users,
         boards,
         board: firstBoard,
-        currentBoardId: firstBoard.id,
+        currentBoardId: '', // don't auto-select — let session restore handle it
         workspaceBackground,
         loginBackground,
         _loaded: true,
@@ -1314,9 +1314,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
   // --- Persist current board to localStorage ---
   useEffect(() => {
-    if (state.currentBoardId) {
-      localStorage.setItem('trello_board_id', state.currentBoardId);
-    }
+    if (!loadedRef.current) return;
+    localStorage.setItem('trello_board_id', state.currentBoardId);
   }, [state.currentBoardId]);
 
   // --- Restore login session after data load ---
