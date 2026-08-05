@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import { Card, Column, ChecklistItem } from '@/types';
+import { Card, Column } from '@/types';
 import { cn, generateId, getContrastColor } from '@/lib/utils';
 import {
   Network,
@@ -13,7 +13,6 @@ import {
   ChevronRight,
   ChevronDown,
   PlusCircle,
-  X,
   Trash2,
   Pencil,
   Palette,
@@ -233,58 +232,48 @@ export default function MindMapView() {
   byIdRef.current = byId;
 
   const layouted = useMemo<LayoutedNode[]>(() => {
-    function lay(root: VirtualNode, depth: number, yCursor: number, xCursor: number): LayoutedNode {
+    function lay(root: VirtualNode, depth: number, yCursor: number, parentX: number): LayoutedNode {
       const rawKids = (childrenMap.get(root.refId) ?? []);
       const kids = collapsed[`k-${root.id}`] ? [] : rawKids;
       const width = nodeWidthFor(root.text, depth);
       const height = depth === 0 ? ROOT_HEIGHT : NODE_HEIGHT;
       const rootOverridden = !!root.posOverride && (root.posOverride.x !== 0 || root.posOverride.y !== 0);
 
-      // 1. 先递归计算所有子节点的布局，得到它们的总高度
+      // Determine x AFTER override check (critical for recursive positioning)
+      const x = rootOverridden ? root.posOverride!.x : parentX;
+
+      // Layout children using the FINAL x position, so all descendants follow correctly
       const layKids: LayoutedNode[] = [];
       const childDepth = depth + 1;
       let childrenSubtreeHeight = 0;
-
-      const childrenXForce = xCursor + width + NODE_H_GAP;
+      const childX = x + width + NODE_H_GAP;
 
       if (kids.length > 0) {
         let curY = yCursor;
         for (const k of kids) {
-          const sub = lay(k, childDepth, curY, childrenXForce);
+          const sub = lay(k, childDepth, curY, childX);
           layKids.push(sub);
           curY += sub.subtreeHeight + NODE_V_GAP;
         }
         childrenSubtreeHeight = curY - yCursor - NODE_V_GAP;
       }
 
-      // 2. 确定当前节点的 subtreeHeight
       const subtreeHeight = Math.max(height, childrenSubtreeHeight);
 
-      // 3. 确定当前节点的坐标
-      let x = xCursor;
-      let y = yCursor + subtreeHeight / 2 - height / 2;
+      // Determine y: center within children, or use override
+      const y = rootOverridden
+        ? root.posOverride!.y
+        : yCursor + subtreeHeight / 2 - height / 2;
 
-      if (rootOverridden) {
-        x = root.posOverride!.x;
-        y = root.posOverride!.y;
-      }
-
-      // 4. 如果当前节点位置变了（比如被居中或被 override），调整子节点的位置
+      // If root is overridden, re-center children vertically around root
       if (kids.length > 0 && rootOverridden) {
-        const childrenXForceOverride = x + width + NODE_H_GAP;
         let curY = y + height / 2 - childrenSubtreeHeight / 2;
-
         for (let i = 0; i < layKids.length; i++) {
           const sub = layKids[i];
           const k = kids[i];
           const kOverridden = !!k.posOverride && (k.posOverride.x !== 0 || k.posOverride.y !== 0);
-          
           if (!kOverridden) {
-            sub.x = childrenXForceOverride;
             sub.y = curY + sub.subtreeHeight / 2 - sub.height / 2;
-            // Note: We don't recursively update sub.children here because they were already 
-            // laid out relative to sub.x/sub.y in the first pass. 
-            // This is a limitation of the current simple layout engine.
           }
           curY += sub.subtreeHeight + NODE_V_GAP;
         }
@@ -958,7 +947,7 @@ export default function MindMapView() {
                     if (!usedColors.has(key)) {
                       // If background is light, ensure line is not too light
                       const contrast = getContrastColor(raw);
-                      const finalColor = contrast === 'black' && key === 'FFFFFF' ? '#CBD5E1' : raw;
+                      const finalColor = contrast === 'black' && key === 'FFFFFF' ? '#94A3B8' : raw;
                       usedColors.set(key, finalColor);
                     }
                   });
@@ -1013,8 +1002,8 @@ export default function MindMapView() {
             const isHover = hoverNodeId === n.node.id;
             const contrastColor = getContrastColor(n.node.color);
             
-            // Special case for todo cards: white background, blue text, blue border
-            const isTodoCard = n.node.kind === 'card' && n.node.status === 'todo';
+            // Special todos: white bg, blue text/border (only when no label color)
+            const isTodoCard = n.node.kind === 'card' && n.node.status === 'todo' && n.node.color === '#FFFFFF';
             
             let zIdx = 100 + n.depth * 10;
             if (isHover) zIdx = 5000 + n.depth * 10;
