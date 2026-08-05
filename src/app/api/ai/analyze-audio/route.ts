@@ -74,6 +74,10 @@ export async function POST(request: NextRequest) {
 
     const fullPrompt = SYSTEM_PROMPT + langInstruction;
 
+    const arrayBuffer = await audioFile.arrayBuffer();
+    const base64Audio = Buffer.from(arrayBuffer).toString('base64');
+    const mimeType = audioFile.type || 'audio/mpeg';
+
     // Discover available models and find ones supporting generateContent
     const allModels = await getAvailableModels(apiKey);
     const availableModels = allModels
