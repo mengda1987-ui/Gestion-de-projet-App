@@ -19,6 +19,8 @@ import {
   Users,
   Image,
   LogOut,
+  Menu,
+  Globe,
   Upload,
   MoreHorizontal,
   Eye,
@@ -44,6 +46,26 @@ const BOARD_BG_GRADIENTS = [
   'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
   'linear-gradient(135deg, #f59e0b 0%, #d946ef 100%)',
   'linear-gradient(135deg, #c026d3 0%, #ec4899 100%)',
+  'linear-gradient(135deg, #84cc16 0%, #06b6d4 100%)',
+  'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+  'linear-gradient(135deg, #e11d48 0%, #fb7185 100%)',
+  'linear-gradient(135deg, #64748b 0%, #475569 50%, #334155 100%)',
+  'linear-gradient(135deg, #0891b2 0%, #2dd4bf 100%)',
+  'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)',
+  'linear-gradient(135deg, #ea580c 0%, #eab308 100%)',
+  'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
+  'linear-gradient(135deg, #059669 0%, #a3e635 100%)',
+  'linear-gradient(135deg, #15803d 0%, #4ade80 100%)',
+  'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)',
+  'linear-gradient(135deg, #6366f1 0%, #14b8a6 100%)',
+  'linear-gradient(135deg, #d946ef 0%, #f97316 100%)',
+  'linear-gradient(135deg, #334155 0%, #0f172a 100%)',
+  'linear-gradient(135deg, #db2777 0%, #9333ea 100%)',
+  'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+  'linear-gradient(135deg, #ca8a04 0%, #a16207 100%)',
+  'linear-gradient(135deg, #4338ca 0%, #6366f1 100%)',
+  'linear-gradient(135deg, #166534 0%, #22d3ee 100%)',
+  'linear-gradient(135deg, #be123c 0%, #fda4af 100%)',
 ];
 
 export default function BoardHome() {
@@ -64,6 +86,8 @@ export default function BoardHome() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [showVisibilityPanel, setShowVisibilityPanel] = useState(false);
   const [uploadingIconBoard, setUploadingIconBoard] = useState<string | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   const visibleBoards = boards.filter(b => {
     if (currentUser?.role === 'admin') return true;
@@ -277,46 +301,24 @@ export default function BoardHome() {
       <div className="max-w-6xl mx-auto px-6 sm:px-8 py-10 sm:py-14">
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
-          <div>
+          <div className="flex items-center gap-3">
+            {/* Menu dropdown button */}
+            <button
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setHeaderMenuPos({ top: rect.bottom + 6, left: rect.left });
+                setHeaderMenuOpen(true);
+              }}
+              className="btn-secondary text-xs"
+            >
+              <Menu size={16} />
+            </button>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{lang === 'zh' ? '工作区' : 'Workspace'}</h1>
           </div>
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => dispatch({ type: 'SET_CURRENT_USER', payload: null })}
-              className="btn-secondary text-xs text-slate-500 hover:text-red-500"
-              title={lang === 'zh' ? '退出登录' : 'Logout'}
-            >
-              <LogOut size={14} />
-            </button>
-            {currentUser?.role === 'admin' && (
-              <>
-                <button onClick={() => setShowMemberManage(true)} className="btn-secondary text-xs">
-                  <Users size={14} />
-                  <span className="hidden sm:inline">{lang === 'zh' ? '成员管理' : 'Members'}</span>
-                </button>
-                <button onClick={() => setShowBgPicker(true)} className="btn-secondary text-xs">
-                  <Image size={14} />
-                  <span className="hidden sm:inline">{lang === 'zh' ? '背景' : 'Background'}</span>
-                </button>
-                <button
-                  onClick={() => logo ? dispatch({ type: 'UPDATE_LOGO', payload: '' }) : logoInputRef.current?.click()}
-                  className="btn-secondary text-xs"
-                  title={lang === 'zh' ? '公司 Logo' : 'Company Logo'}
-                >
-                  {logo ? <Trash2 size={14} /> : <Upload size={14} />}
-                  <span className="hidden sm:inline">{logo ? (lang === 'zh' ? '删除Logo' : 'Del Logo') : 'Logo'}</span>
-                </button>
-                <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-              </>
-            )}
-            <button onClick={toggleLang} className="px-3 py-2 rounded-full text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-200/60 transition-all">
-              {lang === 'zh' ? 'EN' : '中'}
-            </button>
-            <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
-              <Plus size={15} />
-              <span className="hidden sm:inline">{t('home.createBoard')}</span>
-            </button>
-          </div>
+          <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
+            <Plus size={15} />
+            <span className="hidden sm:inline">{t('home.createBoard')}</span>
+          </button>
         </div>
 
         {/* Board Grid */}
@@ -363,7 +365,7 @@ export default function BoardHome() {
                     });
 
                     const bg = bgRef[(bgIdx++) % bgRef.length];
-                    const emojis = ['📋', '🚀', '💡', '🎯', '🔥', '🌟', '💎', '🎨', '⚡', '🛠️', '📦', '🏗️'];
+                    const emojis = ['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','📢','📚','✈️','🌐','📋','📅','📈','🎓','🏥','🎬','🛒','⚙️','🔒','💼','🏠','🎵','📱','💰','🗂️','🎪'];
                     const emoji = board.emoji || emojis[board.title.length % emojis.length];
                     return (
                       <Draggable key={board.id} draggableId={board.id} index={idx}>
@@ -541,7 +543,7 @@ export default function BoardHome() {
             {/* Background color */}
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{lang === 'zh' ? '背景颜色' : 'Background'}</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {['#ef4444','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#ec4899','#78716c','#94a3b8','#1e293b'].map(color => (
+              {['#ef4444','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#ec4899','#78716c','#94a3b8','#1e293b','#14b8a6','#84cc16','#a855f7','#e11d48','#475569','#0891b2','#ea580c','#2563eb','#059669','#b91c1c','#d946ef','#334155','#db2777','#0284c7','#ca8a04','#4338ca','#166534','#be123c','#7c3aed','#0f172a'].map(color => (
                 <button
                   key={color}
                   onClick={() => {
@@ -566,7 +568,7 @@ export default function BoardHome() {
             {/* Emoji grid */}
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{lang === 'zh' ? '图标' : 'Icon'}</p>
             <div className="grid grid-cols-6 gap-1 mb-3">
-              {['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','💼','📊','🎵','🛒','🏠','🌍'].map(e => (
+              {['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','📢','📚','✈️','🌐','📅','📈','🎓','🏥','🎬','🛒','⚙️','🔒','💼','🏠','🎵','📱','💰','🗂️','🎪','🔧'].map(e => (
                 <button
                   key={e}
                   onClick={() => {
@@ -774,9 +776,73 @@ export default function BoardHome() {
       )}
       </div>
 
+      {/* Header dropdown menu */}
+      {headerMenuOpen && headerMenuPos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[99998]" onClick={() => { setHeaderMenuOpen(false); setHeaderMenuPos(null); }} />
+          <div
+            className="fixed z-[99999] animate-slide-up w-52 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1.5"
+            style={{ left: headerMenuPos.left, top: headerMenuPos.top }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {/* Language toggle */}
+            <button
+              onClick={() => { toggleLang(); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Globe size={14} />
+              {lang === 'zh' ? 'Switch to English' : '切换到中文'}
+            </button>
+
+            {currentUser?.role === 'admin' && (
+              <>
+                <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+                <button
+                  onClick={() => { setShowMemberManage(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <Users size={14} />
+                  {lang === 'zh' ? '成员管理' : 'Manage Members'}
+                </button>
+                <button
+                  onClick={() => { setShowBgPicker(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <Image size={14} />
+                  {lang === 'zh' ? '更换背景' : 'Change Background'}
+                </button>
+                <button
+                  onClick={() => {
+                    if (logo) { dispatch({ type: 'UPDATE_LOGO', payload: '' }); }
+                    else { logoInputRef.current?.click(); }
+                    setHeaderMenuOpen(false); setHeaderMenuPos(null);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  {logo ? <Trash2 size={14} /> : <Upload size={14} />}
+                  {logo ? (lang === 'zh' ? '删除 Logo' : 'Remove Logo') : (lang === 'zh' ? '上传 Logo' : 'Upload Logo')}
+                </button>
+              </>
+            )}
+
+            <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+            <button
+              onClick={() => { dispatch({ type: 'SET_CURRENT_USER', payload: null }); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <LogOut size={14} />
+              {lang === 'zh' ? '退出登录' : 'Logout'}
+            </button>
+          </div>
+        </>,
+        document.body
+      )}
+
+      <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.3.3
+        v1.4.0
       </div>
     </div>
   );

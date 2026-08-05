@@ -82,13 +82,12 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
 
     case 'DELETE_BOARD': {
       const remaining = state.boards.filter(b => b.id !== action.payload);
-      if (remaining.length === 0) return state;
-      const nextBoard = remaining[0];
+      if (remaining.length === 0) return { ...state, currentBoardId: '' };
       return {
         ...state,
         boards: remaining,
-        board: nextBoard,
-        currentBoardId: nextBoard.id,
+        currentBoardId: state.currentBoardId === action.payload ? '' : state.currentBoardId,
+        board: state.currentBoardId === action.payload ? remaining[0] : state.board,
         viewMode: 'board',
       };
     }
