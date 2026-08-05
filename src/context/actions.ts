@@ -15,6 +15,7 @@ export type Action =
   | { type: 'UPDATE_BOARD_DATA'; payload: { boardId: string; updates: Partial<Board> } }
   | { type: 'SET_BOARD_EMOJI'; payload: { boardId: string; emoji: string } }
   | { type: 'SET_BOARD_ICON'; payload: { boardId: string; emoji?: string; iconBg?: string; iconImage?: string } }
+  | { type: 'REORDER_BOARDS'; payload: { fromIndex: number; toIndex: number } }
   | { type: 'REORDER_COLUMNS'; payload: { fromIndex: number; toIndex: number } }
   | { type: 'ADD_COLUMN'; payload: { title: string; id?: string } }
   | { type: 'UPDATE_COLUMN'; payload: { columnId: string; updates: Partial<Column> } }

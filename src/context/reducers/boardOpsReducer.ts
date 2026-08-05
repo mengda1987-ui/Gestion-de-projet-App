@@ -40,6 +40,14 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
       };
     }
 
+    case 'REORDER_BOARDS': {
+      const { fromIndex, toIndex } = action.payload;
+      const boards = [...state.boards];
+      const [moved] = boards.splice(fromIndex, 1);
+      boards.splice(toIndex, 0, moved);
+      return { ...state, boards };
+    }
+
     case 'UPDATE_BOARD':
       return { ...state, board: { ...state.board, ...action.payload, updatedAt: new Date().toISOString() } };
 
