@@ -901,16 +901,6 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white shadow-sm">
             <Network size={16} />
           </div>
-          <div>
-            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight">
-              {t('mindmap.title')}
-            </div>
-            <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight flex items-center gap-2">
-              <span className="inline-flex items-center gap-1"><Layers size={10}/>{t('mindmap.viewLists', { n: stats.cols })}</span>
-              <span className="inline-flex items-center gap-1"><Check size={10}/>{t('mindmap.viewCards', { n: stats.cards })}</span>
-              <span className="inline-flex items-center gap-1"><Sparkles size={10}/>{t('mindmap.viewItems', { n: stats.items })}</span>
-            </div>
-          </div>
         </div>
 
         <div className="h-6 w-px bg-slate-300 dark:bg-slate-600 mx-1" />
