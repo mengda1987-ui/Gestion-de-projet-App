@@ -626,7 +626,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-white/40 select-none pointer-events-none z-50">v1.0.25</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-white/40 select-none pointer-events-none z-50">v1.0.26</span>
     </div>
   );
 }

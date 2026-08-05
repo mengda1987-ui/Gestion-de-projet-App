@@ -608,7 +608,6 @@ export default function CardDetailModal({
                       onClick={() => setShowAddChecklist(true)}
                       className="btn-ghost text-xs py-1"
                     >
-                      <Plus size={14} />
                       {t('card.checklist.addList')}
                     </button>
                   </div>

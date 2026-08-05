@@ -650,7 +650,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="text-center py-2 text-[11px] text-slate-400 shrink-0">
-        v1.0.25
+        v1.0.26
       </div>
     </div>
   );
