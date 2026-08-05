@@ -4,24 +4,17 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import { LogIn, Sparkles, Languages, User2, Lock, Palette, X } from 'lucide-react';
+import { LogIn, Languages, User2, Lock, Palette, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function LoginPage() {
-  const { users, dispatch, loginBackground, logo } = useBoard();
+  const { users, dispatch, loginBackground } = useBoard();
   const { lang, toggleLang, t, setLang } = useLang();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [isLogging, setIsLogging] = useState(false);
   const [error, setError] = useState('');
-  const [logoWidth, setLogoWidth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return parseInt(localStorage.getItem('logoWidth') || '220');
-    }
-    return 220;
-  });
-  const [showLogoSlider, setShowLogoSlider] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
 
   const handleLogin = async () => {
@@ -101,49 +94,7 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-sm">
         <div className="apple-card p-8 animate-slide-up">
-          {/* Logo */}
           <div className="text-center mb-6">
-            {logo ? (
-              <div className="relative group/lg inline-block mb-5">
-                <img
-                  src={logo}
-                  alt="Logo"
-                  className="mx-auto cursor-pointer max-w-full"
-                  style={{ maxWidth: `${logoWidth}px`, maxHeight: '80px' }}
-                  onClick={() => setShowLogoSlider(!showLogoSlider)}
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                  title={lang === 'zh' ? '点击调整大小' : 'Click to resize'}
-                />
-                {showLogoSlider && (
-                  <div className="mt-2 flex items-center justify-center gap-2 animate-slide-up">
-                    <span className="text-[10px] text-slate-400">S</span>
-                    <input
-                      type="range"
-                      min="80"
-                      max="400"
-                      value={logoWidth}
-                      onChange={(e) => {
-                        const w = parseInt(e.target.value);
-                        setLogoWidth(w);
-                        localStorage.setItem('logoWidth', String(w));
-                      }}
-                      className="w-24 h-1 accent-[#007AFF]"
-                    />
-                    <span className="text-[10px] text-slate-400">L</span>
-                    <span className="text-[10px] text-slate-500">{logoWidth}px</span>
-                  </div>
-                )}
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-[#007AFF] rounded-full opacity-0 group-hover/lg:opacity-100 transition-opacity cursor-se-resize"
-                  style={{ resize: 'both' }}
-                />
-              </div>
-            ) : (
-              <div className="mb-5">
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-100">
-                  <Sparkles className="w-7 h-7 text-slate-400" />
-                </div>
-              </div>
-            )}
             <h1 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
               LES FRANCOPHILES
             </h1>
