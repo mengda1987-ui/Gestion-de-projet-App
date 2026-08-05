@@ -56,7 +56,8 @@ function boardReducer(state: BoardState, action: Action): BoardState {
 
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
-  const channelRef = useRef<BroadcastChannel | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const loadedRef = useRef(false);
 
   // 从 Supabase 加载数据，失败则使用 Mock 数据
   useEffect(() => {
@@ -109,6 +110,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             logo: wsSettings.logo || '',
           },
         });
+        loadedRef.current = true;
       } catch (err) {
         console.warn('Supabase load failed, using mock data:', err);
         dispatch({
@@ -121,37 +123,51 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             logo: '',
           },
         });
+        loadedRef.current = true;
       }
     }
     loadData();
   }, [dispatch]);
 
-  // BroadcastChannel 跨标签页同步
+  // Supabase Realtime 多人实时协作
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const channel = new BroadcastChannel('trello-board-sync');
+
+    const channel = supabase.channel('trello-realtime-sync', {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+
+    channel
+      .on('broadcast', { event: 'action' }, ({ payload }: { payload: Action }) => {
+        if (payload && typeof payload === 'object' && 'type' in payload) {
+          dispatch({ ...(payload as any), _skipSync: true });
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Realtime] 实时协作通道已连接');
+        }
+      });
+
     channelRef.current = channel;
-    
-    channel.onmessage = (e: MessageEvent<Action>) => {
-      if (e.data && typeof e.data === 'object' && 'type' in e.data) {
-        dispatch({ ...(e.data as any), _skipSync: true });
-      }
-    };
 
     return () => {
-      channel.close();
+      supabase.removeChannel(channel);
       channelRef.current = null;
     };
   }, []);
 
   const broadcastChange = useCallback((action: Action) => {
     dispatch(action);
-    if (channelRef.current && typeof window !== 'undefined') {
-      try {
-        channelRef.current.postMessage(action);
-      } catch (err) {
-        console.warn('BroadcastChannel postMessage failed:', err);
-      }
+    if (channelRef.current) {
+      channelRef.current
+        .send({ type: 'broadcast', event: 'action', payload: action })
+        .then(() => {})
+        .catch((err) => {
+          console.warn('[Realtime] 广播失败:', err);
+        });
     }
   }, []);
 
