@@ -1511,10 +1511,37 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
                               </button>
                             </div>
                           ))}
+                          <button
+                            onClick={() => {
+                              const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, cards: c.cards.map((ca, j) => j === cai ? { ...ca, items: [...ca.items, lang === 'zh' ? '新条目' : 'New item'] } : ca) } : c) };
+                              setAiResult(updated);
+                            }}
+                            className="ml-6 mt-0.5 flex items-center gap-1 text-[10px] text-slate-400 hover:text-emerald-500 transition-colors"
+                          >
+                            <Plus size={11} /> {lang === 'zh' ? '添加条目' : 'Add item'}
+                          </button>
                         </div>
                       ))}
+                      <button
+                        onClick={() => {
+                          const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, cards: [...c.cards, { title: lang === 'zh' ? '新卡片' : 'New card', items: [] }] } : c) };
+                          setAiResult(updated);
+                        }}
+                        className="ml-4 mt-1 flex items-center gap-1 text-[11px] text-slate-400 hover:text-amber-500 transition-colors"
+                      >
+                        <Plus size={12} /> {lang === 'zh' ? '添加卡片' : 'Add card'}
+                      </button>
                     </div>
                   ))}
+                  <button
+                    onClick={() => {
+                      const newCols = [...aiResult.columns, { title: lang === 'zh' ? '新列表' : 'New column', cards: [] }];
+                      setAiResult({ ...aiResult, columns: newCols });
+                    }}
+                    className="w-full py-2 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-indigo-500 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors"
+                  >
+                    <Plus size={14} /> {lang === 'zh' ? '添加列表' : 'Add column'}
+                  </button>
                 </div>
               )}
             </div>
