@@ -83,7 +83,7 @@ export function LabelBadge({ label, name, color, onRemove, size = 'sm', classNam
 }
 
 export function LabelStrip({ labels, allLabels, className }: { labels: string[]; allLabels: Label[]; className?: string }) {
-  const matchedLabels = labels.map(id => allLabels.find(l => l.id === id)).filter(Boolean) as Label[];
+  const matchedLabels = labels.map((id: string) => allLabels.find((l: Label) => l.id === id)).filter(Boolean) as Label[];
   if (matchedLabels.length === 0) return null;
   return (
     <div className={cn('flex flex-wrap gap-1', className)}>
