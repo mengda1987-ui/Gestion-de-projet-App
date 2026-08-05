@@ -117,6 +117,7 @@ export default function MindMapView() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
 const [aiLoading, setAiLoading] = useState(false);
 const [aiError, setAiError] = useState('');
+const [helpOpen, setHelpOpen] = useState(false);
 const [aiLang, setAiLang] = useState<'zh' | 'fr'>('zh');
 const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { title: string; items: string[] }[] }[] } | null>(null);
   interface NodeDragState {
@@ -1002,9 +1003,6 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
         </button>
 
         <div className="flex-1" />
-        <div className="text-[10px] text-indigo-500 font-medium px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/30">
-          {t('mindmap.hintSync')}
-        </div>
       </div>
 
       {/* Canvas */}
@@ -1269,16 +1267,29 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
         </div>
       </div>
 
-      {/* Bottom tip */}
-      <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-wrap items-center gap-2 pointer-events-none">
-        <div className="glass backdrop-blur rounded-xl px-3 py-2 text-[11px] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 pointer-events-auto shadow-sm inline-flex items-center flex-wrap gap-x-3 gap-y-1">
-          <span className="font-semibold text-violet-600 dark:text-violet-400"><Network size={11} className="inline mr-1"/>{t('mindmap.tip.dragNode')}</span>
-          <span><Pencil size={11} className="inline mr-1 text-indigo-500"/>{t('mindmap.tip.dblclick')}</span>
-          <span><PlusCircle size={11} className="inline mr-1 text-emerald-500"/>{t('mindmap.tip.addChild')}</span>
-          <span><Check size={11} className="inline mr-1 text-sky-500"/>{t('mindmap.tip.menu')}</span>
-          <span><Layers size={11} className="inline mr-1 text-rose-500"/>{t('mindmap.tip.resetLayout')}</span>
-          <span><Sparkles size={11} className="inline mr-1 text-pink-500"/>{t('mindmap.tip.sync')}</span>
-        </div>
+      {/* Help Button + Popover at top-right */}
+      <div className="absolute top-3 right-3 z-20">
+        <button
+          onClick={() => setHelpOpen(!helpOpen)}
+          className="w-8 h-8 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/15 transition-colors"
+          title={t('mindmap.help')}
+        >
+          <span className="text-sm font-bold">?</span>
+        </button>
+        {helpOpen && (
+          <div className="absolute right-0 mt-2 w-72 glass backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl p-4 text-[12px] text-slate-600 dark:text-slate-300 space-y-2.5">
+            <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-1">{t('mindmap.helpTitle')}</div>
+            <div className="flex flex-col gap-2">
+              <span className="font-semibold text-violet-600 dark:text-violet-400"><Network size={12} className="inline mr-1"/>{t('mindmap.tip.dragNode')}</span>
+              <span><Pencil size={12} className="inline mr-1 text-indigo-500"/>{t('mindmap.tip.dblclick')}</span>
+              <span><PlusCircle size={12} className="inline mr-1 text-emerald-500"/>{t('mindmap.tip.addChild')}</span>
+              <span><Check size={12} className="inline mr-1 text-sky-500"/>{t('mindmap.tip.menu')}</span>
+              <span><Layers size={12} className="inline mr-1 text-rose-500"/>{t('mindmap.tip.resetLayout')}</span>
+              <span><Sparkles size={12} className="inline mr-1 text-pink-500"/>{t('mindmap.tip.sync')}</span>
+              <span className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-700 text-[11px] text-indigo-500 font-medium">{t('mindmap.hintSync')}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Color Picker Portal */}
