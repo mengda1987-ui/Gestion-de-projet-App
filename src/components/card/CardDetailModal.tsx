@@ -1082,7 +1082,7 @@ export default function CardDetailModal({
                   </div>
                   <div className="space-y-1.5">
                     {users.map((u: User) => {
-                      const assigned = assignees.some(a => a.id === u.id);
+                      const assigned = assignees.some((a: User) => a.id === u.id);
                       return (
                         <button
                           key={u.id}
