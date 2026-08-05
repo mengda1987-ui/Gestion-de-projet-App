@@ -64,7 +64,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
       : rawDueStatus.status === 'due-soon' ? t('date.soon')
       : rawDueStatus.label
   } : null;
-  const assignees = card.assignees.map(id => users.find(u => u.id === id)).filter((u): u is User => u !== undefined);
+  const assignees = card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u): u is User => u !== undefined);
 
   const checklistDueAlerts = allChecklistItems
     .filter(item => !item.completed && item.dueDate)
@@ -187,8 +187,8 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         {/* Labels */}
         {card.labels.length > 0 && !card.coverImage && (
           <div className="flex gap-0.5 -mt-0.5">
-            {card.labels.slice(0, 5).map(labelId => {
-              const label = board.labels.find(l => l.id === labelId);
+            {card.labels.slice(0, 5).map((labelId: string) => {
+              const label = board.labels.find((l: Label) => l.id === labelId);
               if (!label) return null;
               return (
                 <div
@@ -322,14 +322,14 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
                   {lang === 'zh' ? '分配成员' : 'Assign members'}
                 </div>
-                {users.map(u => {
+                {users.map((u: User) => {
                   const isAssigned = card.assignees.includes(u.id);
                   return (
                     <button
                       key={u.id}
                       onClick={() => {
                         const next = isAssigned
-                          ? card.assignees.filter(id => id !== u.id)
+                          ? card.assignees.filter((id: string) => id !== u.id)
                           : [...card.assignees, u.id];
                         broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { assignees: next } } });
                       }}

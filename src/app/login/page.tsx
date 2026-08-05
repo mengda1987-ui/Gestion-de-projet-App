@@ -31,7 +31,7 @@ export default function LoginPage() {
     setIsLogging(true);
     await new Promise(r => setTimeout(r, 600));
 
-    const user = users.find(u => u.name.toLowerCase() === trimmed.toLowerCase());
+    const user = users.find((u: User) => u.name.toLowerCase() === trimmed.toLowerCase());
     if (!user) {
       setError(lang === 'zh' ? '用户不存在，请联系管理员创建账号' : 'User not found. Contact admin to create an account.');
       setIsLogging(false);

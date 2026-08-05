@@ -665,15 +665,15 @@ export default function BoardHome() {
                       </button>
                     </div>
                     <div className="grid grid-cols-1 gap-2">
-                      {users.map(u => {
+                      {users.map((u: User) => {
                         const isVisible = !board.visibleTo?.length || board.visibleTo?.includes(u.id);
                         return (
                           <button
                             key={u.id}
                             onClick={() => {
-                              const current = board.visibleTo || users.map(x => x.id);
+                              const current = board.visibleTo || users.map((x: User) => x.id);
                               const next = isVisible
-                                ? current.filter(id => id !== u.id)
+                                ? current.filter((id: string) => id !== u.id)
                                 : [...current, u.id];
                               dispatch({
                                 type: 'UPDATE_BOARD_DATA',

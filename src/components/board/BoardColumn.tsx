@@ -156,15 +156,15 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
                   >
                     {lang === 'zh' ? '全部' : 'All'}
                   </button>
-                  {users.map(u => {
+                  {users.map((u: User) => {
                     const isVisible = !column.visibleTo?.length || column.visibleTo?.includes(u.id);
                     return (
                       <button
                         key={u.id}
                         onClick={() => {
-                          const current = column.visibleTo || users.map(x => x.id);
+                          const current = column.visibleTo || users.map((x: User) => x.id);
                           const next = isVisible
-                            ? current.filter(id => id !== u.id)
+                            ? current.filter((id: string) => id !== u.id)
                             : [...current, u.id];
                           broadcastChange({
                             type: 'UPDATE_COLUMN',

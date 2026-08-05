@@ -488,8 +488,8 @@ export default function CardDetailModal({
                 <div className="flex items-center gap-2">
                   <Tags size={14} className="text-slate-500 shrink-0" />
                   <div className="flex flex-wrap gap-1.5">
-                    {latestCard.labels.map(labelId => {
-                      const label = board.labels.find(l => l.id === labelId);
+                    {latestCard.labels.map((labelId: string) => {
+                      const label = board.labels.find((l: Label) => l.id === labelId);
                       if (!label) return null;
                       return (
                         <LabelBadge
@@ -642,7 +642,7 @@ export default function CardDetailModal({
                   )}
 
                   <div className="space-y-4">
-                    {latestCard.checklists.map(cl => {
+                    {latestCard.checklists.map((cl: Checklist) => {
                       const progress = calculateChecklistProgress(cl.items);
                       return (
                         <div key={cl.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -679,7 +679,7 @@ export default function CardDetailModal({
                               />
                             </div>
                             <div className="space-y-1.5">
-                              {cl.items.map(item => {
+                              {cl.items.map((item: ChecklistItem) => {
                                 const status = item.dueDate ? getDueDateStatus(item.dueDate, item.completed) : null;
                                 const dueDateInputValue = item.dueDate
                                   ? format(parseISO(item.dueDate), 'yyyy-MM-dd')
@@ -990,7 +990,7 @@ export default function CardDetailModal({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {latestCard.attachments.map(att => (
+                      {latestCard.attachments.map((att: Attachment) => (
                         <div key={att.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 flex items-start gap-3 group hover:border-sky-300 transition-colors">
                           <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
                             {att.type.startsWith('image/') && att.url ? (
@@ -1055,10 +1055,10 @@ export default function CardDetailModal({
                     <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.labels')}</h3>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-3">
-                    {board.labels.map(l => (
+                    {board.labels.map((l: Label) => (
                       <button
                         key={l.id}
-                        onClick={() => updateCard({ labels: latestCard.labels.includes(l.id) ? latestCard.labels.filter(lid => lid !== l.id) : [...latestCard.labels, l.id] })}
+                        onClick={() => updateCard({ labels: latestCard.labels.includes(l.id) ? latestCard.labels.filter((lid: string) => lid !== l.id) : [...latestCard.labels, l.id] })}
                         className={cn(
                           'px-3 py-1.5 rounded-full text-xs font-medium transition-all border-2',
                           latestCard.labels.includes(l.id) ? 'border-current shadow-sm' : 'border-transparent opacity-70 hover:opacity-100'
@@ -1081,12 +1081,12 @@ export default function CardDetailModal({
                     <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.members')}</h3>
                   </div>
                   <div className="space-y-1.5">
-                    {users.map(u => {
+                    {users.map((u: User) => {
                       const assigned = assignees.some(a => a.id === u.id);
                       return (
                         <button
                           key={u.id}
-                          onClick={() => updateCard({ assignees: assigned ? latestCard.assignees.filter(id => id !== u.id) : [...latestCard.assignees, u.id] })}
+                          onClick={() => updateCard({ assignees: assigned ? latestCard.assignees.filter((id: string) => id !== u.id) : [...latestCard.assignees, u.id] })}
                           className={cn(
                             'w-full flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-xs',
                             assigned ? 'bg-blue-50 dark:bg-sky-950/20 border-[#007AFF]/30' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
@@ -1183,8 +1183,8 @@ export default function CardDetailModal({
                         {t('card.comments.empty')}
                       </div>
                     )}
-                    {[...latestCard.comments].reverse().map(comment => {
-                      const user = users.find(u => u.id === comment.userId);
+                    {[...latestCard.comments].reverse().map((comment: Comment) => {
+                      const user = users.find((u: User) => u.id === comment.userId);
                       return (
                         <div key={comment.id} className="flex items-start gap-3 group">
                           <Avatar user={user} size="sm" />
@@ -1242,7 +1242,7 @@ export default function CardDetailModal({
 
                       {!manageLabelsMode ? (
                         <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                          {board.labels.map(label => {
+                          {board.labels.map((label: Label) => {
                             const active = latestCard.labels.includes(label.id);
                             return (
                               <button
@@ -1295,7 +1295,7 @@ export default function CardDetailModal({
                   {showMembers && (
                     <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 animate-slide-up">
                       <div className="space-y-1.5">
-                        {users.map(user => {
+                        {users.map((user: User) => {
                           const active = latestCard.assignees.includes(user.id);
                           return (
                             <button

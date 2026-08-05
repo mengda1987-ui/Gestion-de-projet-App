@@ -425,14 +425,14 @@ export default function MainBoard() {
                 {lang === 'zh' ? '按标签筛选' : 'Filter by labels'}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {board.labels.map(label => {
+                {board.labels.map((label: Label) => {
                   const active = filters.labels.includes(label.id);
                   return (
                     <button
                       key={label.id}
                       onClick={() => {
                         const newLabels = active
-                          ? filters.labels.filter(l => l !== label.id)
+                          ? filters.labels.filter((l: string) => l !== label.id)
                           : [...filters.labels, label.id];
                         dispatch({ type: 'SET_FILTERS', payload: { labels: newLabels } });
                       }}
@@ -464,14 +464,14 @@ export default function MainBoard() {
                 {lang === 'zh' ? '按负责人筛选' : 'Filter by assignees'}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {users.map(user => {
+                {users.map((user: User) => {
                   const active = filters.assignees.includes(user.id);
                   return (
                     <button
                       key={user.id}
                       onClick={() => {
                         const newAs = active
-                          ? filters.assignees.filter(u => u !== user.id)
+                          ? filters.assignees.filter((u: string) => u !== user.id)
                           : [...filters.assignees, user.id];
                         dispatch({ type: 'SET_FILTERS', payload: { assignees: newAs } });
                       }}
