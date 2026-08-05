@@ -63,13 +63,16 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File | null;
+    const lang = (formData.get('lang') as string) || 'zh';
     if (!audioFile) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-    const mimeType = audioFile.type || 'audio/mpeg';
+    const langInstruction = lang === 'fr'
+      ? '\n\nIMPORTANT: The output MUST be in French. All titles and items should be in French.'
+      : '\n\nIMPORTANT: The output MUST be in Chinese. All titles and items should be in Chinese.';
+
+    const fullPrompt = SYSTEM_PROMPT + langInstruction;
 
     // Discover available models and find ones supporting generateContent
     const allModels = await getAvailableModels(apiKey);
@@ -92,7 +95,7 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify({
             contents: [{
               parts: [
-                { text: SYSTEM_PROMPT },
+                { text: fullPrompt },
                 { inline_data: { mime_type: mimeType, data: base64Audio } },
               ],
             }],

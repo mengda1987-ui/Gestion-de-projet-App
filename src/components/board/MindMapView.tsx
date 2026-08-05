@@ -115,9 +115,10 @@ export default function MindMapView() {
   pendingPositionsRef.current = pendingPositions;
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState('');
-  const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { title: string; items: string[] }[] }[] } | null>(null);
+const [aiLoading, setAiLoading] = useState(false);
+const [aiError, setAiError] = useState('');
+const [aiLang, setAiLang] = useState<'zh' | 'fr'>('zh');
+const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { title: string; items: string[] }[] }[] } | null>(null);
   interface NodeDragState {
     nodeId: string;
     kind: NodeKind;
@@ -428,7 +429,7 @@ export default function MindMapView() {
         // ADD_CHECKLIST Action 的 reducer 内部会生成新 id，但 payload 必须传 name
         (broadcastChange as any)({
           type: 'ADD_CHECKLIST',
-          payload: { cardId: parent.refId, name: t('mindmap.defaultChecklist') },
+          payload: { cardId: parent.refId, name: t('mindmap.defaultChecklist'), id: checklistId },
         });
       } else {
         checklistId = card.checklists[0].id;
@@ -839,6 +840,7 @@ export default function MindMapView() {
     try {
       const formData = new FormData();
       formData.append('audio', file);
+      formData.append('lang', aiLang);
       const response = await fetch('/api/ai/analyze-audio', { method: 'POST', body: formData });
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -889,7 +891,7 @@ export default function MindMapView() {
           const checklistId = generateId();
           (broadcastChange as any)({
             type: 'ADD_CHECKLIST',
-            payload: { cardId, name: 'Tasks' },
+            payload: { cardId, name: 'Tasks', id: checklistId },
           });
           for (const item of card.items) {
             (broadcastChange as any)({
@@ -1398,6 +1400,31 @@ export default function MindMapView() {
             <div className="flex-1 overflow-auto p-4 space-y-4">
               {!aiResult && !aiError && (
                 <div className="flex flex-col items-center py-8 gap-4">
+                  {/* Language Selector */}
+                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 rounded-xl p-1">
+                    <button
+                      onClick={() => setAiLang('zh')}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+                        aiLang === 'zh'
+                          ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      )}
+                    >
+                      🇨🇳 中文
+                    </button>
+                    <button
+                      onClick={() => setAiLang('fr')}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+                        aiLang === 'fr'
+                          ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      )}
+                    >
+                      🇫🇷 Français
+                    </button>
+                  </div>
                   <label className={cn(
                     'cursor-pointer flex flex-col items-center gap-3 px-8 py-10 border-2 border-dashed rounded-2xl transition-all',
                     aiLoading
