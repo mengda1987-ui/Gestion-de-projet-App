@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Gemini 3-level mind map structure prompt
 const SYSTEM_PROMPT = `You are an expert meeting/audio summarizer. Analyze the provided audio recording and produce a structured mind map summary with exactly 3 levels. Follow these rules strictly:
 
 Level 1 (columns): Main topics/themes discussed. Max 5 topics.
@@ -51,62 +51,60 @@ export async function POST(request: NextRequest) {
     // Convert audio to base64
     const arrayBuffer = await audioFile.arrayBuffer();
     const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-
-    // Get MIME type
     const mimeType = audioFile.type || 'audio/mpeg';
 
-    // Call Gemini API directly via fetch
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: SYSTEM_PROMPT },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Audio,
-                  },
-                },
-              ],
+    // Use the official SDK
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    // Try models in order: gemini-1.5-flash (widely available, supports audio)
+    const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+
+    let lastError: Error | null = null;
+    let rawText: string | null = null;
+
+    for (const modelName of models) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+
+        const result = await model.generateContent([
+          { text: SYSTEM_PROMPT },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Audio,
             },
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            topP: 0.8,
-            topK: 40,
-            maxOutputTokens: 4096,
           },
-        }),
+        ]);
+
+        const response = result.response;
+        rawText = response.text();
+
+        if (rawText) {
+          console.log(`Success with model: ${modelName}`);
+          break;
+        }
+      } catch (err: any) {
+        console.error(`Model ${modelName} failed:`, err.message);
+        lastError = err;
+
+        // If the error message contains model-specific hints, try next
+        if (err.message?.includes('not found') || err.status === 404) {
+          continue;
+        }
+        // For other errors (auth, quota, etc.), stop retrying
+        throw err;
       }
-    );
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error('Gemini API error:', errorText);
-      return NextResponse.json(
-        { error: `Gemini API error: ${geminiResponse.status}` },
-        { status: 502 }
-      );
     }
-
-    const geminiData = await geminiResponse.json();
-    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
       return NextResponse.json(
-        { error: 'No content returned from Gemini' },
+        { error: lastError?.message || 'All models failed' },
         { status: 502 }
       );
     }
 
     // Parse the JSON from Gemini's response (handle markdown code blocks)
     let jsonStr = rawText.trim();
-    // Remove markdown code blocks if present
     const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       jsonStr = jsonMatch[1].trim();
@@ -114,12 +112,10 @@ export async function POST(request: NextRequest) {
 
     const parsed = JSON.parse(jsonStr);
 
-    // Validate structure
     if (!parsed.columns || !Array.isArray(parsed.columns)) {
       throw new Error('Invalid response structure: missing columns array');
     }
 
-    // Sanitize and ensure structure
     const sanitized = {
       columns: parsed.columns.map((col: any) => ({
         title: String(col.title || 'Untitled').slice(0, 60),
