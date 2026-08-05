@@ -31,6 +31,28 @@ Rules:
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1/models';
 const MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
 
+// Diagnose which models the API key can access
+async function getAvailableModels(apiKey: string): Promise<string[]> {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.models || [])
+      .map((m: any) => m.name?.replace('models/', ''))
+      .filter((n: string) => n.includes('gemini') && n.includes('generateContent'));
+  } catch {
+    return [];
+  }
+}
+
+export async function GET() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
+  const models = await getAvailableModels(apiKey);
+  return NextResponse.json({ availableModels: models });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -54,10 +76,17 @@ export async function POST(request: NextRequest) {
     const base64Audio = Buffer.from(arrayBuffer).toString('base64');
     const mimeType = audioFile.type || 'audio/mpeg';
 
+    // First, discover which models are available
+    const availableModels = await getAvailableModels(apiKey);
+    console.log('Available models:', availableModels);
+
+    // Try known models first, then fall back to discovered models
+    const modelsToTry = [...new Set([...MODELS, ...availableModels])];
+
     let lastErrorText = '';
     let rawText: string | null = null;
 
-    for (const modelName of MODELS) {
+    for (const modelName of modelsToTry) {
       try {
         const url = `${BASE_URL}/${modelName}:generateContent?key=${apiKey}`;
         const geminiResponse = await fetch(url, {
