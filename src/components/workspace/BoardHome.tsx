@@ -22,10 +22,12 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
+import { parseISO, isToday } from 'date-fns';
 
 const BOARD_BG_GRADIENTS = [
   'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%)',
@@ -250,6 +252,23 @@ export default function BoardHome() {
               const colCount = board.columns.length;
               const cardCount = board.columns.reduce((s, c) => s + c.cards.length, 0);
               const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.status === 'complete').length, 0);
+
+              // Find "urgent" label
+              const urgentLabel = board.labels.find(l =>
+                l.name.toLowerCase() === 'urgent' || l.name === '紧急' || l.name.toLowerCase() === 'urgente'
+              );
+
+              // Count urgent todo cards and due-today cards
+              let urgentCount = 0;
+              let dueTodayCount = 0;
+              board.columns.forEach(col => {
+                col.cards.forEach(card => {
+                  if (card.status === 'complete' || card.archived) return;
+                  if (urgentLabel && card.labels.includes(urgentLabel.id)) urgentCount++;
+                  if (card.dueDate && isToday(parseISO(card.dueDate))) dueTodayCount++;
+                });
+              });
+
               const bg = bgRef[(bgIdx++) % bgRef.length];
               const emojis = ['📋', '🚀', '💡', '🎯', '🔥', '🌟', '💎', '🎨', '⚡', '🛠️', '📦', '🏗️'];
               const emoji = board.emoji || emojis[board.title.length % emojis.length];
@@ -314,6 +333,24 @@ export default function BoardHome() {
 
                     {/* Spacer push footer to bottom */}
                     <div className="flex-1" />
+
+                    {/* Urgent & Due Today Alerts */}
+                    {(urgentCount > 0 || dueTodayCount > 0) && (
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {urgentCount > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm">
+                            <AlertTriangle size={10} />
+                            {lang === 'zh' ? `紧急 ${urgentCount}` : `Urgent ${urgentCount}`}
+                          </span>
+                        )}
+                        {dueTodayCount > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm">
+                            <Clock size={10} />
+                            {lang === 'zh' ? `今天到期 ${dueTodayCount}` : `Due today ${dueTodayCount}`}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Updated time & three-dot menu */}
                     <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-2">
@@ -649,7 +686,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.1.24
+        v1.1.25
       </div>
     </div>
   );
