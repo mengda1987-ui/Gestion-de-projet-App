@@ -50,6 +50,8 @@ export default function GanttView() {
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
+  // 独立 ref：mouseup 同步标记，onClick 检查，避免 queueMicrotask 竞态导致 click 漏过
+  const wasDraggingRef = useRef<{ taskId: string } | null>(null);
   const viewStartRef = useRef(viewStart);
   viewStartRef.current = viewStart;
   const cellWidthRef = useRef(56);
@@ -222,6 +224,8 @@ export default function GanttView() {
       const cur = dragRef.current;
       if (cur) {
         if (cur.didMove) {
+          // 同步标记：确保 onClick 一定能检测到拖动过
+          wasDraggingRef.current = { taskId: cur.taskId };
           const task = tasks.find(t => t.id === cur.taskId);
           if (task) {
             const vStart = viewStartRef.current;
@@ -240,7 +244,7 @@ export default function GanttView() {
           }
         }
       }
-      // 延迟一帧清空，让onClick先检测到didMove=true避免打开详情
+      // 延迟一帧清空 drag state
       queueMicrotask(() => {
         setDrag(null);
         dragRef.current = null;
@@ -458,19 +462,26 @@ export default function GanttView() {
                             return (
                               <div
                                 onClick={(e) => {
-                                  const cur = dragRef.current;
-                                  // 若本次是拖动操作（didMove=true或仍在drag同task上下文），禁止打开详情
-                                  if (cur && cur.taskId === task.id && cur.didMove) {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    return;
-                                  }
-                                  if (isDragging) {
-                                    e.stopPropagation();
-                                    return;
-                                  }
-                                  setSelectedCardId(task.id);
-                                }}
+                                // 优先检查 wasDraggingRef（mouseup 中同步设置，最可靠）
+                                if (wasDraggingRef.current?.taskId === task.id) {
+                                  wasDraggingRef.current = null;
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  return;
+                                }
+                                // 兜底：dragRef 尚存且 didMove
+                                const cur = dragRef.current;
+                                if (cur && cur.taskId === task.id && cur.didMove) {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  return;
+                                }
+                                if (isDragging) {
+                                  e.stopPropagation();
+                                  return;
+                                }
+                                setSelectedCardId(task.id);
+                              }}
                                 className={cn(
                                   'absolute rounded-lg shadow-sm transition-all group flex items-center',
                                   barColor,
