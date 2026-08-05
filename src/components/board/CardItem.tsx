@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Card, User } from '@/types';
+import { Card, User, Label } from '@/types';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { AvatarStack, Avatar } from '@/components/ui/Avatar';

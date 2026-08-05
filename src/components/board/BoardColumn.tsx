@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Droppable, Draggable, DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import { Column, Card as CardType } from '@/types';
+import type { User } from '@/types';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import CardItem from './CardItem';

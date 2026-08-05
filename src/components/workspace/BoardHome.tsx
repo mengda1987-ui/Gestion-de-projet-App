@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
+import type { User } from '@/types';
 import {
   Plus,
   Trash2,

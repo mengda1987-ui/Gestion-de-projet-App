@@ -30,7 +30,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ViewMode } from '@/types';
+import { ViewMode, Label, User } from '@/types';
 import BoardView from './BoardView';
 import TableView from './TableView';
 import GanttView from './GanttView';

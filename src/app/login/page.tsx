@@ -6,6 +6,7 @@ import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { LogIn, Languages, User2, Lock, Palette, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { User } from '@/types';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function LoginPage() {

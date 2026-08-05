@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Card, Label, User } from '@/types';
+import { Card, Label, User, Checklist, ChecklistItem, Attachment, Comment } from '@/types';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { Avatar, AvatarStack } from '@/components/ui/Avatar';
