@@ -309,17 +309,6 @@ export default function BoardHome() {
                       </div>
                     </div>
 
-                    <div className="flex gap-1.5 mb-4">
-                      {board.columns.slice(0, 6).map((col, i) => (
-                        <div
-                          key={col.id}
-                          className="flex-1 h-1.5 rounded-full"
-                          style={{ background: board.background || bg, opacity: 0.35 + (i / board.columns.length) * 0.4 }}
-                        />
-                      ))}
-                      {board.columns.length === 0 && <div className="flex-1 h-1.5 rounded-full bg-slate-200" />}
-                    </div>
-
                     <div className="flex items-center gap-3">
                       <span className="flex items-center gap-1 text-sm text-slate-600"><LayoutGrid size={13} /><span className="font-semibold text-slate-700">{colCount}</span></span>
                       <span className="flex items-center gap-1 text-sm text-slate-600"><ListTodo size={13} /><span className="font-semibold text-slate-700">{cardCount}</span></span>
@@ -652,7 +641,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="text-center py-2 text-[11px] text-slate-400 shrink-0">
-        v1.0.23
+        v1.0.24
       </div>
     </div>
   );
