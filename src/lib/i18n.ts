@@ -38,6 +38,7 @@ const zh: Dict = {
   'nav.table': '表格',
   'nav.gantt': '甘特图',
   'nav.mindmap': '脑图',
+  'nav.summary': '总结',
   'nav.archived': '归档',
   'nav.searchPlaceholder': '🔍 搜索卡片、清单、成员…',
   'nav.filter': '筛选',
@@ -238,6 +239,27 @@ const zh: Dict = {
   'common.all': '全部',
 
   'profile.title': '编辑个人资料',
+
+  'summary.title': '项目总结',
+  'summary.totalTasks': '总任务数',
+  'summary.totalLists': '总列表数',
+  'summary.totalSubtasks': '总子任务数',
+  'summary.completedTasks': '已完成',
+  'summary.inProgressTasks': '进行中',
+  'summary.todoTasks': '待开始',
+  'summary.overdueTasks': '已逾期',
+  'summary.completionRate': '完成率',
+  'summary.memberStats': '成员统计',
+  'summary.listStats': '列表统计',
+  'summary.overview': '总览',
+  'summary.person': '成员',
+  'summary.done': '已完成',
+  'summary.notDone': '未完成',
+  'summary.noData': '暂无数据',
+  'summary.allDone': '全部完成 🎉',
+  'summary.tasks': '任务',
+  'summary.subtasks': '子任务',
+  'summary.cards': '卡片',
 };
 
 const en: Dict = {
@@ -259,6 +281,7 @@ const en: Dict = {
   'nav.table': 'Table',
   'nav.gantt': 'Gantt',
   'nav.mindmap': 'Mind Map',
+  'nav.summary': 'Summary',
   'nav.archived': 'Archive',
   'nav.searchPlaceholder': '🔍 Search cards, checklists, members…',
   'nav.filter': 'Filter',
@@ -463,6 +486,27 @@ const en: Dict = {
   'common.all': 'All',
 
   'profile.title': 'Edit Profile',
+
+  'summary.title': 'Project Summary',
+  'summary.totalTasks': 'Total Tasks',
+  'summary.totalLists': 'Total Lists',
+  'summary.totalSubtasks': 'Total Subtasks',
+  'summary.completedTasks': 'Completed',
+  'summary.inProgressTasks': 'In Progress',
+  'summary.todoTasks': 'To Do',
+  'summary.overdueTasks': 'Overdue',
+  'summary.completionRate': 'Completion Rate',
+  'summary.memberStats': 'Member Statistics',
+  'summary.listStats': 'List Statistics',
+  'summary.overview': 'Overview',
+  'summary.person': 'Member',
+  'summary.done': 'Done',
+  'summary.notDone': 'Not Done',
+  'summary.noData': 'No data',
+  'summary.allDone': 'All done 🎉',
+  'summary.tasks': 'Tasks',
+  'summary.subtasks': 'Subtasks',
+  'summary.cards': 'Cards',
 };
 
 const dictionaries: Record<Lang, Dict> = { zh, en };

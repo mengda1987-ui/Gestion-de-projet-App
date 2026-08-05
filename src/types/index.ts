@@ -109,7 +109,7 @@ export interface Board {
   order?: number;
 }
 
-export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap';
+export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary';
 
 export interface FilterState {
   search: string;

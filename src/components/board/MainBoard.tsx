@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   List,
   BarChart3,
+  ClipboardList,
   Search,
   Moon,
   Sun,
@@ -35,6 +36,7 @@ import BoardView from './BoardView';
 import TableView from './TableView';
 import GanttView from './GanttView';
 import MindMapView from './MindMapView';
+import SummaryView from './SummaryView';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function MainBoard() {
@@ -63,6 +65,7 @@ export default function MainBoard() {
     { id: 'table', label: t('nav.table'), icon: List },
     { id: 'gantt', label: t('nav.gantt'), icon: BarChart3 },
     { id: 'mindmap', label: t('nav.mindmap'), icon: Network },
+    { id: 'summary', label: t('nav.summary'), icon: ClipboardList },
   ], [t]);
 
   const handleLogout = () => {
@@ -198,8 +201,29 @@ export default function MainBoard() {
             <Menu size={18} />
           </button>
 
+          {/* View Toggle — icon only, label on lg+ */}
+          <div className="flex items-center bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded-full p-0.5 shrink-0 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+            {viewOptions.map(({ id, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => dispatch({ type: 'SET_VIEW_MODE', payload: id })}
+                className={cn(
+                  'flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200',
+                  viewMode === id
+                    ? 'bg-[#007AFF] text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                )}
+              >
+                <Icon size={14} />
+              </button>
+            ))}
+          </div>
+
+          {/* Spacer — pushes everything after to the right */}
+          <div className="flex-1" />
+
           {/* Search Bar */}
-          <div className="relative flex-1 sm:flex-none min-w-0">
+          <div className="relative sm:flex-none min-w-0">
             <div className={cn(
               'flex items-center gap-1.5 rounded-lg transition-all duration-200',
               'bg-white/90 dark:bg-slate-800/90 backdrop-blur',
@@ -224,24 +248,6 @@ export default function MainBoard() {
                 </button>
               )}
             </div>
-          </div>
-
-          {/* View Toggle — icon only, label on lg+ */}
-          <div className="flex items-center bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded-full p-0.5 shrink-0 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
-            {viewOptions.map(({ id, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => dispatch({ type: 'SET_VIEW_MODE', payload: id })}
-                className={cn(
-                  'flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200',
-                  viewMode === id
-                    ? 'bg-[#007AFF] text-white shadow-sm'
-                    : 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                )}
-              >
-                <Icon size={14} />
-              </button>
-            ))}
           </div>
 
           {/* Filter Button */}
@@ -520,6 +526,7 @@ export default function MainBoard() {
         {viewMode === 'table' && <TableView />}
         {viewMode === 'gantt' && <GanttView />}
         {viewMode === 'mindmap' && <MindMapView />}
+        {viewMode === 'summary' && <SummaryView />}
       </main>
 
       {showProfile && (
@@ -657,7 +664,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.4.1</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.4.2</span>
     </div>
   );
 }
