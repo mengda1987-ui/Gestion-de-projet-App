@@ -180,7 +180,7 @@ export default function LoginPage() {
       </div>
 
       {/* Version */}
-      <p className="absolute bottom-6 right-4 text-xs text-black font-medium">v1.1.31</p>
+      <p className="absolute bottom-6 right-4 text-xs text-black font-medium">v1.3.0</p>
 
       {/* Background Picker */}
       {showBgPicker && createPortal(
