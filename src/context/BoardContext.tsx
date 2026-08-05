@@ -97,7 +97,32 @@ export function useBoardContext() {
 }
 
 export function useBoard() {
-  return useBoardContext().state.board;
+  const { state, dispatch, broadcastChange } = useBoardContext();
+  const findCard = (cardId: string) => {
+    for (const col of state.board.columns) {
+      const card = col.cards.find(c => c.id === cardId);
+      if (card) return card;
+    }
+    return undefined;
+  };
+  return {
+    users: state.users,
+    boards: state.boards,
+    board: state.board,
+    currentBoardId: state.currentBoardId,
+    currentUser: state.currentUser,
+    viewMode: state.viewMode,
+    filters: state.filters,
+    darkMode: state.darkMode,
+    onlineUsers: state.onlineUsers,
+    workspaceBackground: state.workspaceBackground,
+    loginBackground: state.loginBackground,
+    logo: state.logo,
+    boardLabels: state.boardLabels,
+    dispatch,
+    broadcastChange,
+    findCard,
+  };
 }
 
 export function useBoardState() {
