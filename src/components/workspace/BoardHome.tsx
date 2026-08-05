@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useBoard } from '@/context/BoardContext';
@@ -72,6 +72,16 @@ const BOARD_BG_GRADIENTS = [
   'linear-gradient(135deg, #f953c6 0%, #b91d73 100%)',
 ];
 
+const FALLBACK_EMOJIS = ['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','📢','📚','✈️','🌐','📅','📈','🎓','🏥','🎬','🛒','⚙️','🔒','💼','🏠','🎵','📱','💰','🗂️','🎪'];
+
+function getBoardFallbackBg(title: string): string {
+  return BOARD_BG_GRADIENTS[title.length % BOARD_BG_GRADIENTS.length];
+}
+
+function getBoardFallbackEmoji(title: string): string {
+  return FALLBACK_EMOJIS[title.length % FALLBACK_EMOJIS.length];
+}
+
 export default function BoardHome() {
   const { boards, currentUser, users, dispatch, broadcastChange, workspaceBackground, logo } = useBoard();
   const { t, lang, toggleLang } = useLang();
@@ -93,40 +103,53 @@ export default function BoardHome() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
 
+  // 稳定的可见看板列表（按 order 排序，order 相同则按 createdAt）
   const visibleBoards = boards
     .filter(b => {
       if (currentUser?.role === 'admin') return true;
       if (!b.visibleTo || b.visibleTo.length === 0) return true;
       return b.visibleTo.includes(currentUser?.id || '');
     })
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    .sort((a, b) => {
+      const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      // 二级排序保证稳定性
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    });
+
+  // 用 ref 避免 handleDragEnd 闭包过期
+  const boardsRef = useRef(boards);
+  const visibleRef = useRef(visibleBoards);
+  boardsRef.current = boards;
+  visibleRef.current = visibleBoards;
 
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
 
-  const handleDragEnd = (result: DropResult) => {
+  const handleDragEnd = useCallback((result: DropResult) => {
     if (!result.destination) return;
     const fromIndex = result.source.index;
     const toIndex = result.destination.index;
     if (fromIndex === toIndex) return;
 
-    // Update order field for all boards
-    const reordered = [...visibleBoards];
-    const [moved] = reordered.splice(fromIndex, 1);
-    reordered.splice(toIndex, 0, moved);
+    // 使用 ref 获取最新数据，避免闭包过期
+    const currentVisible = [...visibleRef.current];
+    const currentAll = boardsRef.current;
 
-    // Assign new order values
-    const updatedBoards = boards.map(board => {
-      const newIndex = reordered.findIndex(b => b.id === board.id);
-      if (newIndex >= 0) {
-        return { ...board, order: newIndex, updatedAt: new Date().toISOString() };
+    // 在 visible 列表中重排
+    const [moved] = currentVisible.splice(fromIndex, 1);
+    currentVisible.splice(toIndex, 0, moved);
+
+    // 为所有看板重新分配 order（只更新在 visible 中的看板）
+    const updatedBoards = currentAll.map(board => {
+      const newIdx = currentVisible.findIndex(b => b.id === board.id);
+      if (newIdx >= 0) {
+        return { ...board, order: newIdx, updatedAt: new Date().toISOString() };
       }
       return board;
     });
 
-    dispatch({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
-  };
-
-  const bgRef = [...BOARD_BG_GRADIENTS];
+    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
+  }, [broadcastChange]);
 
   const getBgStyle = (bg: string): React.CSSProperties => {
     if (bg.startsWith('url(') || bg.startsWith('data:')) {
@@ -354,12 +377,12 @@ export default function BoardHome() {
           </div>
         ) : (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="board-grid" type="BOARD">
+            <Droppable droppableId="board-grid" type="BOARD" direction="horizontal">
               {(provided) => (
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+                  className="flex flex-wrap gap-6"
                 >
                   {visibleBoards.map((board, idx) => {
                     const colCount = board.columns.length;
@@ -384,9 +407,9 @@ export default function BoardHome() {
                       });
                     });
 
-                    const bg = bgRef[board.title.length % bgRef.length];
-                    const emojis = ['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','📢','📚','✈️','🌐','📋','📅','📈','🎓','🏥','🎬','🛒','⚙️','🔒','💼','🏠','🎵','📱','💰','🗂️','🎪'];
-                    const emoji = board.emoji || emojis[board.title.length % emojis.length];
+                    const fallbackBg = getBoardFallbackBg(board.title);
+                    const fallbackEmoji = getBoardFallbackEmoji(board.title);
+                    const actualEmoji = board.emoji || fallbackEmoji;
                     return (
                       <Draggable key={board.id} draggableId={board.id} index={idx}>
                         {(provided, snapshot) => (
@@ -395,17 +418,17 @@ export default function BoardHome() {
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
                             className={cn(
-                              'group apple-card cursor-pointer overflow-hidden flex flex-col',
-                              snapshot.isDragging && 'shadow-2xl opacity-90 scale-[1.02]'
+                              'group apple-card cursor-pointer overflow-hidden flex flex-col w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] transition-shadow',
+                              snapshot.isDragging && 'shadow-2xl opacity-90 z-50'
                             )}
                             onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
                           >
-                            <div className="h-1.5 w-full shrink-0" style={{ background: board.background || bg }} />
+                            <div className="h-1.5 w-full shrink-0" style={{ background: board.background || fallbackBg }} />
                             <div className="p-4 flex flex-col flex-1">
                               <div className="flex items-start gap-3.5 mb-3">
                                 <button
                                   className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer overflow-hidden"
-                                  style={{ background: board.iconBg || board.background || bg }}
+                                  style={{ background: board.iconBg || board.background || fallbackBg }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (emojiPickerId === board.id) {
@@ -422,7 +445,7 @@ export default function BoardHome() {
                                   {board.iconImage ? (
                                     <img src={board.iconImage} alt="" className="w-full h-full object-cover" />
                                   ) : (
-                                    <span>{emoji}</span>
+                                    <span>{actualEmoji}</span>
                                   )}
                                 </button>
                                 <div className="min-w-0 flex-1 pt-0.5">
@@ -854,7 +877,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.4.6
+        v1.4.7
       </div>
     </div>
   );
