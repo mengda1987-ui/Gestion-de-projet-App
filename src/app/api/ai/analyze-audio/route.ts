@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { deepMaskSensitiveData } from '@/lib/dataMasking';
 
 const SYSTEM_PROMPT = `You are an expert meeting/audio summarizer. Analyze the provided audio recording and produce a structured mind map summary with exactly 3 levels. Follow these rules strictly:
 
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
       })),
     };
 
-    return NextResponse.json(sanitized);
+    return NextResponse.json(deepMaskSensitiveData(sanitized));
   } catch (error: any) {
     console.error('Audio analysis error:', error);
     return NextResponse.json(
