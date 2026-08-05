@@ -41,6 +41,8 @@ import {
   Quote,
   List as ListIcon,
   Link,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import {
   cn,
@@ -258,6 +260,7 @@ export default function CardDetailModal({
   const [descValue, setDescValue] = useState(latestCard.description);
   const [showLabels, setShowLabels] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showVisibility, setShowVisibility] = useState(false);
   const [showDueDate, setShowDueDate] = useState(false);
   const [dueDateValue, setDueDateValue] = useState(
     latestCard.dueDate ? format(parseISO(latestCard.dueDate), 'yyyy-MM-dd') : ''
@@ -1321,6 +1324,78 @@ export default function CardDetailModal({
                         })}
                       </div>
                     </div>
+                  )}
+
+                  {/* Visibility control (admin only) */}
+                  {currentUser?.role === 'admin' && (
+                    <>
+                      <button
+                        onClick={() => setShowVisibility(!showVisibility)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group"
+                      >
+                        <Eye size={15} className="text-slate-500 group-hover:text-[#007AFF]" />
+                        <span className="flex-1 text-left">{lang === 'zh' ? '卡片可见性' : 'Card visibility'}</span>
+                        <ChevronDown size={14} className={cn('text-slate-400 transition-transform', showVisibility && 'rotate-180')} />
+                      </button>
+
+                      {showVisibility && (
+                        <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 animate-slide-up space-y-2">
+                          <div className="text-[11px] font-semibold uppercase text-slate-400 tracking-wider">
+                            {lang === 'zh' ? '👁️ 谁可以看见此卡片' : '👁️ Who can see this card'}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={() => {
+                                broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates: { visibleTo: undefined } } });
+                              }}
+                              className={cn(
+                                'text-[11px] px-2.5 py-1 rounded-full font-medium transition-all border',
+                                !latestCard.visibleTo?.length
+                                  ? 'bg-[#007AFF] text-white border-[#007AFF]'
+                                  : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50 dark:text-slate-300'
+                              )}
+                            >
+                              {lang === 'zh' ? '全部' : 'All'}
+                            </button>
+                            {users.map(u => {
+                              const isVisible = !latestCard.visibleTo?.length || latestCard.visibleTo?.includes(u.id);
+                              return (
+                                <button
+                                  key={u.id}
+                                  onClick={() => {
+                                    const current = latestCard.visibleTo || users.map(x => x.id);
+                                    const next = isVisible
+                                      ? current.filter(id => id !== u.id)
+                                      : [...current, u.id];
+                                    broadcastChange({
+                                      type: 'UPDATE_CARD',
+                                      payload: { cardId: latestCard.id, updates: { visibleTo: next.length === users.length ? undefined : next } },
+                                    });
+                                  }}
+                                  className={cn(
+                                    'text-[11px] px-2.5 py-1 rounded-full font-medium transition-all border flex items-center gap-1.5',
+                                    isVisible
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                      : 'text-slate-300 dark:text-slate-600 border-slate-100 dark:border-slate-800 line-through'
+                                  )}
+                                >
+                                  <div
+                                    className="w-3 h-3 rounded-full shrink-0"
+                                    style={{ backgroundColor: u.color }}
+                                  />
+                                  {u.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">
+                            {lang === 'zh'
+                              ? '默认所有人可见。取消选择成员后，他们将看不到此卡片。管理员始终可见。'
+                              : 'Visible to all by default. Deselect members to hide this card from them. Admins can always see all cards.'}
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group"

@@ -26,41 +26,42 @@ export default function BoardView() {
 
   const visibleColumns = useMemo(() => {
     let cols = board.columns.filter(c => !c.archived || filters.showArchived);
-    
-    if (filters.search || filters.labels.length > 0 || filters.assignees.length > 0) {
-      cols = cols.map(col => ({
-        ...col,
-        cards: col.cards.filter(card => {
-          if (card.archived && !filters.showArchived) return false;
+    const hasActiveFilters = filters.search || filters.labels.length > 0 || filters.assignees.length > 0;
 
-          if (filters.search) {
-            const searchLower = filters.search.toLowerCase();
-            const inTitle = card.title.toLowerCase().includes(searchLower);
-            const inDesc = card.description.toLowerCase().includes(searchLower);
-            const inComments = card.comments.some(c => c.text.toLowerCase().includes(searchLower));
-            if (!inTitle && !inDesc && !inComments) return false;
-          }
+    cols = cols.map(col => ({
+      ...col,
+      cards: col.cards.filter(card => {
+        if (card.archived && !filters.showArchived) return false;
 
-          if (filters.labels.length > 0) {
-            const hasLabel = filters.labels.some(l => card.labels.includes(l));
-            if (!hasLabel) return false;
-          }
+        // Admin visibility control — always apply
+        if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return false;
 
-          if (filters.assignees.length > 0) {
-            const hasAssignee = filters.assignees.some(a => card.assignees.includes(a));
-            if (!hasAssignee) return false;
-          }
+        if (!hasActiveFilters) return true;
 
-          // Admin visibility control
-          if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return false;
+        if (filters.search) {
+          const searchLower = filters.search.toLowerCase();
+          const inTitle = card.title.toLowerCase().includes(searchLower);
+          const inDesc = card.description.toLowerCase().includes(searchLower);
+          const inComments = card.comments.some(c => c.text.toLowerCase().includes(searchLower));
+          if (!inTitle && !inDesc && !inComments) return false;
+        }
 
-          return true;
-        }),
-      }));
-    }
+        if (filters.labels.length > 0) {
+          const hasLabel = filters.labels.some(l => card.labels.includes(l));
+          if (!hasLabel) return false;
+        }
+
+        if (filters.assignees.length > 0) {
+          const hasAssignee = filters.assignees.some(a => card.assignees.includes(a));
+          if (!hasAssignee) return false;
+        }
+
+        return true;
+      }),
+    }));
     
     return cols;
-  }, [board.columns, filters]);
+  }, [board.columns, filters, currentUser?.id, currentUser?.role]);
 
   const handleDragStart = (start: DragStart) => {
     if (start.type === 'COLUMN') {
