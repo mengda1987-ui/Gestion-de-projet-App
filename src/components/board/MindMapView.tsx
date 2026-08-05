@@ -23,6 +23,7 @@ import {
   Archive,
   ArchiveRestore,
   Maximize2,
+  FileAudio,
 } from 'lucide-react';
 
 type NodeKind = 'column' | 'card' | 'item';
@@ -113,6 +114,10 @@ export default function MindMapView() {
   const pendingPositionsRef = useRef(pendingPositions);
   pendingPositionsRef.current = pendingPositions;
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { title: string; items: string[] }[] }[] } | null>(null);
   interface NodeDragState {
     nodeId: string;
     kind: NodeKind;
@@ -825,6 +830,84 @@ export default function MindMapView() {
   }, []);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAiLoading(true);
+    setAiError('');
+    setAiResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      const response = await fetch('/api/ai/analyze-audio', { method: 'POST', body: formData });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(err.error || `HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setAiResult(data);
+    } catch (err: any) {
+      setAiError(err.message || 'Analysis failed');
+    } finally {
+      setAiLoading(false);
+      // Reset the file input
+      e.target.value = '';
+    }
+  };
+
+  const applyAiResult = () => {
+    if (!aiResult) return;
+    for (const col of aiResult.columns) {
+      const colId = generateId();
+      broadcastChange({
+        type: 'ADD_COLUMN',
+        payload: { title: col.title, id: colId },
+      } as any);
+      for (const card of col.cards) {
+        const cardId = generateId();
+        broadcastChange({
+          type: 'ADD_CARD',
+          payload: {
+            columnId: colId,
+            card: {
+              id: cardId,
+              title: card.title,
+              description: '',
+              labels: [],
+              assignees: [],
+              archived: false,
+              checklists: [],
+              comments: [],
+              attachments: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              order: col.cards.indexOf(card),
+            },
+          },
+        });
+        if (card.items.length > 0) {
+          const checklistId = generateId();
+          (broadcastChange as any)({
+            type: 'ADD_CHECKLIST',
+            payload: { cardId, name: 'Tasks' },
+          });
+          for (const item of card.items) {
+            (broadcastChange as any)({
+              type: 'ADD_CHECKLIST_ITEM',
+              payload: { cardId, checklistId, text: item },
+            });
+          }
+        }
+      }
+    }
+    setAiModalOpen(false);
+    setAiResult(null);
+    // Scroll to first new column
+    if (aiResult.columns.length > 0) {
+      scrollTargetRefIdRef.current = ''; // will be set by ADD_COLUMN
+    }
+  };
+
   const totalCanvasW = Math.max(bbox.w, 1600);
   const totalCanvasH = Math.max(bbox.h, 900);
 
@@ -905,6 +988,12 @@ export default function MindMapView() {
           title={t('mindmap.clearLayoutHint')}
         >
           <Layers size={14}/> {t('mindmap.resetLayout')}
+        </button>
+        <button
+          onClick={() => setAiModalOpen(true)}
+          className="btn-primary text-xs h-8 px-2.5 inline-flex items-center gap-1 bg-gradient-to-r from-violet-500 to-indigo-500 text-white hover:from-violet-600 hover:to-indigo-600"
+        >
+          <FileAudio size={14}/> {t('mindmap.ai.analyze')}
         </button>
 
         <div className="flex-1" />
@@ -1004,6 +1093,7 @@ export default function MindMapView() {
             
             // Special todos: white bg, blue text/border (only when no label color)
             const isTodoCard = n.node.kind === 'card' && n.node.status === 'todo' && n.node.color === '#FFFFFF';
+            const isItemNode = n.node.kind === 'item';
             
             let zIdx = 100 + n.depth * 10;
             if (isHover) zIdx = 5000 + n.depth * 10;
@@ -1054,13 +1144,15 @@ export default function MindMapView() {
                     // Border logic
                     isTodoCard 
                       ? 'border-2 border-[#007AFF]' 
-                      : n.node.kind === 'card'
-                        ? 'border-2 border-black dark:border-white'
-                        : 'border border-white/60 dark:border-slate-600/50',
+                      : isItemNode
+                        ? 'border-2 border-emerald-500'
+                        : n.node.kind === 'card'
+                          ? 'border-2 border-black dark:border-white'
+                          : 'border border-white/60 dark:border-slate-600/50',
                     n.node.completed && 'line-through decoration-current decoration-2'
                   )}
                   style={{
-                    background: `linear-gradient(135deg, ${n.node.color} 0%, ${n.node.color}ee 100%)`,
+                    background: isItemNode ? '#FFFFFF' : `linear-gradient(135deg, ${n.node.color} 0%, ${n.node.color}ee 100%)`,
                     paddingLeft: NODE_PADDING_X,
                     paddingRight: NODE_PADDING_X,
                   }}
@@ -1072,9 +1164,11 @@ export default function MindMapView() {
                         'font-bold whitespace-normal text-center leading-snug select-none w-full break-words',
                         isTodoCard 
                           ? 'text-[#007AFF]' 
-                          : contrastColor === 'black' 
-                            ? 'text-black' 
-                            : 'text-white drop-shadow-sm',
+                          : isItemNode
+                            ? 'text-[#007AFF]'
+                            : contrastColor === 'black' 
+                              ? 'text-black' 
+                              : 'text-white drop-shadow-sm',
                         n.depth === 0 ? 'text-[16px]' : n.depth === 1 ? 'text-[14px]' : 'text-[13px]'
                       )}
                       title={n.node.text + (n.node.description ? `\n---\n${n.node.description.slice(0, 200)}` : '')}
@@ -1101,6 +1195,7 @@ export default function MindMapView() {
                 {/* Floating action bar — 悬停和编辑时统一贴在右上角外侧 */}
                  <div className="absolute -top-9 -right-9 z-30 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-1 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto">
                   <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-1 flex items-center gap-0.5">
+                    {!isItemNode && (
                     <button
                       onClick={(e) => {
                         stop(e);
@@ -1115,12 +1210,20 @@ export default function MindMapView() {
                     >
                       <Palette size={14}/>
                     </button>
+                    )}
                     <button
                       onClick={(e) => { stop(e); addChild(n.node); }}
                       className="w-7 h-7 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-300 flex items-center justify-center"
                       title={n.node.kind === 'column' ? t('mindmap.tooltip.addCard') : n.node.kind === 'card' ? t('mindmap.tooltip.addSubtask') : t('mindmap.tooltip.addSibling')}
                     >
                       <PlusCircle size={15}/>
+                    </button>
+                    <button
+                      onClick={(e) => { stop(e); deleteNode(n.node); }}
+                      className="w-7 h-7 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/20 dark:hover:text-red-300 flex items-center justify-center"
+                      title={t('mindmap.tooltip.delete')}
+                    >
+                      <Trash2 size={14}/>
                     </button>
                     <button
                       onClick={(e) => {
@@ -1261,6 +1364,141 @@ export default function MindMapView() {
           </div>
         );
       })(), document.body)}
+
+      {/* AI Audio Analysis Modal */}
+      {aiModalOpen && createPortal((
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => { if (!aiLoading) { setAiModalOpen(false); setAiResult(null); setAiError(''); } }}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-[560px] max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={stop}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white">
+                  <FileAudio size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('mindmap.ai.title')}</h3>
+                  <p className="text-[10px] text-slate-500">{t('mindmap.ai.subtitle')}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { if (!aiLoading) { setAiModalOpen(false); setAiResult(null); setAiError(''); } }}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-500"
+              >
+                <span className="text-lg leading-none">&times;</span>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-auto p-4 space-y-4">
+              {!aiResult && !aiError && (
+                <div className="flex flex-col items-center py-8 gap-4">
+                  <label className={cn(
+                    'cursor-pointer flex flex-col items-center gap-3 px-8 py-10 border-2 border-dashed rounded-2xl transition-all',
+                    aiLoading
+                      ? 'border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20'
+                      : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20'
+                  )}>
+                    {aiLoading ? (
+                      <>
+                        <div className="w-10 h-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+                        <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">{t('mindmap.ai.analyzing')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-950/50 dark:to-indigo-950/50 flex items-center justify-center text-indigo-500">
+                          <FileAudio size={24} />
+                        </div>
+                        <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">{t('mindmap.ai.upload')}</span>
+                        <span className="text-[11px] text-slate-400">{t('mindmap.ai.uploadHint')}</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={handleAudioUpload}
+                      className="hidden"
+                      disabled={aiLoading}
+                    />
+                  </label>
+                </div>
+              )}
+
+              {aiError && (
+                <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
+                  {aiError}
+                </div>
+              )}
+
+              {aiResult && (
+                <div className="space-y-3">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('mindmap.ai.preview')}</div>
+                  {aiResult.columns.map((col, ci) => (
+                    <div key={ci} className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-5 h-5 rounded-md bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold">{ci + 1}</div>
+                        <input
+                          className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500"
+                          value={col.title}
+                          onChange={(e) => {
+                            const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, title: e.target.value } : c) };
+                            setAiResult(updated);
+                          }}
+                        />
+                      </div>
+                      {col.cards.map((card, cai) => (
+                        <div key={cai} className="ml-4 mb-2 pl-3 border-l-2 border-amber-300 dark:border-amber-700">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            <input
+                              className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-0.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-amber-400"
+                              value={card.title}
+                              onChange={(e) => {
+                                const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, cards: c.cards.map((ca, j) => j === cai ? { ...ca, title: e.target.value } : ca) } : c) };
+                                setAiResult(updated);
+                              }}
+                            />
+                          </div>
+                          {card.items.map((item, ii) => (
+                            <div key={ii} className="ml-6 flex items-center gap-1.5 mb-0.5">
+                              <div className="w-1 h-1 rounded-full bg-emerald-400" />
+                              <input
+                                className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-0.5 text-[11px] text-slate-600 dark:text-slate-300 outline-none focus:ring-2 focus:ring-emerald-400"
+                                value={item}
+                                onChange={(e) => {
+                                  const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, cards: c.cards.map((ca, j) => j === cai ? { ...ca, items: ca.items.map((it, k) => k === ii ? e.target.value : it) } : ca) } : c) };
+                                  setAiResult(updated);
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {aiResult && (
+              <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                <button
+                  onClick={applyAiResult}
+                  className="btn-primary px-5 h-9 text-sm inline-flex items-center gap-2 bg-gradient-to-r from-violet-500 to-indigo-500 text-white hover:from-violet-600 hover:to-indigo-600 rounded-xl font-semibold"
+                >
+                  <Sparkles size={16} /> {t('mindmap.ai.importBtn')}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }
