@@ -101,7 +101,7 @@ export function useBoard() {
   const findCard = (cardId: string) => {
     for (const col of state.board.columns) {
       const card = col.cards.find(c => c.id === cardId);
-      if (card) return card;
+      if (card) return { card, columnId: col.id };
     }
     return undefined;
   };
