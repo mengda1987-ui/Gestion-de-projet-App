@@ -205,10 +205,6 @@ export default function BoardHome() {
             </button>
             {currentUser?.role === 'admin' && (
               <>
-                <button onClick={() => setShowVisibilityPanel(true)} className="btn-secondary text-xs">
-                  <Eye size={14} />
-                  <span className="hidden sm:inline">{lang === 'zh' ? '可见性' : 'Visibility'}</span>
-                </button>
                 <button onClick={() => setShowMemberManage(true)} className="btn-secondary text-xs">
                   <Users size={14} />
                   <span className="hidden sm:inline">{lang === 'zh' ? '成员管理' : 'Members'}</span>
@@ -374,6 +370,19 @@ export default function BoardHome() {
               <MoreHorizontal size={13} className="rotate-90" />
               {lang === 'zh' ? '重命名' : 'Rename'}
             </button>
+            {currentUser?.role === 'admin' && (
+              <button
+                onClick={() => {
+                  setExpandedBoardId(menuOpenId);
+                  setShowVisibilityPanel(true);
+                  setMenuOpenId(null); setMenuPos(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <Eye size={13} />
+                {lang === 'zh' ? '可见性' : 'Visibility'}
+              </button>
+            )}
             <button
               onClick={() => { setDeleteTarget(menuOpenId); setMenuOpenId(null); setMenuPos(null); }}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -641,7 +650,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="text-center py-2 text-[11px] text-slate-400 shrink-0">
-        v1.0.24
+        v1.0.25
       </div>
     </div>
   );
