@@ -113,7 +113,6 @@ export default function BoardHome() {
   };
 
   const bgRef = [...BOARD_BG_GRADIENTS];
-  let bgIdx = 0;
 
   const getBgStyle = (bg: string): React.CSSProperties => {
     if (bg.startsWith('url(') || bg.startsWith('data:')) {
@@ -371,7 +370,7 @@ export default function BoardHome() {
                       });
                     });
 
-                    const bg = bgRef[(bgIdx++) % bgRef.length];
+                    const bg = bgRef[board.title.length % bgRef.length];
                     const emojis = ['📋','🚀','💡','🎯','🔥','🌟','💎','🎨','⚡','🛠️','📦','🏗️','📢','📚','✈️','🌐','📋','📅','📈','🎓','🏥','🎬','🛒','⚙️','🔒','💼','🏠','🎵','📱','💰','🗂️','🎪'];
                     const emoji = board.emoji || emojis[board.title.length % emojis.length];
                     return (
