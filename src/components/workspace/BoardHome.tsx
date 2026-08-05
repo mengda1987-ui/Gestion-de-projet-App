@@ -125,45 +125,29 @@ export default function BoardHome() {
 
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
 
-  // 上移
-  const moveBoardUp = useCallback((boardId: string) => {
-    const sortedVisible = visibleRef.current; // 排序后的可见列表
-    const allBoards = [...boardsRef.current]; // 深拷贝全局列表
+  // 上移 / 下移：在排序列表中交换位置后，全局重新编号
+  const reorderBoard = useCallback((boardId: string, direction: 'up' | 'down') => {
+    const sorted = [...visibleRef.current]; // 排序后的可见列表
+    const idx = sorted.findIndex(b => b.id === boardId);
+    if (idx < 0) return;
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx >= sorted.length - 1) return;
 
-    const visIdx = sortedVisible.findIndex(b => b.id === boardId);
-    if (visIdx <= 0) return;
+    // 在排序列表中交换
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    [sorted[idx], sorted[targetIdx]] = [sorted[targetIdx], sorted[idx]];
 
-    // 在排序后的列表中交换这两个看板的 order
-    const boardA = sortedVisible[visIdx - 1]; // 上面的看板
-    const boardB = sortedVisible[visIdx];     // 当前看板
-
-    const updatedBoards = allBoards.map(board => {
-      if (board.id === boardA.id) return { ...board, order: boardB.order ?? visIdx, updatedAt: new Date().toISOString() };
-      if (board.id === boardB.id) return { ...board, order: boardA.order ?? visIdx - 1, updatedAt: new Date().toISOString() };
-      return board;
+    // 根据新顺序，为所有看板重新分配连续 order (0,1,2,3...)
+    const allBoards = boardsRef.current.map(board => {
+      const newPos = sorted.findIndex(s => s.id === board.id);
+      if (newPos >= 0) {
+        return { ...board, order: newPos, updatedAt: new Date().toISOString() };
+      }
+      // 不可见的看板保持原有 order（放在可见看板之后）
+      return { ...board, order: (board.order ?? 0) + 1000, updatedAt: new Date().toISOString() };
     });
 
-    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
-  }, [broadcastChange]);
-
-  // 下移
-  const moveBoardDown = useCallback((boardId: string) => {
-    const sortedVisible = visibleRef.current;
-    const allBoards = [...boardsRef.current];
-
-    const visIdx = sortedVisible.findIndex(b => b.id === boardId);
-    if (visIdx < 0 || visIdx >= sortedVisible.length - 1) return;
-
-    const boardA = sortedVisible[visIdx];     // 当前看板
-    const boardB = sortedVisible[visIdx + 1]; // 下面的看板
-
-    const updatedBoards = allBoards.map(board => {
-      if (board.id === boardA.id) return { ...board, order: boardB.order ?? visIdx + 1, updatedAt: new Date().toISOString() };
-      if (board.id === boardB.id) return { ...board, order: boardA.order ?? visIdx, updatedAt: new Date().toISOString() };
-      return board;
-    });
-
-    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
+    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: allBoards });
   }, [broadcastChange]);
 
   const getBgStyle = (bg: string): React.CSSProperties => {
@@ -424,7 +408,7 @@ export default function BoardHome() {
                   {/* Move buttons - left side, visible on hover */}
                   <div className="absolute -left-2 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <button
-                      onClick={(e) => { e.stopPropagation(); moveBoardUp(board.id); }}
+                      onClick={(e) => { e.stopPropagation(); reorderBoard(board.id, 'up'); }}
                       disabled={isFirst}
                       className="w-6 h-6 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#007AFF] hover:bg-blue-50 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
                       title={lang === 'zh' ? '上移' : 'Move up'}
@@ -432,7 +416,7 @@ export default function BoardHome() {
                       <ChevronUp size={14} />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); moveBoardDown(board.id); }}
+                      onClick={(e) => { e.stopPropagation(); reorderBoard(board.id, 'down'); }}
                       disabled={isLast}
                       className="w-6 h-6 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#007AFF] hover:bg-blue-50 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
                       title={lang === 'zh' ? '下移' : 'Move down'}
@@ -894,7 +878,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.5.01
+        v1.5.02
       </div>
     </div>
   );
