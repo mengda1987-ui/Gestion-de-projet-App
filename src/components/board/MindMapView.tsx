@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { Card, Column, ChecklistItem } from '@/types';
-import { cn, generateId } from '@/lib/utils';
+import { cn, generateId, getContrastColor } from '@/lib/utils';
 import {
   Network,
   Plus,
@@ -79,7 +79,7 @@ const DEFAULT_COLORS = [
 function estimateTextWidth(text: string): number {
   let w = 0;
   for (const ch of text) {
-    w += /[\u4e00-\u9fa5]/.test(ch) ? 13 : 7;
+    w += /[\u4e00-\u9fa5]/.test(ch) ? 14 : 8;
   }
   return w;
 }
@@ -168,10 +168,10 @@ export default function MindMapView() {
             const lbl = board.labels.find(l => l.id === card.labels[0]);
             if (lbl?.color) color = lbl.color;
           } else {
-            // Status-based colors for card nodes
-            if (card.status === 'in_progress') color = '#FBBF24';
-            else if (card.status === 'complete') color = '#10B981';
-            else color = '#FFFFFF';
+            // Status-based colors for card nodes - Align with Gantt
+            if (card.status === 'in_progress') color = '#FBBF24'; // Yellow
+            else if (card.status === 'complete') color = '#10B981'; // Green
+            else color = '#FFFFFF'; // White for todo
           }
           list.push({
             id: `card-${card.id}`,
@@ -233,7 +233,7 @@ export default function MindMapView() {
   byIdRef.current = byId;
 
   const layouted = useMemo<LayoutedNode[]>(() => {
-    function lay(root: VirtualNode, depth: number, yCursor: number, forceX?: number): LayoutedNode {
+    function lay(root: VirtualNode, depth: number, yCursor: number, xCursor: number): LayoutedNode {
       const rawKids = (childrenMap.get(root.refId) ?? []);
       const kids = collapsed[`k-${root.id}`] ? [] : rawKids;
       const width = nodeWidthFor(root.text, depth);
@@ -245,12 +245,12 @@ export default function MindMapView() {
       const childDepth = depth + 1;
       let childrenSubtreeHeight = 0;
 
+      const childrenXForce = xCursor + width + NODE_H_GAP;
+
       if (kids.length > 0) {
         let curY = yCursor;
         for (const k of kids) {
-          const kOverridden = !!k.posOverride && (k.posOverride.x !== 0 || k.posOverride.y !== 0);
-          // 即使子节点有 override，我们也先按自动布局算一遍高度，或者给个默认高度
-          const sub = lay(k, childDepth, curY);
+          const sub = lay(k, childDepth, curY, childrenXForce);
           layKids.push(sub);
           curY += sub.subtreeHeight + NODE_V_GAP;
         }
@@ -261,7 +261,7 @@ export default function MindMapView() {
       const subtreeHeight = Math.max(height, childrenSubtreeHeight);
 
       // 3. 确定当前节点的坐标
-      let x = forceX ?? (40 + depth * (NODE_H_GAP + NODE_MIN_WIDTH + 30));
+      let x = xCursor;
       let y = yCursor + subtreeHeight / 2 - height / 2;
 
       if (rootOverridden) {
@@ -270,25 +270,21 @@ export default function MindMapView() {
       }
 
       // 4. 如果当前节点位置变了（比如被居中或被 override），调整子节点的位置
-      if (kids.length > 0) {
-        const childrenXForce = x + width + NODE_H_GAP;
-        let curY = rootOverridden 
-          ? (y + height / 2 - childrenSubtreeHeight / 2)
-          : yCursor;
+      if (kids.length > 0 && rootOverridden) {
+        const childrenXForceOverride = x + width + NODE_H_GAP;
+        let curY = y + height / 2 - childrenSubtreeHeight / 2;
 
         for (let i = 0; i < layKids.length; i++) {
           const sub = layKids[i];
           const k = kids[i];
           const kOverridden = !!k.posOverride && (k.posOverride.x !== 0 || k.posOverride.y !== 0);
           
-          if (kOverridden) {
-            sub.x = k.posOverride!.x;
-            sub.y = k.posOverride!.y;
-          } else {
-            sub.x = childrenXForce;
+          if (!kOverridden) {
+            sub.x = childrenXForceOverride;
             sub.y = curY + sub.subtreeHeight / 2 - sub.height / 2;
-            // 递归更新子节点的子节点（如果有的话）
-            const shiftY = sub.y - (curY + sub.subtreeHeight / 2 - sub.height / 2); // 这里其实不需要 shift，因为我们是直接设置
+            // Note: We don't recursively update sub.children here because they were already 
+            // laid out relative to sub.x/sub.y in the first pass. 
+            // This is a limitation of the current simple layout engine.
           }
           curY += sub.subtreeHeight + NODE_V_GAP;
         }
@@ -301,9 +297,9 @@ export default function MindMapView() {
     let currentY = 48;
     const result: LayoutedNode[] = [];
     for (const r of roots) {
-      const lr = lay(r, 0, currentY);
+      const lr = lay(r, 0, currentY, 40);
       result.push(lr);
-      currentY += lr.subtreeHeight + 64; // 根节点之间留大一点间距
+      currentY += lr.subtreeHeight + 64;
     }
     return result;
   }, [nodes, childrenMap, collapsed]);
@@ -954,18 +950,23 @@ export default function MindMapView() {
           >
             <defs>
               {(() => {
-                const usedColors = new Set<string>();
+                const usedColors = new Map<string, string>();
                 nodesFlat.forEach(n => {
                   n.children.forEach(ch => {
-                    const c = ch.node.color.replace('#', '').toUpperCase();
-                    // White lines are invisible, replace with black
-                    usedColors.add(c === 'FFFFFF' ? '000000' : c);
+                    const raw = ch.node.color;
+                    const key = raw.replace('#', '').toUpperCase();
+                    if (!usedColors.has(key)) {
+                      // If background is light, ensure line is not too light
+                      const contrast = getContrastColor(raw);
+                      const finalColor = contrast === 'black' && key === 'FFFFFF' ? '#CBD5E1' : raw;
+                      usedColors.set(key, finalColor);
+                    }
                   });
                 });
-                return Array.from(usedColors).map(c => (
-                  <linearGradient key={`lg-${c}`} id={`mm-edge-${c}`} x1="0" x2="1" y1="0" y2="0">
-                    <stop offset="0%" stopColor={`#${c}`} stopOpacity="0.75"/>
-                    <stop offset="100%" stopColor={`#${c}`} stopOpacity="0.95"/>
+                return Array.from(usedColors.entries()).map(([key, color]) => (
+                  <linearGradient key={`lg-${key}`} id={`mm-edge-${key}`} x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.7"/>
+                    <stop offset="100%" stopColor={color} stopOpacity="0.9"/>
                   </linearGradient>
                 ));
               })()}
@@ -974,7 +975,6 @@ export default function MindMapView() {
               n.children.map(ch => {
                 const np = getNodePos(n);
                 const cp = getNodePos(ch);
-                // 端点 +6/-6 偏移，避开节点 ring / 阴影 / 圆角覆盖
                 const x1 = np.x + n.width + 6;
                 const y1 = np.y + n.height / 2;
                 const x2 = cp.x - 6;
@@ -982,19 +982,17 @@ export default function MindMapView() {
                 const span = Math.max(60, x2 - x1);
                 const cx = span * 0.55;
                 const d = `M ${x1} ${y1} C ${x1 + cx} ${y1}, ${x2 - cx} ${y2}, ${x2} ${y2}`;
-                const rawCol = ch.node.color.replace('#', '');
-                // White (#FFFFFF) lines are invisible on light backgrounds, use black instead
-                const col = rawCol.toUpperCase() === 'FFFFFF' ? '000000' : rawCol;
+                const colKey = ch.node.color.replace('#', '').toUpperCase();
                 return (
                   <path
                     key={`${n.node.id}->${ch.node.id}`}
                     d={d}
-                    stroke={`url(#mm-edge-${col})`}
+                    stroke={`url(#mm-edge-${colKey})`}
                     strokeWidth={ch.depth === 0 ? 5.5 : ch.depth === 1 ? 4.5 : 3.2}
                     fill="none"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    opacity={0.95}
+                    opacity={0.9}
                   />
                 );
               })
@@ -1013,6 +1011,11 @@ export default function MindMapView() {
             })();
             const isTopDrag = activeDragNodeId === n.node.id;
             const isHover = hoverNodeId === n.node.id;
+            const contrastColor = getContrastColor(n.node.color);
+            
+            // Special case for todo cards: white background, blue text, blue border
+            const isTodoCard = n.node.kind === 'card' && n.node.status === 'todo';
+            
             let zIdx = 100 + n.depth * 10;
             if (isHover) zIdx = 5000 + n.depth * 10;
             if (inDragSubtree) zIdx = 9000;
@@ -1058,12 +1061,14 @@ export default function MindMapView() {
 
                 <div
                   className={cn(
-                    'w-full h-full rounded-2xl flex items-center justify-center backdrop-blur group',
-                    // Border: black for card nodes, subtle for columns/items
-                    n.node.kind === 'card'
-                      ? 'border-2 border-black dark:border-white'
-                      : 'border border-white/60 dark:border-slate-600/50',
-                    n.node.completed && 'line-through decoration-black/60 dark:decoration-white/60 decoration-2'
+                    'w-full h-full rounded-2xl flex items-center justify-center backdrop-blur group transition-colors',
+                    // Border logic
+                    isTodoCard 
+                      ? 'border-2 border-[#007AFF]' 
+                      : n.node.kind === 'card'
+                        ? 'border-2 border-black dark:border-white'
+                        : 'border border-white/60 dark:border-slate-600/50',
+                    n.node.completed && 'line-through decoration-current decoration-2'
                   )}
                   style={{
                     background: `linear-gradient(135deg, ${n.node.color} 0%, ${n.node.color}ee 100%)`,
@@ -1076,9 +1081,11 @@ export default function MindMapView() {
                     <div
                       className={cn(
                         'font-bold whitespace-normal text-center leading-snug select-none w-full break-words',
-                        n.node.kind === 'card'
-                          ? 'text-black dark:text-white'
-                          : 'text-white drop-shadow-sm',
+                        isTodoCard 
+                          ? 'text-[#007AFF]' 
+                          : contrastColor === 'black' 
+                            ? 'text-black' 
+                            : 'text-white drop-shadow-sm',
                         n.depth === 0 ? 'text-[16px]' : n.depth === 1 ? 'text-[14px]' : 'text-[13px]'
                       )}
                       title={n.node.text + (n.node.description ? `\n---\n${n.node.description.slice(0, 200)}` : '')}
