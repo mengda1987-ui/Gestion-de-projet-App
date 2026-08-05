@@ -1491,6 +1491,16 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
                             setAiResult(updated);
                           }}
                         />
+                        <button
+                          onClick={() => {
+                            const cols = aiResult.columns.filter((_, i) => i !== ci);
+                            setAiResult(cols.length === 0 ? null : { ...aiResult, columns: cols });
+                          }}
+                          className="w-6 h-6 rounded-md hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                          title={lang === 'zh' ? '删除列' : 'Delete column'}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                       {col.cards.map((card, cai) => (
                         <div key={cai} className="ml-4 mb-2 pl-3 border-l-2 border-amber-300 dark:border-amber-700">
@@ -1504,6 +1514,16 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
                                 setAiResult(updated);
                               }}
                             />
+                            <button
+                              onClick={() => {
+                                const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, cards: c.cards.filter((_, j) => j !== cai) } : c) };
+                                setAiResult(updated);
+                              }}
+                              className="w-5 h-5 rounded hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                              title={lang === 'zh' ? '删除卡片' : 'Delete card'}
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </div>
                           {card.items.map((item, ii) => (
                             <div key={ii} className="ml-6 flex items-center gap-1.5 mb-0.5">
@@ -1516,6 +1536,16 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
                                   setAiResult(updated);
                                 }}
                               />
+                              <button
+                                onClick={() => {
+                                  const updated = { ...aiResult, columns: aiResult.columns.map((c, i) => i === ci ? { ...c, cards: c.cards.map((ca, j) => j === cai ? { ...ca, items: ca.items.filter((_, k) => k !== ii) } : ca) } : c) };
+                                  setAiResult(updated);
+                                }}
+                                className="w-5 h-5 rounded hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                                title={lang === 'zh' ? '删除条目' : 'Delete item'}
+                              >
+                                <Trash2 size={11} />
+                              </button>
                             </div>
                           ))}
                         </div>

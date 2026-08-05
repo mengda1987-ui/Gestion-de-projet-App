@@ -931,6 +931,27 @@ function syncMindMapCards(state: BoardState, action: Action): BoardState {
   const withSkip: <A>(act: A) => A & { _skipSync: true } = (act) => ({ ...(act as any), _skipSync: true } as any);
 
   switch (action.type) {
+    case 'ADD_COLUMN': {
+      // Auto-create mmRootId for new columns so downstream mindmap sync works
+      const newColId = (action.payload as any).id;
+      const col = next.board.columns.find(c => c.id === newColId);
+      if (!col || col.mmRootId) return state;
+      const rootNode: MindMapNode = {
+        id: `mm-root-${col.id}`,
+        text: col.title,
+        parentId: null,
+        color: '#6366F1',
+        collapsed: false,
+        order: next.board.mindmap.filter(n => n.parentId === null).length,
+        createdAt: now,
+        updatedAt: now,
+      };
+      next.board.mindmap = [...next.board.mindmap, rootNode];
+      next.board.columns = next.board.columns.map(c => c.id !== col.id ? c : { ...c, mmRootId: rootNode.id } as any);
+      next.board.updatedAt = now;
+      return next;
+    }
+
     case 'UPDATE_COLUMN': {
       const col = next.board.columns.find(c => c.id === action.payload.columnId);
       if (!col?.mmRootId) return state;
