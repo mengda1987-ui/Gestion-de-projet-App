@@ -159,6 +159,57 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // 数据持久化：当状态变化时自动保存到 Supabase
+  useEffect(() => {
+    if (!state._loaded) return;
+
+    const saveData = async () => {
+      try {
+        // 1. 保存看板数据
+        const boardsToSave = state.boards.map(b => ({
+          id: b.id,
+          title: b.title,
+          background: b.background,
+          labels: b.labels,
+          data: {
+            columns: b.columns,
+            mindmap: b.mindmap
+          },
+          order: b.order,
+          updated_at: new Date().toISOString()
+        }));
+
+        // 使用 upsert 批量更新/插入看板
+        const { error: boardsError } = await supabase
+          .from('boards')
+          .upsert(boardsToSave);
+
+        if (boardsError) throw boardsError;
+
+        // 2. 保存工作区设置
+        const { error: settingsError } = await supabase
+          .from('workspace_settings')
+          .upsert({
+            id: 1, // 假设只有一个工作区设置
+            workspace_background: state.workspaceBackground,
+            login_background: state.loginBackground,
+            logo: state.logo,
+            updated_at: new Date().toISOString()
+          });
+
+        if (settingsError) throw settingsError;
+
+        console.log('[Persistence] 数据已成功保存至 Supabase');
+      } catch (err) {
+        console.error('[Persistence] 数据保存失败:', err);
+      }
+    };
+
+    // 使用防抖避免频繁请求
+    const timer = setTimeout(saveData, 2000);
+    return () => clearTimeout(timer);
+  }, [state.boards, state.workspaceBackground, state.loginBackground, state.logo, state._loaded]);
+
   const broadcastChange = useCallback((action: Action) => {
     dispatch(action);
     if (channelRef.current) {

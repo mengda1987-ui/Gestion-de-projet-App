@@ -133,20 +133,30 @@ export default function BoardHome() {
 
     // 使用 ref 获取最新数据，避免闭包过期
     const currentVisible = [...visibleRef.current];
-    const currentAll = boardsRef.current;
+    const currentAll = [...boardsRef.current];
 
-    // 在 visible 列表中重排
-    const [moved] = currentVisible.splice(fromIndex, 1);
-    currentVisible.splice(toIndex, 0, moved);
+    // 1. 在可见列表中找到被移动的看板和目标位置的看板
+    const movedBoard = currentVisible[fromIndex];
+    const targetBoard = currentVisible[toIndex];
 
-    // 为所有看板重新分配 order（只更新在 visible 中的看板）
-    const updatedBoards = currentAll.map(board => {
-      const newIdx = currentVisible.findIndex(b => b.id === board.id);
-      if (newIdx >= 0) {
-        return { ...board, order: newIdx, updatedAt: new Date().toISOString() };
-      }
-      return board;
-    });
+    if (!movedBoard || !targetBoard) return;
+
+    // 2. 在全局列表中找到它们的索引
+    const globalFromIdx = currentAll.findIndex(b => b.id === movedBoard.id);
+    const globalToIdx = currentAll.findIndex(b => b.id === targetBoard.id);
+
+    if (globalFromIdx === -1 || globalToIdx === -1) return;
+
+    // 3. 在全局列表中执行移动
+    const [moved] = currentAll.splice(globalFromIdx, 1);
+    currentAll.splice(globalToIdx, 0, moved);
+
+    // 4. 为所有看板重新分配唯一的 order 字段
+    const updatedBoards = currentAll.map((board, idx) => ({
+      ...board,
+      order: idx,
+      updatedAt: new Date().toISOString()
+    }));
 
     broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
   }, [broadcastChange]);
@@ -377,12 +387,12 @@ export default function BoardHome() {
           </div>
         ) : (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="board-grid" type="BOARD" direction="horizontal">
+            <Droppable droppableId="board-grid" type="BOARD" direction="vertical">
               {(provided) => (
                 <div
                   ref={provided.innerRef}
                   {...provided.droppableProps}
-                  className="flex flex-wrap gap-6"
+                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
                 >
                   {visibleBoards.map((board, idx) => {
                     const colCount = board.columns.length;
@@ -418,7 +428,7 @@ export default function BoardHome() {
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
                             className={cn(
-                              'group apple-card cursor-pointer overflow-hidden flex flex-col w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] transition-shadow',
+                              'group apple-card cursor-pointer overflow-hidden flex flex-col transition-shadow h-[180px]',
                               snapshot.isDragging && 'shadow-2xl opacity-90 z-50'
                             )}
                             onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
@@ -527,7 +537,7 @@ export default function BoardHome() {
                   {/* Add new board card */}
                   <button
                     onClick={() => setShowCreate(true)}
-                    className="rounded-2xl border-2 border-dashed border-slate-300 hover:border-[#007AFF]/40 text-slate-400 hover:text-[#007AFF] transition-all flex flex-col items-center justify-center gap-3 py-14 bg-white/40 hover:bg-white/60"
+                    className="rounded-2xl border-2 border-dashed border-slate-300 hover:border-[#007AFF]/40 text-slate-400 hover:text-[#007AFF] transition-all flex flex-col items-center justify-center gap-3 h-[180px] bg-white/40 hover:bg-white/60"
                   >
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center"><Plus size={24} /></div>
                     <span className="text-sm font-medium">{t('home.createBoard')}</span>
@@ -877,7 +887,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.4.8
+        v1.4.9
       </div>
     </div>
   );
