@@ -275,7 +275,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
                 <Trash2 size={14} />
                 {t('board.delete')}
               </button>
-            </div>,
+            </div>
             ),
             document.body
           )}
