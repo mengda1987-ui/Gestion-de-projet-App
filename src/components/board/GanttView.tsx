@@ -131,10 +131,11 @@ export default function GanttView() {
 
   const weekGroups = useMemo(() => {
     const groups: { start: Date; label: string; span: number; offset: number }[] = [];
+    if (days.length === 0) return groups;
     for (let i = 0; i < days.length; i++) {
       const d = days[i];
       if (i === 0 || d.getDay() === 1) {
-        const weekEnd = Math.min(i + 7, days.length) - 1;
+        const weekEnd = Math.max(i, Math.min(i + 7, days.length) - 1);
         const dateFormat = lang === 'zh' ? 'MM月dd日' : 'MMM d';
         const label = f(d, dateFormat, { locale: dateLocale }) + ' - ' + f(days[weekEnd], dateFormat, { locale: dateLocale });
         groups.push({ start: d, label, span: weekEnd - i + 1, offset: i });
@@ -217,8 +218,7 @@ export default function GanttView() {
       }
       const updated: DragState = { ...cur, curStartDays: s, curEndDays: en, didMove: moved };
       dragRef.current = updated;
-      if (moved && !cur.didMove) setDrag(updated);
-      else if (moved) setDrag(updated);
+      if (moved) setDrag(updated);
     };
     const onUp = () => {
       const cur = dragRef.current;
@@ -250,12 +250,14 @@ export default function GanttView() {
         dragRef.current = null;
       });
     };
+    const preventSelect = (e: Event) => e.preventDefault();
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    window.addEventListener('selectstart', () => {});
+    window.addEventListener('selectstart', preventSelect);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('selectstart', preventSelect);
     };
   }, [drag, tasks, broadcastChange]);
 

@@ -105,9 +105,13 @@ export default function BoardHome() {
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) { return; }
+    if (!file) {
+      e.target.value = '';
+      return;
+    }
     if (file.size > 2 * 1024 * 1024) {
       alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
+      e.target.value = '';
       return;
     }
     const reader = new FileReader();
@@ -685,7 +689,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.1.28
+        v1.1.29
       </div>
     </div>
   );
