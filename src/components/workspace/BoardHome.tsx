@@ -61,6 +61,7 @@ export default function BoardHome() {
   const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; left: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [showVisibilityPanel, setShowVisibilityPanel] = useState(false);
+  const [uploadingIconBoard, setUploadingIconBoard] = useState<string | null>(null);
 
   const visibleBoards = boards.filter(b => {
     if (currentUser?.role === 'admin') return true;
@@ -69,8 +70,6 @@ export default function BoardHome() {
   });
 
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
-  const iconImageInputRef = useRef<HTMLInputElement>(null);
-  const pendingIconBoardRef = useRef<string | null>(null);
 
   const bgRef = [...BOARD_BG_GRADIENTS];
   let bgIdx = 0;
@@ -137,41 +136,102 @@ export default function BoardHome() {
     e.target.value = '';
   };
 
-  const handleIconImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIconImageUpload = (e: React.ChangeEvent<HTMLInputElement>, boardId: string) => {
     const file = e.target.files?.[0];
-    if (!file || !pendingIconBoardRef.current) { e.target.value = ''; return; }
-    const boardId = pendingIconBoardRef.current;
-    pendingIconBoardRef.current = null;
+    if (!file) {
+      e.target.value = '';
+      return;
+    }
+    
+    // 文件大小检查
     if (file.size > 2 * 1024 * 1024) {
       alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
       e.target.value = '';
       return;
     }
+    
+    // 文件类型检查
+    if (!file.type.startsWith('image/')) {
+      alert(lang === 'zh' ? '请选择图片文件' : 'Please select an image file');
+      e.target.value = '';
+      return;
+    }
+    
+    setUploadingIconBoard(boardId);
+    
     const reader = new FileReader();
+    reader.onerror = () => {
+      alert(lang === 'zh' ? '图片读取失败' : 'Failed to read image');
+      setUploadingIconBoard(null);
+      e.target.value = '';
+    };
+    
     reader.onload = (ev) => {
       const img = new window.Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const size = Math.min(img.width, img.height, 256);
-        const sx = (img.width - size) / 2;
-        const sy = (img.height - size) / 2;
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
-        }
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        const board = boards.find(b => b.id === boardId);
-        dispatch({
-          type: 'SET_BOARD_ICON',
-          payload: { boardId, iconImage: dataUrl, emoji: undefined, iconBg: board?.iconBg },
-        });
+      
+      img.onerror = () => {
+        alert(lang === 'zh' ? '图片加载失败，请选择有效的图片文件' : 'Failed to load image. Please select a valid image file');
+        setUploadingIconBoard(null);
+        e.target.value = '';
       };
+      
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          // 居中裁剪为正方形
+          const size = Math.min(img.width, img.height);
+          const sx = (img.width - size) / 2;
+          const sy = (img.height - size) / 2;
+          
+          // 输出为 128x128，使用高质量缩放
+          canvas.width = 128;
+          canvas.height = 128;
+          const ctx = canvas.getContext('2d', { alpha: true });
+          
+          if (!ctx) {
+            alert(lang === 'zh' ? '浏览器不支持图片处理' : 'Browser does not support image processing');
+            setUploadingIconBoard(null);
+            e.target.value = '';
+            return;
+          }
+          
+          // 启用高质量缩放
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          
+          // 绘制图片
+          ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
+          
+          // 转换为 PNG 保持透明度，质量 0.9
+          const dataUrl = canvas.toDataURL('image/png', 0.9);
+          
+          // 获取当前看板信息保持其他属性
+          const board = boards.find(b => b.id === boardId);
+          
+          // 更新看板图标
+          dispatch({
+            type: 'SET_BOARD_ICON',
+            payload: { 
+              boardId, 
+              iconImage: dataUrl, 
+              emoji: undefined, 
+              iconBg: board?.iconBg 
+            },
+          });
+          
+          setUploadingIconBoard(null);
+        } catch (err) {
+          console.error('Image processing error:', err);
+          alert(lang === 'zh' ? '图片处理失败' : 'Failed to process image');
+          setUploadingIconBoard(null);
+        }
+        e.target.value = '';
+      };
+      
       img.src = ev.target?.result as string;
     };
+    
     reader.readAsDataURL(file);
-    e.target.value = '';
   };
 
   const handleCreate = () => {
@@ -497,23 +557,24 @@ export default function BoardHome() {
             </div>
 
             {/* Upload custom image */}
-            <button
-              onClick={() => {
-                pendingIconBoardRef.current = emojiPickerId;
-                setEmojiPickerId(null);
-                setEmojiPickerPos(null);
-                setTimeout(() => iconImageInputRef.current?.click(), 100);
-              }}
-              className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
+            <label className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleIconImageUpload(e, emojiPickerId!)}
+                className="hidden"
+                disabled={uploadingIconBoard === emojiPickerId}
+              />
               <Upload size={13} />
-              {lang === 'zh' ? '上传图片' : 'Upload Image'}
-            </button>
+              {uploadingIconBoard === emojiPickerId 
+                ? (lang === 'zh' ? '上传中...' : 'Uploading...') 
+                : (lang === 'zh' ? '上传图片' : 'Upload Image')
+              }
+            </label>
           </div>
         </div>,
         document.body
       )}
-      <input ref={iconImageInputRef} type="file" accept="image/*" onChange={handleIconImageUpload} className="hidden" />
 
       {/* Create Board Modal */}
       {showCreate && createPortal(
@@ -689,7 +750,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.1.29
+        v1.1.30
       </div>
     </div>
   );
