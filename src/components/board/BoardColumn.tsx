@@ -15,6 +15,8 @@ import {
   Archive,
   Copy,
   X,
+  Eye,
+  ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,10 +29,11 @@ interface BoardColumnProps {
 
 export default function BoardColumn({ column, isDragging, dragHandleProps, onCardClick }: BoardColumnProps) {
   const { t, lang } = useLang();
-  const { dispatch, broadcastChange } = useBoard();
+  const { dispatch, broadcastChange, users, currentUser } = useBoard();
   const [addingCard, setAddingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);
+  const [showVisPanel, setShowVisPanel] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(column.title);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +113,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
             ref={menuBtnRef}
             onClick={(e) => {
               e.stopPropagation();
+              setShowVisPanel(false);
               setShowMenu(!showMenu);
             }}
             className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors shrink-0"
@@ -118,6 +122,73 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
           </button>
 
           {showMenu && menuBtnRef.current && createPortal(
+            showVisPanel ? (
+              <div
+                className="fixed apple-card rounded-xl shadow-xl overflow-hidden z-[99999] animate-slide-up w-52"
+                style={{
+                  left: Math.min(menuBtnRef.current.getBoundingClientRect().right - 176, window.innerWidth - 208),
+                  top: menuBtnRef.current.getBoundingClientRect().bottom + 4,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => setShowVisPanel(false)}
+                    className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500"
+                  >
+                    <ArrowLeft size={14} />
+                  </button>
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                    {lang === 'zh' ? '谁可以看见此列' : 'Who can see this column'}
+                  </span>
+                </div>
+                <div className="p-2 flex flex-wrap gap-1">
+                  <button
+                    onClick={() => {
+                      broadcastChange({ type: 'UPDATE_COLUMN', payload: { columnId: column.id, updates: { visibleTo: undefined } } });
+                    }}
+                    className={cn(
+                      'text-[10px] px-2 py-0.5 rounded-full font-medium transition-all border',
+                      !column.visibleTo?.length
+                        ? 'bg-[#007AFF] text-white border-[#007AFF]'
+                        : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50 dark:text-slate-300'
+                    )}
+                  >
+                    {lang === 'zh' ? '全部' : 'All'}
+                  </button>
+                  {users.map(u => {
+                    const isVisible = !column.visibleTo?.length || column.visibleTo?.includes(u.id);
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => {
+                          const current = column.visibleTo || users.map(x => x.id);
+                          const next = isVisible
+                            ? current.filter(id => id !== u.id)
+                            : [...current, u.id];
+                          broadcastChange({
+                            type: 'UPDATE_COLUMN',
+                            payload: { columnId: column.id, updates: { visibleTo: next.length === users.length ? undefined : next } },
+                          });
+                        }}
+                        className={cn(
+                          'text-[10px] px-2 py-0.5 rounded-full font-medium transition-all border flex items-center gap-1',
+                          isVisible
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            : 'text-slate-300 dark:text-slate-600 border-slate-100 dark:border-slate-800 line-through'
+                        )}
+                      >
+                        <div
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: u.color }}
+                        />
+                        {u.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
             <div
               className="fixed apple-card rounded-xl shadow-xl overflow-hidden z-[99999] animate-slide-up w-44"
               style={{
@@ -182,6 +253,16 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
                 {t('board.template')}
               </button>
               <div className="border-t border-slate-200 dark:border-slate-700" />
+              {/* Visibility (admin only) */}
+              {currentUser?.role === 'admin' && (
+                <button
+                  onClick={() => setShowVisPanel(true)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <Eye size={14} />
+                  {lang === 'zh' ? '可见性设置' : 'Visibility'}
+                </button>
+              )}
               <button
                 onClick={() => {
                   if (confirm(t('board.deleteConfirm', { name: column.title }))) {
@@ -195,6 +276,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
                 {t('board.delete')}
               </button>
             </div>,
+            ),
             document.body
           )}
         </div>

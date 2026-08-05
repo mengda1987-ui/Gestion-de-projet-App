@@ -25,7 +25,12 @@ export default function BoardView() {
   const [draggingListId, setDraggingListId] = useState<string | null>(null);
 
   const visibleColumns = useMemo(() => {
-    let cols = board.columns.filter(c => !c.archived || filters.showArchived);
+    let cols = board.columns.filter(c => {
+      if (c.archived && !filters.showArchived) return false;
+      // Column visibility control
+      if (c.visibleTo?.length && currentUser?.role !== 'admin' && !c.visibleTo.includes(currentUser?.id ?? '')) return false;
+      return true;
+    });
     const hasActiveFilters = filters.search || filters.labels.length > 0 || filters.assignees.length > 0;
 
     cols = cols.map(col => ({

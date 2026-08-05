@@ -76,6 +76,7 @@ export interface Column {
   cards: Card[];
   order: number;
   archived: boolean;
+  visibleTo?: string[]; // Admin: user IDs who can see this column
   mmRootId?: string;
   mmPosition?: { x: number; y: number };
 }

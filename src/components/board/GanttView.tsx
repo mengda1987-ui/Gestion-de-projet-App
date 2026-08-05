@@ -67,6 +67,8 @@ export default function GanttView() {
     const all: GanttTask[] = [];
     for (const col of board.columns) {
       if (col.archived && !filters.showArchived) continue;
+      // Column visibility control
+      if (col.visibleTo?.length && currentUser?.role !== 'admin' && !col.visibleTo.includes(currentUser?.id ?? '')) continue;
       for (const card of col.cards) {
         if (card.archived && !filters.showArchived) continue;
         if (filters.search) {

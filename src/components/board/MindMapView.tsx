@@ -136,6 +136,11 @@ export default function MindMapView() {
     const list: VirtualNode[] = [];
     board.columns
       .filter(col => !col.archived)
+      .filter(col => {
+        // Column visibility control
+        if (col.visibleTo?.length && currentUser?.role !== 'admin' && !col.visibleTo.includes(currentUser?.id ?? '')) return false;
+        return true;
+      })
       .forEach((col, idx) => {
         const colColor = COLUMN_COLORS[idx % COLUMN_COLORS.length];
         list.push({
