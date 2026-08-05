@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import type { User } from '@/types';
@@ -26,6 +25,7 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
+  ChevronUp,
   AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -117,48 +117,39 @@ export default function BoardHome() {
       return (a.createdAt || '').localeCompare(b.createdAt || '');
     });
 
-  // 用 ref 避免 handleDragEnd 闭包过期
+  // 用 ref 避免闭包过期
   const boardsRef = useRef(boards);
-  const visibleRef = useRef(visibleBoards);
   boardsRef.current = boards;
-  visibleRef.current = visibleBoards;
 
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
 
-  const handleDragEnd = useCallback((result: DropResult) => {
-    if (!result.destination) return;
-    const fromIndex = result.source.index;
-    const toIndex = result.destination.index;
-    if (fromIndex === toIndex) return;
+  // 上移
+  const moveBoardUp = useCallback((boardId: string) => {
+    const currentBoards = [...boardsRef.current];
+    const idx = currentBoards.findIndex(b => b.id === boardId);
+    if (idx <= 0) return;
 
-    // 使用 ref 获取最新数据，避免闭包过期
-    const currentVisible = [...visibleRef.current];
-    const currentAll = [...boardsRef.current];
+    // 交换 order
+    const a = currentBoards[idx].order ?? idx;
+    const b = currentBoards[idx - 1].order ?? idx - 1;
+    currentBoards[idx] = { ...currentBoards[idx], order: b, updatedAt: new Date().toISOString() };
+    currentBoards[idx - 1] = { ...currentBoards[idx - 1], order: a, updatedAt: new Date().toISOString() };
 
-    // 1. 在可见列表中找到被移动的看板和目标位置的看板
-    const movedBoard = currentVisible[fromIndex];
-    const targetBoard = currentVisible[toIndex];
+    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: currentBoards });
+  }, [broadcastChange]);
 
-    if (!movedBoard || !targetBoard) return;
+  // 下移
+  const moveBoardDown = useCallback((boardId: string) => {
+    const currentBoards = [...boardsRef.current];
+    const idx = currentBoards.findIndex(b => b.id === boardId);
+    if (idx < 0 || idx >= currentBoards.length - 1) return;
 
-    // 2. 在全局列表中找到它们的索引
-    const globalFromIdx = currentAll.findIndex(b => b.id === movedBoard.id);
-    const globalToIdx = currentAll.findIndex(b => b.id === targetBoard.id);
+    const a = currentBoards[idx].order ?? idx;
+    const b = currentBoards[idx + 1].order ?? idx + 1;
+    currentBoards[idx] = { ...currentBoards[idx], order: b, updatedAt: new Date().toISOString() };
+    currentBoards[idx + 1] = { ...currentBoards[idx + 1], order: a, updatedAt: new Date().toISOString() };
 
-    if (globalFromIdx === -1 || globalToIdx === -1) return;
-
-    // 3. 在全局列表中执行移动
-    const [moved] = currentAll.splice(globalFromIdx, 1);
-    currentAll.splice(globalToIdx, 0, moved);
-
-    // 4. 为所有看板重新分配唯一的 order 字段
-    const updatedBoards = currentAll.map((board, idx) => ({
-      ...board,
-      order: idx,
-      updatedAt: new Date().toISOString()
-    }));
-
-    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
+    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: currentBoards });
   }, [broadcastChange]);
 
   const getBgStyle = (bg: string): React.CSSProperties => {
@@ -386,166 +377,168 @@ export default function BoardHome() {
             </button>
           </div>
         ) : (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="board-grid" type="BOARD" direction="vertical">
-              {(provided) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-                >
-                  {visibleBoards.map((board, idx) => {
-                    const colCount = board.columns.length;
-                    const cardCount = board.columns.reduce((s, c) => s + c.cards.length, 0);
-                    const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.status === 'complete').length, 0);
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {visibleBoards.map((board, idx) => {
+              const colCount = board.columns.length;
+              const cardCount = board.columns.reduce((s, c) => s + c.cards.length, 0);
+              const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.status === 'complete').length, 0);
 
-                    // Find "urgent" label
-                    const urgentLabel = board.labels.find(l =>
-                      l.name.toLowerCase() === 'urgent' || l.name === '紧急' || l.name.toLowerCase() === 'urgente'
-                    );
+              const urgentLabel = board.labels.find(l =>
+                l.name.toLowerCase() === 'urgent' || l.name === '紧急' || l.name.toLowerCase() === 'urgente'
+              );
 
-                    // Count urgent todo cards and due-today cards
-                    let urgentCount = 0;
-                    let dueTodayCount = 0;
-                    board.columns.forEach(col => {
-                      if (col.visibleTo?.length && currentUser?.role !== 'admin' && !col.visibleTo.includes(currentUser?.id ?? '')) return;
-                      col.cards.forEach(card => {
-                        if (card.status === 'complete' || card.archived) return;
-                        if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return;
-                        if (urgentLabel && card.labels.includes(urgentLabel.id)) urgentCount++;
-                        if (card.dueDate && isToday(parseISO(card.dueDate))) dueTodayCount++;
-                      });
-                    });
+              let urgentCount = 0;
+              let dueTodayCount = 0;
+              board.columns.forEach(col => {
+                if (col.visibleTo?.length && currentUser?.role !== 'admin' && !col.visibleTo.includes(currentUser?.id ?? '')) return;
+                col.cards.forEach(card => {
+                  if (card.status === 'complete' || card.archived) return;
+                  if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return;
+                  if (urgentLabel && card.labels.includes(urgentLabel.id)) urgentCount++;
+                  if (card.dueDate && isToday(parseISO(card.dueDate))) dueTodayCount++;
+                });
+              });
 
-                    const fallbackBg = getBoardFallbackBg(board.title);
-                    const fallbackEmoji = getBoardFallbackEmoji(board.title);
-                    const actualEmoji = board.emoji || fallbackEmoji;
-                    return (
-                      <Draggable key={board.id} draggableId={board.id} index={idx}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={cn(
-                              'group apple-card cursor-pointer overflow-hidden flex flex-col transition-shadow h-[180px]',
-                              snapshot.isDragging && 'shadow-2xl opacity-90 z-50'
-                            )}
-                            onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
-                          >
-                            <div className="h-1.5 w-full shrink-0" style={{ background: board.background || fallbackBg }} />
-                            <div className="p-4 flex flex-col flex-1">
-                              <div className="flex items-start gap-3.5 mb-3">
-                                <button
-                                  className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer overflow-hidden"
-                                  style={{ background: board.iconBg || board.background || fallbackBg }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (emojiPickerId === board.id) {
-                                      setEmojiPickerId(null);
-                                      setEmojiPickerPos(null);
-                                    } else {
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      setEmojiPickerPos({ top: rect.bottom + 4, left: rect.left });
-                                      setEmojiPickerId(board.id);
-                                    }
-                                  }}
-                                  title={lang === 'zh' ? '更换图标' : 'Change icon'}
-                                >
-                                  {board.iconImage ? (
-                                    <img src={board.iconImage} alt="" className="w-full h-full object-cover" />
-                                  ) : (
-                                    <span>{actualEmoji}</span>
-                                  )}
-                                </button>
-                                <div className="min-w-0 flex-1 pt-0.5">
-                                  {renameId === board.id ? (
-                                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                      <input
-                                        value={renameText}
-                                        onChange={(e) => setRenameText(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameId(null); }}
-                                        autoFocus
-                                        className="flex-1 bg-slate-100 text-slate-800 text-sm font-semibold px-2.5 py-1 rounded-lg border border-slate-300 focus:outline-none focus:border-[#007AFF] placeholder:text-slate-400"
-                                        placeholder={t('home.renamePlaceholder')}
-                                      />
-                                      <button onClick={handleRename} className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"><Check size={14} /></button>
-                                      <button onClick={() => setRenameId(null)} className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"><X size={14} /></button>
-                                    </div>
-                                  ) : (
-                                    <h3 className="font-bold text-slate-900 text-lg leading-snug line-clamp-2">{board.title}</h3>
-                                  )}
-                                </div>
-                              </div>
+              const fallbackBg = getBoardFallbackBg(board.title);
+              const fallbackEmoji = getBoardFallbackEmoji(board.title);
+              const actualEmoji = board.emoji || fallbackEmoji;
+              const isFirst = idx === 0;
+              const isLast = idx === visibleBoards.length - 1;
 
-                              <div className="flex items-center gap-3">
-                                <span className="flex items-center gap-1 text-sm text-slate-600"><LayoutGrid size={13} /><span className="font-semibold text-slate-700">{colCount}</span></span>
-                                <span className="flex items-center gap-1 text-sm text-slate-600"><ListTodo size={13} /><span className="font-semibold text-slate-700">{cardCount}</span></span>
-                                {completedCount > 0 && (
-                                  <span className="flex items-center gap-1 text-sm text-emerald-600 ml-auto"><CheckSquare size={13} /><span className="font-semibold">{completedCount}</span></span>
-                                )}
-                              </div>
+              return (
+                <div key={board.id} className="group relative">
+                  {/* Move buttons - left side, visible on hover */}
+                  <div className="absolute -left-2 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); moveBoardUp(board.id); }}
+                      disabled={isFirst}
+                      className="w-6 h-6 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#007AFF] hover:bg-blue-50 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
+                      title={lang === 'zh' ? '上移' : 'Move up'}
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); moveBoardDown(board.id); }}
+                      disabled={isLast}
+                      className="w-6 h-6 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-500 hover:text-[#007AFF] hover:bg-blue-50 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
+                      title={lang === 'zh' ? '下移' : 'Move down'}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
 
-                              <div className="flex-1" />
-
-                              {(urgentCount > 0 || dueTodayCount > 0) && (
-                                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                  {urgentCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm">
-                                      <AlertTriangle size={10} />
-                                      {lang === 'zh' ? `紧急 ${urgentCount}` : `Urgent ${urgentCount}`}
-                                    </span>
-                                  )}
-                                  {dueTodayCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm">
-                                      <Clock size={10} />
-                                      {lang === 'zh' ? `今天到期 ${dueTodayCount}` : `Due today ${dueTodayCount}`}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-
-                              <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-2">
-                                <Clock size={11} />
-                                <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
-                                <div className="ml-auto">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (menuOpenId === board.id) {
-                                        setMenuOpenId(null);
-                                        setMenuPos(null);
-                                      } else {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setMenuPos({ top: rect.bottom + 4, left: Math.min(rect.right - 128, window.innerWidth - 144) });
-                                        setMenuOpenId(board.id);
-                                      }
-                                    }}
-                                    className="p-0.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                                  >
-                                    <MoreHorizontal size={14} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </Draggable>
-                    );
-                  })}
-                  {provided.placeholder}
-                  {/* Add new board card */}
-                  <button
-                    onClick={() => setShowCreate(true)}
-                    className="rounded-2xl border-2 border-dashed border-slate-300 hover:border-[#007AFF]/40 text-slate-400 hover:text-[#007AFF] transition-all flex flex-col items-center justify-center gap-3 h-[180px] bg-white/40 hover:bg-white/60"
+                  <div
+                    className="apple-card cursor-pointer overflow-hidden flex flex-col h-[180px]"
+                    onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: board.id })}
                   >
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center"><Plus size={24} /></div>
-                    <span className="text-sm font-medium">{t('home.createBoard')}</span>
-                  </button>
+                    <div className="h-1.5 w-full shrink-0" style={{ background: board.background || fallbackBg }} />
+                    <div className="p-4 flex flex-col flex-1">
+                      <div className="flex items-start gap-3.5 mb-3">
+                        <button
+                          className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm hover:scale-110 transition-transform cursor-pointer overflow-hidden"
+                          style={{ background: board.iconBg || board.background || fallbackBg }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (emojiPickerId === board.id) {
+                              setEmojiPickerId(null);
+                              setEmojiPickerPos(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setEmojiPickerPos({ top: rect.bottom + 4, left: rect.left });
+                              setEmojiPickerId(board.id);
+                            }
+                          }}
+                          title={lang === 'zh' ? '更换图标' : 'Change icon'}
+                        >
+                          {board.iconImage ? (
+                            <img src={board.iconImage} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{actualEmoji}</span>
+                          )}
+                        </button>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          {renameId === board.id ? (
+                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                value={renameText}
+                                onChange={(e) => setRenameText(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setRenameId(null); }}
+                                autoFocus
+                                className="flex-1 bg-slate-100 text-slate-800 text-sm font-semibold px-2.5 py-1 rounded-lg border border-slate-300 focus:outline-none focus:border-[#007AFF] placeholder:text-slate-400"
+                                placeholder={t('home.renamePlaceholder')}
+                              />
+                              <button onClick={handleRename} className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"><Check size={14} /></button>
+                              <button onClick={() => setRenameId(null)} className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700"><X size={14} /></button>
+                            </div>
+                          ) : (
+                            <h3 className="font-bold text-slate-900 text-lg leading-snug line-clamp-2">{board.title}</h3>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1 text-sm text-slate-600"><LayoutGrid size={13} /><span className="font-semibold text-slate-700">{colCount}</span></span>
+                        <span className="flex items-center gap-1 text-sm text-slate-600"><ListTodo size={13} /><span className="font-semibold text-slate-700">{cardCount}</span></span>
+                        {completedCount > 0 && (
+                          <span className="flex items-center gap-1 text-sm text-emerald-600 ml-auto"><CheckSquare size={13} /><span className="font-semibold">{completedCount}</span></span>
+                        )}
+                      </div>
+
+                      <div className="flex-1" />
+
+                      {(urgentCount > 0 || dueTodayCount > 0) && (
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          {urgentCount > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm">
+                              <AlertTriangle size={10} />
+                              {lang === 'zh' ? `紧急 ${urgentCount}` : `Urgent ${urgentCount}`}
+                            </span>
+                          )}
+                          {dueTodayCount > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm">
+                              <Clock size={10} />
+                              {lang === 'zh' ? `今天到期 ${dueTodayCount}` : `Due today ${dueTodayCount}`}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-2">
+                        <Clock size={11} />
+                        <span>{new Date(board.updatedAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })}</span>
+                        <div className="ml-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (menuOpenId === board.id) {
+                                setMenuOpenId(null);
+                                setMenuPos(null);
+                              } else {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setMenuPos({ top: rect.bottom + 4, left: Math.min(rect.right - 128, window.innerWidth - 144) });
+                                setMenuOpenId(board.id);
+                              }
+                            }}
+                            className="p-0.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                          >
+                            <MoreHorizontal size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </Droppable>
-          </DragDropContext>
+              );
+            })}
+            {/* Add new board card */}
+            <button
+              onClick={() => setShowCreate(true)}
+              className="rounded-2xl border-2 border-dashed border-slate-300 hover:border-[#007AFF]/40 text-slate-400 hover:text-[#007AFF] transition-all flex flex-col items-center justify-center gap-3 h-[180px] bg-white/40 hover:bg-white/60"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center"><Plus size={24} /></div>
+              <span className="text-sm font-medium">{t('home.createBoard')}</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -887,7 +880,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.4.9
+        v1.5.0
       </div>
     </div>
   );
