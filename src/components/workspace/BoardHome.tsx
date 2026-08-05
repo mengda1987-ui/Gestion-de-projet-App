@@ -61,6 +61,13 @@ export default function BoardHome() {
   const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; left: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [showVisibilityPanel, setShowVisibilityPanel] = useState(false);
+
+  const visibleBoards = boards.filter(b => {
+    if (currentUser?.role === 'admin') return true;
+    if (!b.visibleTo || b.visibleTo.length === 0) return true;
+    return b.visibleTo.includes(currentUser?.id || '');
+  });
+
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
   const iconImageInputRef = useRef<HTMLInputElement>(null);
   const pendingIconBoardRef = useRef<string | null>(null);
@@ -236,7 +243,7 @@ export default function BoardHome() {
         </div>
 
         {/* Board Grid */}
-        {boards.length === 0 ? (
+        {visibleBoards.length === 0 ? (
           <div className="text-center py-24">
             <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-5">
               <Sparkles size={28} className="text-slate-400" />
@@ -248,7 +255,7 @@ export default function BoardHome() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {boards.map((board) => {
+            {visibleBoards.map((board) => {
               const colCount = board.columns.length;
               const cardCount = board.columns.reduce((s, c) => s + c.cards.length, 0);
               const completedCount = board.columns.reduce((s, c) => s + c.cards.filter(cd => cd.status === 'complete').length, 0);
@@ -262,8 +269,14 @@ export default function BoardHome() {
               let urgentCount = 0;
               let dueTodayCount = 0;
               board.columns.forEach(col => {
+                // Column visibility check
+                if (col.visibleTo?.length && currentUser?.role !== 'admin' && !col.visibleTo.includes(currentUser?.id ?? '')) return;
+                
                 col.cards.forEach(card => {
                   if (card.status === 'complete' || card.archived) return;
+                  // Card visibility check
+                  if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) return;
+                  
                   if (urgentLabel && card.labels.includes(urgentLabel.id)) urgentCount++;
                   if (card.dueDate && isToday(parseISO(card.dueDate))) dueTodayCount++;
                 });
@@ -547,113 +560,99 @@ export default function BoardHome() {
 
       {showMemberManage && <MemberManageModal onClose={() => setShowMemberManage(false)} />}
 
-      {/* Admin: Card Visibility Management Panel */}
-      {showVisibilityPanel && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-start justify-center pt-[10vh] p-4">
+      {/* Admin: Board Visibility Management Panel */}
+      {showVisibilityPanel && expandedBoardId && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowVisibilityPanel(false); setExpandedBoardId(null); }} />
-          <div className="relative w-full max-w-2xl apple-card max-h-[80vh] overflow-hidden flex flex-col animate-slide-up">
+          <div className="relative w-full max-w-md apple-card overflow-hidden flex flex-col animate-slide-up">
             <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700 shrink-0">
               <div>
-                <h3 className="font-bold text-slate-900 text-lg">{lang === 'zh' ? '卡片可见性管理' : 'Card Visibility Management'}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{lang === 'zh' ? '仅管理员可设置谁可以看到每张卡片' : 'Only admins can set who sees each card'}</p>
+                <h3 className="font-bold text-slate-900 text-lg">{lang === 'zh' ? '看板可见性管理' : 'Board Visibility'}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {lang === 'zh' ? '设置谁可以看到此看板' : 'Set who can see this board'}: 
+                  <span className="ml-1 font-semibold text-slate-700">{boards.find(b => b.id === expandedBoardId)?.title}</span>
+                </p>
               </div>
               <button onClick={() => { setShowVisibilityPanel(false); setExpandedBoardId(null); }} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={18} />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {boards.length === 0 ? (
-                <p className="text-center text-sm text-slate-400 py-8">{lang === 'zh' ? '暂无看板' : 'No boards yet'}</p>
-              ) : (
-                boards.map(board => {
-                  const allCards = board.columns.flatMap(col => 
-                    col.cards.map(card => ({ card, columnTitle: col.title }))
-                  );
-                  const isExpanded = expandedBoardId === board.id;
-                  return (
-                    <div key={board.id} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+              {(() => {
+                const board = boards.find(b => b.id === expandedBoardId);
+                if (!board) return null;
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{lang === 'zh' ? '成员访问权限' : 'Member Access'}</span>
                       <button
-                        onClick={() => setExpandedBoardId(isExpanded ? null : board.id)}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                        onClick={() => {
+                          dispatch({ type: 'UPDATE_BOARD_DATA', payload: { boardId: board.id, updates: { visibleTo: undefined } } });
+                        }}
+                        className={cn(
+                          'text-xs px-3 py-1 rounded-full font-medium transition-all border',
+                          !board.visibleTo?.length
+                            ? 'bg-[#007AFF] text-white border-[#007AFF]'
+                            : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50'
+                        )}
                       >
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                          style={{
-                            background: board.background || 'linear-gradient(135deg, #0ea5e9, #818cf8)',
-                          }}
-                        >
-                          {board.iconImage ? (
-                            <img src={board.iconImage} alt="" className="w-5 h-5 object-cover rounded" />
-                          ) : board.emoji || '📋'}
-                        </div>
-                        <span className="font-semibold text-sm text-slate-800 dark:text-slate-200 flex-1 text-left">{board.title}</span>
-                        <span className="text-xs text-slate-400">{allCards.length} {lang === 'zh' ? '张卡片' : 'cards'}</span>
-                        <ChevronDown size={16} className={cn('text-slate-400 transition-transform', isExpanded && 'rotate-180')} />
+                        {lang === 'zh' ? '所有人可见' : 'Public (All)'}
                       </button>
-                      {isExpanded && (
-                        <div className="border-t border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
-                          {allCards.length === 0 ? (
-                            <p className="text-xs text-slate-400 text-center py-4">{lang === 'zh' ? '此看板暂无卡片' : 'No cards in this board'}</p>
-                          ) : (
-                            allCards.map(({ card, columnTitle }) => (
-                              <div key={card.id} className="px-4 py-3 space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex-1 truncate">{card.title}</span>
-                                  <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{columnTitle}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <button
-                                    onClick={() => {
-                                      broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { visibleTo: undefined } } });
-                                    }}
-                                    className={cn(
-                                      'text-[10px] px-2 py-1 rounded-full font-medium transition-all border',
-                                      !card.visibleTo?.length
-                                        ? 'bg-[#007AFF] text-white border-[#007AFF]'
-                                        : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50'
-                                    )}
-                                  >
-                                    {lang === 'zh' ? '全部' : 'All'}
-                                  </button>
-                                  {users.map(u => {
-                                    const isVisible = !card.visibleTo?.length || card.visibleTo?.includes(u.id);
-                                    return (
-                                      <button
-                                        key={u.id}
-                                        onClick={() => {
-                                          const current = card.visibleTo || users.map(x => x.id);
-                                          const next = isVisible
-                                            ? current.filter(id => id !== u.id)
-                                            : [...current, u.id];
-                                          broadcastChange({
-                                            type: 'UPDATE_CARD',
-                                            payload: { cardId: card.id, updates: { visibleTo: next.length === users.length ? undefined : next } },
-                                          });
-                                        }}
-                                        className={cn(
-                                          'text-[10px] px-2 py-1 rounded-full font-medium transition-all border flex items-center gap-1',
-                                          isVisible
-                                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                                            : 'text-slate-300 dark:text-slate-600 border-slate-100 dark:border-slate-800 line-through'
-                                        )}
-                                      >
-                                        <div
-                                          className="w-3 h-3 rounded-full shrink-0"
-                                          style={{ backgroundColor: u.color }}
-                                        />
-                                        {u.name}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
                     </div>
-                  );
-                })
-              )}
+                    <div className="grid grid-cols-1 gap-2">
+                      {users.map(u => {
+                        const isVisible = !board.visibleTo?.length || board.visibleTo?.includes(u.id);
+                        return (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              const current = board.visibleTo || users.map(x => x.id);
+                              const next = isVisible
+                                ? current.filter(id => id !== u.id)
+                                : [...current, u.id];
+                              dispatch({
+                                type: 'UPDATE_BOARD_DATA',
+                                payload: { boardId: board.id, updates: { visibleTo: next.length === users.length ? undefined : next } },
+                              });
+                            }}
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-xl border transition-all text-left',
+                              isVisible
+                                ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm'
+                                : 'bg-slate-50 dark:bg-slate-900/50 border-transparent opacity-60'
+                            )}
+                          >
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                              style={{ backgroundColor: u.color }}
+                            >
+                              {u.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{u.name}</div>
+                              <div className="text-[10px] text-slate-500 truncate">{u.email}</div>
+                            </div>
+                            <div className={cn(
+                              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all',
+                              isVisible ? 'bg-[#007AFF] border-[#007AFF]' : 'border-slate-300'
+                            )}>
+                              {isVisible && <Check size={12} className="text-white" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-end">
+              <button
+                onClick={() => { setShowVisibilityPanel(false); setExpandedBoardId(null); }}
+                className="btn-primary px-6"
+              >
+                {lang === 'zh' ? '完成' : 'Done'}
+              </button>
             </div>
           </div>
         </div>,
@@ -686,7 +685,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.1.25
+        v1.1.26
       </div>
     </div>
   );

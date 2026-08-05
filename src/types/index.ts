@@ -105,6 +105,7 @@ export interface Board {
   mindmap: MindMapNode[];
   createdAt: string;
   updatedAt: string;
+  visibleTo?: string[]; // Admin: user IDs who can see this board
 }
 
 export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap';

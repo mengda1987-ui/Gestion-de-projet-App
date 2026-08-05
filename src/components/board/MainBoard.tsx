@@ -143,12 +143,38 @@ export default function MainBoard() {
     });
     return cards;
   }, [board.columns]);
-  const totalArchived = archivedColumns.length + archivedCards.length;
+
+  const isBoardVisible = useMemo(() => {
+    if (currentUser?.role === 'admin') return true;
+    if (!board.visibleTo || board.visibleTo.length === 0) return true;
+    return board.visibleTo.includes(currentUser?.id || '');
+  }, [board.visibleTo, currentUser]);
+
+  if (!isBoardVisible) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-4 text-center">
+        <div className="w-20 h-20 rounded-3xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500 mb-6">
+          <X size={40} />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+          {lang === 'zh' ? '访问受限' : 'Access Denied'}
+        </h2>
+        <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-md">
+          {lang === 'zh' ? '你没有权限查看此看板。请联系管理员获取访问权限。' : 'You do not have permission to view this board. Please contact an administrator for access.'}
+        </p>
+        <button
+          onClick={() => dispatch({ type: 'SET_CURRENT_BOARD', payload: '' })}
+          className="btn-primary px-8"
+        >
+          <ArrowLeft size={18} />
+          {lang === 'zh' ? '返回工作区' : 'Back to Workspace'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="h-dvh flex flex-col" style={getBgStyle(board.background)}>
-      {/* Top Header */}
-      <header className="glass border-b border-slate-200/60 dark:border-slate-700/50 shrink-0 relative z-[9000]">
         <div className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-4 py-2">
           {/* Back to Workspace — always visible */}
           <button
@@ -627,7 +653,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.1.25</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.1.26</span>
     </div>
   );
 }
