@@ -19,6 +19,9 @@ import {
   LogOut,
   Upload,
   MoreHorizontal,
+  Eye,
+  EyeOff,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
@@ -40,7 +43,7 @@ const BOARD_BG_GRADIENTS = [
 ];
 
 export default function BoardHome() {
-  const { boards, currentUser, dispatch, workspaceBackground, logo } = useBoard();
+  const { boards, currentUser, users, dispatch, broadcastChange, workspaceBackground, logo } = useBoard();
   const { t, lang, toggleLang } = useLang();
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -55,6 +58,8 @@ export default function BoardHome() {
   const [emojiPickerId, setEmojiPickerId] = useState<string | null>(null);
   const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; left: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [showVisibilityPanel, setShowVisibilityPanel] = useState(false);
+  const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
   const iconImageInputRef = useRef<HTMLInputElement>(null);
   const pendingIconBoardRef = useRef<string | null>(null);
 
@@ -200,6 +205,10 @@ export default function BoardHome() {
             </button>
             {currentUser?.role === 'admin' && (
               <>
+                <button onClick={() => setShowVisibilityPanel(true)} className="btn-secondary text-xs">
+                  <Eye size={14} />
+                  <span className="hidden sm:inline">{lang === 'zh' ? '可见性' : 'Visibility'}</span>
+                </button>
                 <button onClick={() => setShowMemberManage(true)} className="btn-secondary text-xs">
                   <Users size={14} />
                   <span className="hidden sm:inline">{lang === 'zh' ? '成员管理' : 'Members'}</span>
@@ -504,6 +513,119 @@ export default function BoardHome() {
 
       {showMemberManage && <MemberManageModal onClose={() => setShowMemberManage(false)} />}
 
+      {/* Admin: Card Visibility Management Panel */}
+      {showVisibilityPanel && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-start justify-center pt-[10vh] p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowVisibilityPanel(false); setExpandedBoardId(null); }} />
+          <div className="relative w-full max-w-2xl apple-card max-h-[80vh] overflow-hidden flex flex-col animate-slide-up">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700 shrink-0">
+              <div>
+                <h3 className="font-bold text-slate-900 text-lg">{lang === 'zh' ? '卡片可见性管理' : 'Card Visibility Management'}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{lang === 'zh' ? '仅管理员可设置谁可以看到每张卡片' : 'Only admins can set who sees each card'}</p>
+              </div>
+              <button onClick={() => { setShowVisibilityPanel(false); setExpandedBoardId(null); }} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {boards.length === 0 ? (
+                <p className="text-center text-sm text-slate-400 py-8">{lang === 'zh' ? '暂无看板' : 'No boards yet'}</p>
+              ) : (
+                boards.map(board => {
+                  const allCards = board.columns.flatMap(col => 
+                    col.cards.map(card => ({ card, columnTitle: col.title }))
+                  );
+                  const isExpanded = expandedBoardId === board.id;
+                  return (
+                    <div key={board.id} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <button
+                        onClick={() => setExpandedBoardId(isExpanded ? null : board.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
+                          style={{
+                            background: board.background || 'linear-gradient(135deg, #0ea5e9, #818cf8)',
+                          }}
+                        >
+                          {board.iconImage ? (
+                            <img src={board.iconImage} alt="" className="w-5 h-5 object-cover rounded" />
+                          ) : board.emoji || '📋'}
+                        </div>
+                        <span className="font-semibold text-sm text-slate-800 dark:text-slate-200 flex-1 text-left">{board.title}</span>
+                        <span className="text-xs text-slate-400">{allCards.length} {lang === 'zh' ? '张卡片' : 'cards'}</span>
+                        <ChevronDown size={16} className={cn('text-slate-400 transition-transform', isExpanded && 'rotate-180')} />
+                      </button>
+                      {isExpanded && (
+                        <div className="border-t border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+                          {allCards.length === 0 ? (
+                            <p className="text-xs text-slate-400 text-center py-4">{lang === 'zh' ? '此看板暂无卡片' : 'No cards in this board'}</p>
+                          ) : (
+                            allCards.map(({ card, columnTitle }) => (
+                              <div key={card.id} className="px-4 py-3 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex-1 truncate">{card.title}</span>
+                                  <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{columnTitle}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button
+                                    onClick={() => {
+                                      broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { visibleTo: undefined } } });
+                                    }}
+                                    className={cn(
+                                      'text-[10px] px-2 py-1 rounded-full font-medium transition-all border',
+                                      !card.visibleTo?.length
+                                        ? 'bg-[#007AFF] text-white border-[#007AFF]'
+                                        : 'text-slate-500 border-slate-200 dark:border-slate-700 hover:border-[#007AFF]/50'
+                                    )}
+                                  >
+                                    {lang === 'zh' ? '全部' : 'All'}
+                                  </button>
+                                  {users.map(u => {
+                                    const isVisible = !card.visibleTo?.length || card.visibleTo?.includes(u.id);
+                                    return (
+                                      <button
+                                        key={u.id}
+                                        onClick={() => {
+                                          const current = card.visibleTo || users.map(x => x.id);
+                                          const next = isVisible
+                                            ? current.filter(id => id !== u.id)
+                                            : [...current, u.id];
+                                          broadcastChange({
+                                            type: 'UPDATE_CARD',
+                                            payload: { cardId: card.id, updates: { visibleTo: next.length === users.length ? undefined : next } },
+                                          });
+                                        }}
+                                        className={cn(
+                                          'text-[10px] px-2 py-1 rounded-full font-medium transition-all border flex items-center gap-1',
+                                          isVisible
+                                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                            : 'text-slate-300 dark:text-slate-600 border-slate-100 dark:border-slate-800 line-through'
+                                        )}
+                                      >
+                                        <div
+                                          className="w-3 h-3 rounded-full shrink-0"
+                                          style={{ backgroundColor: u.color }}
+                                        />
+                                        {u.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {showBgPicker && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowBgPicker(false)} />
@@ -530,7 +652,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="text-center py-2 text-[11px] text-slate-400 shrink-0">
-        v1.0.22
+        v1.0.23
       </div>
     </div>
   );

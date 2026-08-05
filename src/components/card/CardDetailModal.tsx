@@ -1382,50 +1382,6 @@ export default function CardDetailModal({
                   )}
                 </div>
 
-                {/* Admin: Card visibility control */}
-                {currentUser?.role === 'admin' && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
-                    <h4 className="text-[11px] font-semibold uppercase text-slate-400 dark:text-slate-500 tracking-wider px-1 mb-1">
-                      {lang === 'zh' ? '👁️ 可见性（仅管理员）' : '👁️ Visibility (Admin only)'}
-                    </h4>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      <button
-                        onClick={() => updateCard({ visibleTo: undefined })}
-                        className={cn(
-                          'w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors',
-                          !latestCard.visibleTo?.length ? 'bg-[#007AFF]/10 text-[#007AFF] font-medium' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                        )}
-                      >
-                        {lang === 'zh' ? '🌐 所有人可见' : '🌐 Visible to everyone'}
-                      </button>
-                      {users.map(u => {
-                        const isVisible = !latestCard.visibleTo?.length || latestCard.visibleTo?.includes(u.id);
-                        return (
-                          <button
-                            key={u.id}
-                            onClick={() => {
-                              const current = latestCard.visibleTo || users.map(x => x.id);
-                              const next = isVisible
-                                ? current.filter(id => id !== u.id)
-                                : [...current, u.id];
-                              // If all selected, set to undefined (everyone)
-                              updateCard({ visibleTo: next.length === users.length ? undefined : next });
-                            }}
-                            className={cn(
-                              'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors',
-                              isVisible ? 'text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 line-through'
-                            )}
-                          >
-                            <Avatar user={u} size="sm" />
-                            <span className="flex-1 text-left">{u.name}</span>
-                            {isVisible ? <Check size={12} className="text-emerald-500" /> : <X size={12} className="text-red-400" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
                   <h4 className="text-[11px] font-semibold uppercase text-slate-400 dark:text-slate-500 tracking-wider px-1 mb-1">
                     {lang === 'zh' ? '动作' : 'Actions'}
