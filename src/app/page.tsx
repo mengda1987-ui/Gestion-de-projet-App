@@ -8,7 +8,18 @@ const MainBoardDynamic = dynamic(() => import('@/components/board/MainBoard'), {
 const BoardHomeDynamic = dynamic(() => import('@/components/workspace/BoardHome'), { ssr: false });
 
 export default function Home() {
-  const { currentUser, boards, currentBoardId } = useBoard();
+  const { currentUser, boards, currentBoardId, _loaded } = useBoard();
+
+  if (!_loaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-slate-300 border-t-sky-500 rounded-full animate-spin" />
+          <p className="text-sm text-slate-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <LoginPageDynamic />;

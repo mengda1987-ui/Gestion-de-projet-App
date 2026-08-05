@@ -10,9 +10,13 @@ const in2Days = new Date(Date.now() + 2 * 86400000).toISOString();
 const in4Days = new Date(Date.now() + 4 * 86400000).toISOString();
 const in5Days = new Date(Date.now() + 5 * 86400000).toISOString();
 
+export const USER_DA = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+export const USER_LAURE = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';
+export const USER_WANG = 'c3d4e5f6-a7b8-9012-cdef-123456789012';
+
 export const MOCK_USERS: User[] = [
   {
-    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    id: USER_DA,
     name: 'Da MENG',
     email: 'dameng@example.com',
     avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20orange%20fox%20avatar%20kawaii%20style%20big%20eyes%20round%20face%20pastel%20background&image_size=square',
@@ -22,7 +26,7 @@ export const MOCK_USERS: User[] = [
     lang: 'zh',
   },
   {
-    id: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+    id: USER_LAURE,
     name: 'Laure Gouhier',
     email: 'laure@example.com',
     avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20cat%20avatar%20kawaii%20style%20big%20green%20eyes%20round%20face%20pastel%20background&image_size=square',
@@ -32,7 +36,7 @@ export const MOCK_USERS: User[] = [
     lang: 'en',
   },
   {
-    id: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+    id: USER_WANG,
     name: '王磊',
     email: 'wanglei@example.com',
     avatar: 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20panda%20bear%20avatar%20kawaii%20chibi%20style%20bamboo%20leaf%20big%20round%20eyes%20soft%20green%20background&image_size=square',
@@ -72,7 +76,7 @@ export const MOCK_BOARD: Board = {
           title: '用户调研与需求分析',
           description: '## 目标\n\n收集用户反馈，分析核心需求。\n\n### 任务清单\n\n- [x] 设计调研问卷\n- [ ] 发送给50位目标用户\n- [ ] 收集并整理结果\n- [ ] 输出调研报告',
           labels: ['label-5', 'label-3'],
-          assignees: ['user-1', 'user-2'],
+          assignees: [USER_DA, USER_LAURE],
           dueDate: in3Days,
           startDate: yesterday,
           status: 'todo',
@@ -93,7 +97,7 @@ export const MOCK_BOARD: Board = {
           comments: [
             {
               id: 'c-1',
-              userId: 'user-2',
+              userId: USER_LAURE,
               text: '问卷草稿已经准备好，请大家review一下。',
               createdAt: yesterday,
             },
@@ -108,7 +112,7 @@ export const MOCK_BOARD: Board = {
           title: '修复登录页面样式问题',
           description: '在移动端登录按钮被遮挡，需要修复响应式布局。',
           labels: ['label-2', 'label-6'],
-          assignees: ['user-1'],
+          assignees: [USER_DA],
           dueDate: tomorrow,
           startDate: now,
           status: 'todo',
@@ -128,13 +132,13 @@ export const MOCK_BOARD: Board = {
           comments: [
             {
               id: 'c-2',
-              userId: 'user-1',
+              userId: USER_DA,
               text: '已经定位到是flex布局在小屏幕的问题。',
               createdAt: yesterday,
             },
             {
               id: 'c-3',
-              userId: 'user-3',
+              userId: USER_WANG,
               text: '建议用min-h-screen替代h-screen，可能解决部分问题。',
               createdAt: now,
             },
@@ -158,7 +162,7 @@ export const MOCK_BOARD: Board = {
           title: '编写API接口文档',
           description: '使用Swagger/OpenAPI规范编写后端接口文档。',
           labels: ['label-5'],
-          assignees: ['user-2'],
+          assignees: [USER_LAURE],
           dueDate: in1Week,
           startDate: in2Days,
           status: 'todo',
@@ -183,7 +187,7 @@ export const MOCK_BOARD: Board = {
           title: '设计新版首页UI',
           description: '## 设计要求\n\n- 现代化简洁风格\n- 支持深色模式\n- 响应式布局\n- 加入动效设计',
           labels: ['label-4', 'label-3'],
-          assignees: ['user-3'],
+          assignees: [USER_WANG],
           dueDate: in3Days,
           startDate: yesterday,
           status: 'todo',
@@ -204,7 +208,7 @@ export const MOCK_BOARD: Board = {
           comments: [
             {
               id: 'c-4',
-              userId: 'user-3',
+              userId: USER_WANG,
               text: '线框图和初稿已经上传到Figma，请查阅。',
               createdAt: yesterday,
             },
@@ -228,7 +232,7 @@ export const MOCK_BOARD: Board = {
           title: '数据库性能优化',
           description: '优化慢查询，添加必要的索引，提升查询性能50%以上。',
           labels: ['label-7', 'label-1'],
-          assignees: ['user-1', 'user-2'],
+          assignees: [USER_DA, USER_LAURE],
           dueDate: in5Days,
           startDate: now,
           status: 'todo',
@@ -264,7 +268,7 @@ export const MOCK_BOARD: Board = {
           title: '支付模块集成',
           description: '集成Stripe支付网关，支持信用卡和微信支付。',
           labels: ['label-3', 'label-1'],
-          assignees: ['user-1'],
+          assignees: [USER_DA],
           dueDate: in4Days,
           startDate: lastWeek,
           status: 'todo',
@@ -286,7 +290,7 @@ export const MOCK_BOARD: Board = {
           comments: [
             {
               id: 'c-5',
-              userId: 'user-2',
+              userId: USER_LAURE,
               text: '功能都已完成，请安全组的同事帮忙做一下审计。',
               createdAt: yesterday,
             },
@@ -309,7 +313,7 @@ export const MOCK_BOARD: Board = {
           title: '项目初始化与环境搭建',
           description: '搭建Next.js + TypeScript + Tailwind CSS 开发环境，配置CI/CD流程。',
           labels: ['label-3'],
-          assignees: ['user-1', 'user-2', 'user-3'],
+          assignees: [USER_DA, USER_LAURE, USER_WANG],
           dueDate: lastWeek,
           startDate: new Date(Date.now() - 14 * 86400000).toISOString(),
           status: 'complete',
@@ -329,7 +333,7 @@ export const MOCK_BOARD: Board = {
           comments: [
             {
               id: 'c-6',
-              userId: 'user-1',
+              userId: USER_DA,
               text: '环境已经全部搭建完毕，大家可以开始开发了！',
               createdAt: lastWeek,
             },
@@ -344,7 +348,7 @@ export const MOCK_BOARD: Board = {
           title: '品牌Logo设计',
           description: '设计公司品牌Logo和VI系统基础元素。',
           labels: ['label-4'],
-          assignees: ['user-3'],
+          assignees: [USER_WANG],
           dueDate: new Date(Date.now() - 3 * 86400000).toISOString(),
           startDate: new Date(Date.now() - 10 * 86400000).toISOString(),
           status: 'complete',
@@ -353,7 +357,7 @@ export const MOCK_BOARD: Board = {
           comments: [
             {
               id: 'c-7',
-              userId: 'user-2',
+              userId: USER_LAURE,
               text: 'Logo非常棒，已经确定使用第3版方案！',
               createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
             },

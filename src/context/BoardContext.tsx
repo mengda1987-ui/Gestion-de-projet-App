@@ -10,6 +10,9 @@ import { checklistOpsReducer } from './reducers/checklistOpsReducer';
 import { mindmapOpsReducer } from './reducers/mindmapOpsReducer';
 import { syncMindMapCards } from './middlewares/mindmapSync';
 import { syncBoardInList } from './middlewares/boardListSync';
+import { supabase } from '@/lib/supabase';
+import { MOCK_USERS, MOCK_BOARDS } from '@/data/mockData';
+import type { User, Board } from '@/types';
 
 interface BoardContextType {
   state: BoardState;
@@ -55,6 +58,75 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
   const channelRef = useRef<BroadcastChannel | null>(null);
 
+  // 从 Supabase 加载数据，失败则使用 Mock 数据
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!url) throw new Error('No Supabase URL configured');
+
+        const [{ data: usersData }, { data: boardsData }] = await Promise.all([
+          supabase.from('users').select('*'),
+          supabase.from('boards').select('*'),
+        ]);
+
+        let settingsData: any = null;
+        try {
+          const { data } = await supabase.from('workspace_settings').select('*').limit(1).maybeSingle();
+          settingsData = data;
+        } catch {}
+
+        const users: User[] = (usersData || []).map((u: any) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email || '',
+          avatar: u.avatar || '',
+          color: u.color || '#3B82F6',
+          role: u.role || 'member',
+          password: u.password || '',
+          lang: u.lang || 'zh',
+        }));
+
+        const boards: Board[] = (boardsData || []).map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          background: b.background || '#f5f5f7',
+          labels: b.labels || [],
+          columns: b.data?.columns || [],
+          mindmap: b.data?.mindmap || [],
+          createdAt: b.created_at || new Date().toISOString(),
+          updatedAt: b.updated_at || new Date().toISOString(),
+        }));
+
+        const wsSettings = settingsData || {};
+        dispatch({
+          type: 'LOAD_ALL_DATA',
+          payload: {
+            users: users.length > 0 ? users : MOCK_USERS,
+            boards: boards.length > 0 ? boards : MOCK_BOARDS,
+            workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
+            loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            logo: wsSettings.logo || '',
+          },
+        });
+      } catch (err) {
+        console.warn('Supabase load failed, using mock data:', err);
+        dispatch({
+          type: 'LOAD_ALL_DATA',
+          payload: {
+            users: MOCK_USERS,
+            boards: MOCK_BOARDS,
+            workspaceBackground: '#f5f5f7',
+            loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            logo: '',
+          },
+        });
+      }
+    }
+    loadData();
+  }, [dispatch]);
+
+  // BroadcastChannel 跨标签页同步
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const channel = new BroadcastChannel('trello-board-sync');
@@ -119,6 +191,7 @@ export function useBoard() {
     loginBackground: state.loginBackground,
     logo: state.logo,
     boardLabels: state.boardLabels,
+    _loaded: state._loaded,
     dispatch,
     broadcastChange,
     findCard,
