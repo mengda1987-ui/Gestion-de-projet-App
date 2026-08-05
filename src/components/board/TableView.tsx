@@ -193,7 +193,7 @@ export default function TableView() {
                     : rawDueStatus.status === 'due-soon' ? t('date.soon')
                     : rawDueStatus.label
                 } : null;
-                const assignees = card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u): u is User => u !== undefined);
+                const assignees = card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u: User | undefined): u is User => u !== undefined);
                 return (
                   <tr
                     key={card.id}

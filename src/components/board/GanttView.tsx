@@ -350,7 +350,7 @@ export default function GanttView() {
                       {column.title} <span className="text-slate-400 font-normal ml-1">({colTasks.length})</span>
                     </div>
                     {colTasks.map(task => {
-                      const assignees = task.card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u): u is User => u !== undefined);
+                      const assignees = task.card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u: User | undefined): u is User => u !== undefined);
                       const completed = task.card.status === 'complete';
                       return (
                         <div
@@ -531,7 +531,7 @@ export default function GanttView() {
                                   </div>
                                   {pos.width > 100 && !isDragging && (
                                     <AvatarStack
-                                      users={task.card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u): u is User => u !== undefined)}
+                                      users={task.card.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u: User | undefined): u is User => u !== undefined)}
                                       max={2}
                                       size="sm"
                                     />
