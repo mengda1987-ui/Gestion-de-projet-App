@@ -19,8 +19,10 @@ import {
   CheckCircle2,
   ChevronDown,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn, calculateChecklistProgress, getDueDateStatus } from '@/lib/utils';
+import { parseISO, isToday } from 'date-fns';
 
 interface CardItemProps {
   card: Card;
@@ -72,6 +74,10 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const checklistOverdue = checklistDueAlerts.filter(x => x.status!.status === 'overdue').length;
   const checklistDueSoon = checklistDueAlerts.filter(x => x.status!.status === 'dueSoon').length;
 
+  const isUrgentTodo = card.status === 'todo' && dueStatus?.status === 'overdue';
+  const isDueToday = dueStatus?.status === 'due-soon' && card.dueDate && isToday(parseISO(card.dueDate));
+  const showRedAlert = isUrgentTodo || isDueToday;
+
   return (
     <div
       onClick={onClick}
@@ -80,6 +86,7 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         card.archived && 'opacity-50 line-through decoration-slate-400',
         card.status === 'complete' && 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800',
         card.status === 'in_progress' && 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',
+        showRedAlert && 'border-l-[3px] border-l-red-500 dark:border-l-red-400',
         isDragging && 'ring-2 ring-[#007AFF] shadow-2xl'
       )}
     >
@@ -200,6 +207,12 @@ export default function CardItem({ card, onClick, isDragging }: CardItemProps) {
         )}
 
         {/* Title */}
+        {showRedAlert && (
+          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 text-white text-[11px] font-semibold shadow-sm animate-pulse">
+            <AlertTriangle size={11} />
+            {isUrgentTodo ? (lang === 'zh' ? '紧急待办' : 'Urgent') : (lang === 'zh' ? '今天到期' : 'Due today')}
+          </div>
+        )}
         <h4 className={cn(
           'text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug',
           card.status === 'complete' && 'line-through decoration-emerald-500 text-slate-500 dark:text-slate-400'
