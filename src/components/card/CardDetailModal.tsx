@@ -378,7 +378,7 @@ export default function CardDetailModal({
     if (!text.trim()) return;
     broadcastChange({
       type: 'ADD_CHECKLIST_ITEM',
-      payload: { cardId: latestCard.id, checklistId: clId, text: text.trim() },
+      payload: { cardId: latestCard.id, checklistId: clId, text: text.trim(), itemId: generateId() },
     });
     setChecklistNewItems({ ...checklistNewItems, [clId]: '' });
   };
