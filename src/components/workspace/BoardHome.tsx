@@ -34,38 +34,42 @@ import BackgroundPicker from '@/components/ui/BackgroundPicker';
 import { parseISO, isToday } from 'date-fns';
 
 const BOARD_BG_GRADIENTS = [
-  'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%)',
-  'linear-gradient(135deg, #f97316 0%, #ef4444 100%)',
-  'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-  'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
-  'linear-gradient(135deg, #f43f5e 0%, #fbbf24 100%)',
-  'linear-gradient(135deg, #1e293b 0%, #3b82f6 100%)',
-  'linear-gradient(135deg, #f472b6 0%, #fb923c 100%)',
-  'linear-gradient(135deg, #34d399 0%, #a3e635 100%)',
-  'linear-gradient(135deg, #881337 0%, #dc2626 100%)',
-  'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-  'linear-gradient(135deg, #f59e0b 0%, #d946ef 100%)',
-  'linear-gradient(135deg, #c026d3 0%, #ec4899 100%)',
-  'linear-gradient(135deg, #84cc16 0%, #06b6d4 100%)',
-  'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
-  'linear-gradient(135deg, #e11d48 0%, #fb7185 100%)',
-  'linear-gradient(135deg, #64748b 0%, #475569 50%, #334155 100%)',
-  'linear-gradient(135deg, #0891b2 0%, #2dd4bf 100%)',
-  'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)',
-  'linear-gradient(135deg, #ea580c 0%, #eab308 100%)',
-  'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-  'linear-gradient(135deg, #059669 0%, #a3e635 100%)',
-  'linear-gradient(135deg, #15803d 0%, #4ade80 100%)',
-  'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)',
-  'linear-gradient(135deg, #6366f1 0%, #14b8a6 100%)',
-  'linear-gradient(135deg, #d946ef 0%, #f97316 100%)',
-  'linear-gradient(135deg, #334155 0%, #0f172a 100%)',
-  'linear-gradient(135deg, #db2777 0%, #9333ea 100%)',
-  'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-  'linear-gradient(135deg, #ca8a04 0%, #a16207 100%)',
-  'linear-gradient(135deg, #4338ca 0%, #6366f1 100%)',
-  'linear-gradient(135deg, #166534 0%, #22d3ee 100%)',
-  'linear-gradient(135deg, #be123c 0%, #fda4af 100%)',
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+  'linear-gradient(135deg, #fccb90 0%, #d57eeb 100%)',
+  'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)',
+  'linear-gradient(135deg, #f5576c 0%, #ff6a88 50%, #ff99ac 100%)',
+  'linear-gradient(135deg, #0c3483 0%, #a2b6df 100%)',
+  'linear-gradient(135deg, #09203f 0%, #537895 100%)',
+  'linear-gradient(135deg, #13547a 0%, #80d0c7 100%)',
+  'linear-gradient(135deg, #ffd3a5 0%, #fd6585 100%)',
+  'linear-gradient(135deg, #96fbc4 0%, #f9f586 100%)',
+  'linear-gradient(135deg, #ffe259 0%, #ffa751 100%)',
+  'linear-gradient(135deg, #00b4db 0%, #0083b0 100%)',
+  'linear-gradient(135deg, #d299c2 0%, #fef9d7 100%)',
+  'linear-gradient(135deg, #f5af19 0%, #f12711 100%)',
+  'linear-gradient(135deg, #667eea 0%, #c471f5 100%)',
+  'linear-gradient(135deg, #3b2667 0%, #bc78ec 100%)',
+  'linear-gradient(135deg, #ff0844 0%, #ffb199 100%)',
+  'linear-gradient(135deg, #2b5876 0%, #4e4376 100%)',
+  'linear-gradient(135deg, #0082c8 0%, #667eea 100%)',
+  'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+  'linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%)',
+  'linear-gradient(135deg, #b224ef 0%, #7579ff 100%)',
+  'linear-gradient(135deg, #0ba360 0%, #3cba92 100%)',
+  'linear-gradient(135deg, #e52d27 0%, #b31217 100%)',
+  'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)',
+  'linear-gradient(135deg, #ee9ca7 0%, #ffdde1 100%)',
+  'linear-gradient(135deg, #4568dc 0%, #b06ab3 100%)',
+  'linear-gradient(135deg, #283048 0%, #859398 100%)',
+  'linear-gradient(135deg, #f12711 0%, #f5af19 100%)',
+  'linear-gradient(135deg, #834d9b 0%, #d04ed6 100%)',
+  'linear-gradient(135deg, #1cb5e0 0%, #000046 100%)',
+  'linear-gradient(135deg, #f953c6 0%, #b91d73 100%)',
 ];
 
 export default function BoardHome() {
@@ -301,23 +305,26 @@ export default function BoardHome() {
       <div className="max-w-6xl mx-auto px-6 sm:px-8 py-10 sm:py-14">
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-3">
-            {/* Menu dropdown button */}
+          <div className="flex items-center gap-4">
+            {/* Apple-style menu button */}
             <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                setHeaderMenuPos({ top: rect.bottom + 6, left: rect.left });
+                setHeaderMenuPos({ top: rect.bottom + 8, left: rect.left });
                 setHeaderMenuOpen(true);
               }}
-              className="btn-secondary text-xs"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-500 hover:text-slate-700 hover:bg-white hover:shadow-md transition-all duration-200 active:scale-95"
             >
               <Menu size={16} />
             </button>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{lang === 'zh' ? '工作区' : 'Workspace'}</h1>
           </div>
-          <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
-            <Plus size={15} />
-            <span className="hidden sm:inline">{t('home.createBoard')}</span>
+          <button
+            onClick={() => dispatch({ type: 'SET_CURRENT_USER', payload: null })}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-500 hover:text-red-500 hover:bg-white hover:border-red-200 hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
+          >
+            <LogOut size={14} />
+            <span className="hidden sm:inline">{lang === 'zh' ? '退出' : 'Logout'}</span>
           </button>
         </div>
 
@@ -543,7 +550,7 @@ export default function BoardHome() {
             {/* Background color */}
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">{lang === 'zh' ? '背景颜色' : 'Background'}</p>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {['#ef4444','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#ec4899','#78716c','#94a3b8','#1e293b','#14b8a6','#84cc16','#a855f7','#e11d48','#475569','#0891b2','#ea580c','#2563eb','#059669','#b91c1c','#d946ef','#334155','#db2777','#0284c7','#ca8a04','#4338ca','#166534','#be123c','#7c3aed','#0f172a'].map(color => (
+              {['#FF3B30','#FF9500','#FFCC00','#34C759','#007AFF','#5856D6','#AF52DE','#FF2D55','#00C7BE','#FF6B35','#0A84FF','#BF5AF2','#30D158','#FF9F0A','#5AC8FA','#FF375F','#64D2FF','#E85D04','#147EFB','#EB4D4B','#6C5CE7','#00B894','#FDCB6E','#E17055','#0984E3','#D63031','#2D3436','#636E72','#FDA7DF','#A29BFE','#55EFC4','#FFEAA7','#FF7675','#74B9FF','#DFE6E9','#B2BEC3'].map(color => (
                 <button
                   key={color}
                   onClick={() => {
@@ -776,40 +783,41 @@ export default function BoardHome() {
       )}
       </div>
 
-      {/* Header dropdown menu */}
+      {/* Header dropdown menu - Apple style */}
       {headerMenuOpen && headerMenuPos && createPortal(
         <>
           <div className="fixed inset-0 z-[99998]" onClick={() => { setHeaderMenuOpen(false); setHeaderMenuPos(null); }} />
           <div
-            className="fixed z-[99999] animate-slide-up w-52 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1.5"
+            className="fixed z-[99999] animate-slide-up w-56 bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200/60 dark:border-slate-700/60 py-2"
             style={{ left: headerMenuPos.left, top: headerMenuPos.top }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Language toggle */}
             <button
               onClick={() => { toggleLang(); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
             >
-              <Globe size={14} />
-              {lang === 'zh' ? 'Switch to English' : '切换到中文'}
+              <Globe size={15} className="text-slate-400" />
+              <span className="flex-1 text-left">{lang === 'zh' ? '切换语言' : 'Language'}</span>
+              <span className="text-xs text-slate-400">{lang === 'zh' ? '中→EN' : 'EN→中'}</span>
             </button>
 
             {currentUser?.role === 'admin' && (
               <>
-                <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+                <div className="h-px bg-slate-200/60 dark:bg-slate-700/40 mx-3 my-1" />
                 <button
                   onClick={() => { setShowMemberManage(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
                 >
-                  <Users size={14} />
-                  {lang === 'zh' ? '成员管理' : 'Manage Members'}
+                  <Users size={15} className="text-slate-400" />
+                  <span>{lang === 'zh' ? '成员管理' : 'Members'}</span>
                 </button>
                 <button
                   onClick={() => { setShowBgPicker(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
                 >
-                  <Image size={14} />
-                  {lang === 'zh' ? '更换背景' : 'Change Background'}
+                  <Image size={15} className="text-slate-400" />
+                  <span>{lang === 'zh' ? '工作区背景' : 'Background'}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -817,22 +825,13 @@ export default function BoardHome() {
                     else { logoInputRef.current?.click(); }
                     setHeaderMenuOpen(false); setHeaderMenuPos(null);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
                 >
-                  {logo ? <Trash2 size={14} /> : <Upload size={14} />}
-                  {logo ? (lang === 'zh' ? '删除 Logo' : 'Remove Logo') : (lang === 'zh' ? '上传 Logo' : 'Upload Logo')}
+                  {logo ? <Trash2 size={15} className="text-slate-400" /> : <Upload size={15} className="text-slate-400" />}
+                  <span>{logo ? (lang === 'zh' ? '移除 Logo' : 'Remove Logo') : (lang === 'zh' ? '上传 Logo' : 'Upload Logo')}</span>
                 </button>
               </>
             )}
-
-            <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
-            <button
-              onClick={() => { dispatch({ type: 'SET_CURRENT_USER', payload: null }); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              <LogOut size={14} />
-              {lang === 'zh' ? '退出登录' : 'Logout'}
-            </button>
           </div>
         </>,
         document.body
@@ -842,7 +841,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.4.0
+        v1.4.1
       </div>
     </div>
   );
