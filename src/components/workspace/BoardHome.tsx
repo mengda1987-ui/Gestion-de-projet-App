@@ -192,8 +192,7 @@ export default function BoardHome() {
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t('home.title')}</h1>
-            <p className="text-slate-500 text-sm mt-2">{t('home.subtitle')}</p>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{lang === 'zh' ? '工作区' : 'Workspace'}</h1>
           </div>
           <div className="flex items-center gap-2.5">
             <button
@@ -649,8 +648,8 @@ export default function BoardHome() {
       </div>
 
       {/* Version */}
-      <div className="text-center py-2 text-[11px] text-black shrink-0">
-        v1.1.21
+      <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
+        v1.1.22
       </div>
     </div>
   );
