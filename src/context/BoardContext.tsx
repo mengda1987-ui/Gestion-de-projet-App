@@ -98,7 +98,7 @@ export function useBoardContext() {
 
 export function useBoard() {
   const { state, dispatch, broadcastChange } = useBoardContext();
-  const findCard = (cardId: string) => {
+  const findCard = (cardId: string): { card: any; columnId: string } | undefined => {
     for (const col of state.board.columns) {
       const card = col.cards.find(c => c.id === cardId);
       if (card) return { card, columnId: col.id };
