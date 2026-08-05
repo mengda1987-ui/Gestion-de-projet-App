@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const SYSTEM_PROMPT = `You are an expert meeting/audio summarizer. Analyze the provided audio recording and produce a structured mind map summary with exactly 3 levels. Follow these rules strictly:
 
@@ -29,6 +28,9 @@ Rules:
 - Focus on actionable, structured information
 - Skip filler content and pleasantries`;
 
+const BASE_URL = 'https://generativelanguage.googleapis.com/v1/models';
+const MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -48,70 +50,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert audio to base64
     const arrayBuffer = await audioFile.arrayBuffer();
     const base64Audio = Buffer.from(arrayBuffer).toString('base64');
     const mimeType = audioFile.type || 'audio/mpeg';
 
-    // Use the official SDK
-    const genAI = new GoogleGenerativeAI(apiKey);
-
-    // Try models in order: gemini-1.5-flash (widely available, supports audio)
-    const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
-
-    let lastError: Error | null = null;
+    let lastErrorText = '';
     let rawText: string | null = null;
 
-    for (const modelName of models) {
+    for (const modelName of MODELS) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const url = `${BASE_URL}/${modelName}:generateContent?key=${apiKey}`;
+        const geminiResponse = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: SYSTEM_PROMPT },
+                { inline_data: { mime_type: mimeType, data: base64Audio } },
+              ],
+            }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+          }),
+        });
 
-        const result = await model.generateContent([
-          { text: SYSTEM_PROMPT },
-          {
-            inlineData: {
-              mimeType,
-              data: base64Audio,
-            },
-          },
-        ]);
-
-        const response = result.response;
-        rawText = response.text();
-
-        if (rawText) {
-          console.log(`Success with model: ${modelName}`);
-          break;
-        }
-      } catch (err: any) {
-        console.error(`Model ${modelName} failed:`, err.message);
-        lastError = err;
-
-        // If the error message contains model-specific hints, try next
-        if (err.message?.includes('not found') || err.status === 404) {
+        if (!geminiResponse.ok) {
+          const errBody = await geminiResponse.text();
+          lastErrorText = `${modelName}: ${geminiResponse.status} — ${errBody.slice(0, 200)}`;
+          console.error(lastErrorText);
           continue;
         }
-        // For other errors (auth, quota, etc.), stop retrying
-        throw err;
+
+        const data = await geminiResponse.json();
+        rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) break;
+      } catch (err: any) {
+        lastErrorText = `${modelName}: ${err.message}`;
+        console.error(lastErrorText);
       }
     }
 
     if (!rawText) {
       return NextResponse.json(
-        { error: lastError?.message || 'All models failed' },
+        { error: lastErrorText || 'All models failed' },
         { status: 502 }
       );
     }
 
-    // Parse the JSON from Gemini's response (handle markdown code blocks)
+    // Parse JSON from response (handle markdown code blocks)
     let jsonStr = rawText.trim();
     const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
-    }
+    if (jsonMatch) jsonStr = jsonMatch[1].trim();
 
     const parsed = JSON.parse(jsonStr);
-
     if (!parsed.columns || !Array.isArray(parsed.columns)) {
       throw new Error('Invalid response structure: missing columns array');
     }
