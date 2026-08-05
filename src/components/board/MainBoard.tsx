@@ -144,6 +144,8 @@ export default function MainBoard() {
     return cards;
   }, [board.columns]);
 
+  const totalArchived = archivedColumns.length + archivedCards.length;
+
   const isBoardVisible = useMemo(() => {
     if (currentUser?.role === 'admin') return true;
     if (!board.visibleTo || board.visibleTo.length === 0) return true;
@@ -175,6 +177,8 @@ export default function MainBoard() {
 
   return (
     <div className="h-dvh flex flex-col" style={getBgStyle(board.background)}>
+      {/* Top Header */}
+      <header className="glass border-b border-slate-200/60 dark:border-slate-700/50 shrink-0 relative z-[9000]">
         <div className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-4 py-2">
           {/* Back to Workspace — always visible */}
           <button
@@ -219,7 +223,7 @@ export default function MainBoard() {
                   <X size={13} />
                 </button>
               )}
-          </div>
+            </div>
           </div>
 
           {/* View Toggle — icon only, label on lg+ */}
@@ -263,8 +267,8 @@ export default function MainBoard() {
               className="flex items-center gap-0.5 hover:bg-slate-200/60 dark:hover:bg-white/10 rounded-full p-0.5 pr-1.5 transition-colors"
             >
               <Avatar user={currentUser!} size="sm" className="ring-2 ring-slate-200/60 dark:ring-white/40" />
-            <ChevronDown size={12} className="text-slate-500 dark:text-slate-200 hidden sm:block" />
-          </button>
+              <ChevronDown size={12} className="text-slate-500 dark:text-slate-200 hidden sm:block" />
+            </button>
 
             {showUserMenu && (
               <div
@@ -653,7 +657,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.1.26</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.1.27</span>
     </div>
   );
 }
