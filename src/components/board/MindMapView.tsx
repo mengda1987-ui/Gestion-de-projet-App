@@ -389,7 +389,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
 
   const findItem = (itemId: string): { cardId: string; checklistId: string } | null => {
     for (const col of boardRef.current.columns) for (const card of col.cards) for (const cl of card.checklists) {
-      if (cl.items.some(it => it.id === itemId)) return { cardId: card.id, checklistId: cl.id };
+      if (cl.items.some(it => it.id === itemId || (it as any).mmNodeId === itemId)) return { cardId: card.id, checklistId: cl.id };
     }
     return null;
   };
@@ -434,12 +434,14 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       } else {
         checklistId = card.checklists[0].id;
       }
+      const newItemId = generateId();
       (broadcastChange as any)({
         type: 'ADD_CHECKLIST_ITEM',
         payload: {
           cardId: parent.refId,
           checklistId,
           text: t('mindmap.defaultItem'),
+          itemId: newItemId,
         } as any,
       });
     } else if (parent.kind === 'item') {
@@ -448,7 +450,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       if (!pair) return;
       (broadcastChange as any)({
         type: 'ADD_CHECKLIST_ITEM',
-        payload: { cardId: pair.cardId, checklistId: pair.checklistId, text: t('mindmap.defaultItem') } as any,
+        payload: { cardId: pair.cardId, checklistId: pair.checklistId, text: t('mindmap.defaultItem'), itemId: generateId() } as any,
       });
     }
   };
@@ -501,6 +503,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
         payload: {
           cardId: parent.refId, checklistId: pair.checklistId,
           text: t('mindmap.defaultItem'),
+          itemId: generateId(),
         } as any,
       });
     }
@@ -896,7 +899,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
           for (const item of card.items) {
             (broadcastChange as any)({
               type: 'ADD_CHECKLIST_ITEM',
-              payload: { cardId, checklistId, text: item },
+              payload: { cardId, checklistId, text: item, itemId: generateId() },
             });
           }
         }

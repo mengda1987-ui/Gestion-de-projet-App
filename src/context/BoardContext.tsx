@@ -56,7 +56,7 @@ type Action =
   | { type: 'TOGGLE_CARD_ASSIGNEE'; payload: { cardId: string; userId: string } }
   | { type: 'TOGGLE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string } }
   | { type: 'UPDATE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string; updates: Partial<import('@/types').ChecklistItem> } }
-  | { type: 'ADD_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; text: string } }
+  | { type: 'ADD_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; text: string; itemId?: string } }
   | { type: 'ADD_CHECKLIST'; payload: { cardId: string; name: string; id?: string } }
   | { type: 'DELETE_CHECKLIST'; payload: { cardId: string; checklistId: string } }
   | { type: 'DELETE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string } }
@@ -593,7 +593,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
                 ...cl,
                 items: [
                   ...cl.items,
-                  { id: generateId(), text: action.payload.text, completed: false },
+                  { id: action.payload.itemId || generateId(), text: action.payload.text, completed: false },
                 ],
               };
             }),
