@@ -219,6 +219,22 @@ export default function MainBoard() {
             ))}
           </div>
 
+          {/* Filter Button */}
+          <button
+            onClick={() => setShowFilterMenu(!showFilterMenu)}
+            className={cn(
+              'relative p-2 rounded-full hover:bg-slate-200/60 dark:hover:bg-white/10 text-slate-600 dark:text-slate-200 shrink-0 transition-all',
+              (filters.labels.length > 0 || filters.assignees.length > 0) && 'bg-slate-100 dark:bg-white/20'
+            )}
+          >
+            <Filter size={16} />
+            {(filters.labels.length > 0 || filters.assignees.length > 0) && (
+              <span className="absolute -top-0.5 -right-0.5 bg-[#007AFF] text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
+                {filters.labels.length + filters.assignees.length}
+              </span>
+            )}
+          </button>
+
           {/* Spacer — pushes everything after to the right */}
           <div className="flex-1" />
 
@@ -249,22 +265,6 @@ export default function MainBoard() {
               )}
             </div>
           </div>
-
-          {/* Filter Button */}
-          <button
-            onClick={() => setShowFilterMenu(!showFilterMenu)}
-            className={cn(
-              'relative p-2 rounded-full hover:bg-slate-200/60 dark:hover:bg-white/10 text-slate-600 dark:text-slate-200 shrink-0 transition-all',
-              (filters.labels.length > 0 || filters.assignees.length > 0) && 'bg-slate-100 dark:bg-white/20'
-            )}
-          >
-            <Filter size={16} />
-            {(filters.labels.length > 0 || filters.assignees.length > 0) && (
-              <span className="absolute -top-0.5 -right-0.5 bg-[#007AFF] text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
-                {filters.labels.length + filters.assignees.length}
-              </span>
-            )}
-          </button>
 
           {/* Current User Avatar */}
           <div className="relative shrink-0">
