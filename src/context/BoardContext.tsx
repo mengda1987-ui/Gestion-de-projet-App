@@ -50,7 +50,10 @@ function boardReducer(state: BoardState, action: Action): BoardState {
   const skipSync = (action as any)._skipSync === true;
   let newState = baseReducer(state, action);
   if (!skipSync) newState = syncMindMapCards(newState, action);
-  newState = syncBoardInList(newState);
+  // SET_BOARDS_ORDER 和 REORDER_BOARDS 不需要 boardListSync（会覆盖 order 值）
+  if (action.type !== 'SET_BOARDS_ORDER' && action.type !== 'REORDER_BOARDS') {
+    newState = syncBoardInList(newState);
+  }
   return newState;
 }
 
