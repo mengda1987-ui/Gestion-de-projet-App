@@ -180,8 +180,10 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Version */}
-      <p className="absolute bottom-6 right-4 text-xs text-black font-medium">v1.4.4</p>
+      {/* Version badge */}
+      <div className="fixed bottom-3 right-4 text-[11px] text-white/60 font-medium select-none pointer-events-none z-50">
+        v1.4.5
+      </div>
 
       {/* Background Picker */}
       {showBgPicker && createPortal(

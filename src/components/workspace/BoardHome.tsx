@@ -93,23 +93,37 @@ export default function BoardHome() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
 
-  const visibleBoards = boards.filter(b => {
-    if (currentUser?.role === 'admin') return true;
-    if (!b.visibleTo || b.visibleTo.length === 0) return true;
-    return b.visibleTo.includes(currentUser?.id || '');
-  });
+  const visibleBoards = boards
+    .filter(b => {
+      if (currentUser?.role === 'admin') return true;
+      if (!b.visibleTo || b.visibleTo.length === 0) return true;
+      return b.visibleTo.includes(currentUser?.id || '');
+    })
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) return;
-    const fromBoardId = result.draggableId;
-    const toBoardId = visibleBoards[result.destination.index]?.id;
-    const fromGlobal = boards.findIndex(b => b.id === fromBoardId);
-    const toGlobal = boards.findIndex(b => b.id === toBoardId);
-    if (fromGlobal >= 0 && toGlobal >= 0 && fromGlobal !== toGlobal) {
-      broadcastChange({ type: 'REORDER_BOARDS', payload: { fromIndex: fromGlobal, toIndex: toGlobal } });
-    }
+    const fromIndex = result.source.index;
+    const toIndex = result.destination.index;
+    if (fromIndex === toIndex) return;
+
+    // Update order field for all boards
+    const reordered = [...visibleBoards];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    // Assign new order values
+    const updatedBoards = boards.map(board => {
+      const newIndex = reordered.findIndex(b => b.id === board.id);
+      if (newIndex >= 0) {
+        return { ...board, order: newIndex, updatedAt: new Date().toISOString() };
+      }
+      return board;
+    });
+
+    dispatch({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
   };
 
   const bgRef = [...BOARD_BG_GRADIENTS];
@@ -840,7 +854,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.4.4
+        v1.4.5
       </div>
     </div>
   );

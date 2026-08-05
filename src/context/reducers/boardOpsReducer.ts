@@ -11,8 +11,9 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
     case 'LOAD_ALL_DATA': {
       const { users, boards, workspaceBackground, loginBackground, logo } = action.payload;
       // Migrate old cards: completed boolean → status
-      const migratedBoards = boards.map(b => ({
+      const migratedBoards = boards.map((b, idx) => ({
         ...b,
+        order: b.order ?? idx,
         columns: b.columns.map(col => ({
           ...col,
           cards: col.cards.map(c => ({
@@ -48,10 +49,15 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
       return { ...state, boards };
     }
 
+    case 'SET_BOARDS_ORDER': {
+      return { ...state, boards: action.payload };
+    }
+
     case 'UPDATE_BOARD':
       return { ...state, board: { ...state.board, ...action.payload, updatedAt: new Date().toISOString() } };
 
     case 'CREATE_BOARD': {
+      const maxOrder = state.boards.reduce((max, b) => Math.max(max, b.order ?? 0), -1);
       const newBoard: Board = {
         id: generateId(),
         title: action.payload.title,
@@ -61,6 +67,7 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         mindmap: [],
+        order: maxOrder + 1,
       };
       return {
         ...state,
