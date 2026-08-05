@@ -422,7 +422,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       });
     } else if (parent.kind === 'card') {
       // 卡片加孩子 = 新增清单 item（没有清单就先建清单）
-      const card = findCard(parent.refId)?.card;
+      const card = findCard(parent.refId);
       if (!card) return;
       let checklistId: string;
       if (card.checklists.length === 0) {
@@ -468,7 +468,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
     if (parent.kind === 'column') {
       // 不会发生，因为列 parentRef 是 null
     } else if (parent.kind === 'card') {
-      const card = findCard(parent.refId)?.card;
+      const card = findCard(parent.refId);
       if (card?.checklists.length === 0) return addChild(parent);
     }
     // 复用 addChild(parent) 的逻辑但 order = sib.order + 0.5
@@ -537,7 +537,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
 
   const toggleComplete = (n: VirtualNode) => {
     if (n.kind === 'card') {
-      const card = findCard(n.refId)?.card;
+      const card = findCard(n.refId);
       if (card) {
         const next: Record<string, string> = { todo: 'in_progress', in_progress: 'complete', complete: 'todo' };
         const newStatus = (next[card.status] || 'todo') as Card['status'];
@@ -546,7 +546,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
     } else if (n.kind === 'item') {
       const pair = findItem(n.refId);
       if (pair) {
-        const card = findCard(pair.cardId)?.card;
+        const card = findCard(pair.cardId);
         const it = card?.checklists.find(c => c.id === pair.checklistId)?.items.find(i => i.id === n.refId);
         if (it) {
           broadcastChange({ type: 'TOGGLE_CHECKLIST_ITEM', payload: { ...pair, itemId: n.refId } });
@@ -558,7 +558,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
   const setNodeColor = (n: VirtualNode, color: string) => {
     // 节点颜色同步：写回卡片第一个标签（如果没有就创建一个默认颜色标签）
     if (n.kind === 'card') {
-      const card = findCard(n.refId)?.card;
+      const card = findCard(n.refId);
       if (!card) return;
       // 查找同颜色已有 label
       let lbl = board.labels.find(l => l.color.toLowerCase() === color.toLowerCase());
