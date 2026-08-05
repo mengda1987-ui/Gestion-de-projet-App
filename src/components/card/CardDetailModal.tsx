@@ -383,7 +383,7 @@ export default function CardDetailModal({
     setChecklistNewItems({ ...checklistNewItems, [clId]: '' });
   };
 
-  const assignees = latestCard.assignees.map((id: string) => users.find(u => u.id === id)).filter((u): u is User => u !== undefined);
+  const assignees = latestCard.assignees.map((id: string) => users.find((u: User) => u.id === id)).filter((u): u is User => u !== undefined);
   const dueStatus = getDueDateStatus(latestCard.dueDate, latestCard.status);
 
   return (
