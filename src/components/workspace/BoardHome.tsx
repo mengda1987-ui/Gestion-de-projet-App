@@ -119,37 +119,51 @@ export default function BoardHome() {
 
   // 用 ref 避免闭包过期
   const boardsRef = useRef(boards);
+  const visibleRef = useRef(visibleBoards);
   boardsRef.current = boards;
+  visibleRef.current = visibleBoards;
 
   const [expandedBoardId, setExpandedBoardId] = useState<string | null>(null);
 
   // 上移
   const moveBoardUp = useCallback((boardId: string) => {
-    const currentBoards = [...boardsRef.current];
-    const idx = currentBoards.findIndex(b => b.id === boardId);
-    if (idx <= 0) return;
+    const sortedVisible = visibleRef.current; // 排序后的可见列表
+    const allBoards = [...boardsRef.current]; // 深拷贝全局列表
 
-    // 交换 order
-    const a = currentBoards[idx].order ?? idx;
-    const b = currentBoards[idx - 1].order ?? idx - 1;
-    currentBoards[idx] = { ...currentBoards[idx], order: b, updatedAt: new Date().toISOString() };
-    currentBoards[idx - 1] = { ...currentBoards[idx - 1], order: a, updatedAt: new Date().toISOString() };
+    const visIdx = sortedVisible.findIndex(b => b.id === boardId);
+    if (visIdx <= 0) return;
 
-    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: currentBoards });
+    // 在排序后的列表中交换这两个看板的 order
+    const boardA = sortedVisible[visIdx - 1]; // 上面的看板
+    const boardB = sortedVisible[visIdx];     // 当前看板
+
+    const updatedBoards = allBoards.map(board => {
+      if (board.id === boardA.id) return { ...board, order: boardB.order ?? visIdx, updatedAt: new Date().toISOString() };
+      if (board.id === boardB.id) return { ...board, order: boardA.order ?? visIdx - 1, updatedAt: new Date().toISOString() };
+      return board;
+    });
+
+    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
   }, [broadcastChange]);
 
   // 下移
   const moveBoardDown = useCallback((boardId: string) => {
-    const currentBoards = [...boardsRef.current];
-    const idx = currentBoards.findIndex(b => b.id === boardId);
-    if (idx < 0 || idx >= currentBoards.length - 1) return;
+    const sortedVisible = visibleRef.current;
+    const allBoards = [...boardsRef.current];
 
-    const a = currentBoards[idx].order ?? idx;
-    const b = currentBoards[idx + 1].order ?? idx + 1;
-    currentBoards[idx] = { ...currentBoards[idx], order: b, updatedAt: new Date().toISOString() };
-    currentBoards[idx + 1] = { ...currentBoards[idx + 1], order: a, updatedAt: new Date().toISOString() };
+    const visIdx = sortedVisible.findIndex(b => b.id === boardId);
+    if (visIdx < 0 || visIdx >= sortedVisible.length - 1) return;
 
-    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: currentBoards });
+    const boardA = sortedVisible[visIdx];     // 当前看板
+    const boardB = sortedVisible[visIdx + 1]; // 下面的看板
+
+    const updatedBoards = allBoards.map(board => {
+      if (board.id === boardA.id) return { ...board, order: boardB.order ?? visIdx + 1, updatedAt: new Date().toISOString() };
+      if (board.id === boardB.id) return { ...board, order: boardA.order ?? visIdx, updatedAt: new Date().toISOString() };
+      return board;
+    });
+
+    broadcastChange({ type: 'SET_BOARDS_ORDER', payload: updatedBoards });
   }, [broadcastChange]);
 
   const getBgStyle = (bg: string): React.CSSProperties => {
@@ -880,7 +894,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.5.00
+        v1.5.01
       </div>
     </div>
   );
