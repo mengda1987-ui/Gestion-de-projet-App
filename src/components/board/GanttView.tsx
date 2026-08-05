@@ -12,7 +12,7 @@ import {
   ChevronRight,
   RefreshCw,
 } from 'lucide-react';
-import { cn, getDueDateStatus, formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Card, Column, User } from '@/types';
 import { startOfWeek, addWeeks, eachDayOfInterval, format as f, isSameDay, parseISO, isBefore, startOfDay, differenceInDays, addDays } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
@@ -420,17 +420,14 @@ export default function GanttView() {
                     <div className="h-[28px] bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50" />
                     {colTasks.map(task => {
                       const pos = getTaskPosition(task);
-                      const dueStatus = getDueDateStatus(task.card.dueDate, task.card.status);
-                      const labelColor = board.labels.find(l => l.id === task.card.labels[0])?.color;
-                      const barColor = task.card.status === 'complete'
-                        ? 'bg-emerald-500'
-                        : dueStatus?.status === 'overdue'
-                          ? 'bg-red-500'
-                          : dueStatus?.status === 'due-soon'
-                            ? 'bg-amber-500'
-                            : labelColor
-                              ? ''
-                              : 'bg-[#007AFF]';
+                      const statusColors: Record<string, string> = {
+                        todo: 'bg-white border-2 border-[#007AFF] text-[#007AFF]',
+                        in_progress: 'bg-amber-400 text-black',
+                        complete: 'bg-emerald-500 text-black',
+                      };
+                      const barColor = statusColors[task.card.status] || statusColors.todo;
+                      const textColor = task.card.status === 'todo' ? 'text-[#007AFF]' : 'text-black';
+                      const handleColor = task.card.status === 'todo' ? 'bg-[#007AFF]/40' : 'bg-black/20';
                       return (
                         <div
                           key={task.id}
@@ -485,7 +482,6 @@ export default function GanttView() {
                                   bottom: 8,
                                   left: curPos.left + 4,
                                   width: curPos.width - 8,
-                                  backgroundColor: task.card.status !== 'complete' && dueStatus?.status === 'normal' && labelColor ? labelColor : undefined,
                                 }}
                               >
                                 {/* Left resize handle */}
@@ -498,7 +494,7 @@ export default function GanttView() {
                                   )}
                                   title={t('gantt.dragStartHint')}
                                 >
-                                  <div className="w-0.5 h-6 bg-white/80 rounded-full" />
+                                  <div className={cn('w-0.5 h-6 rounded-full', handleColor)} />
                                 </div>
 
                                 {/* Move handle (middle main area) */}
@@ -508,11 +504,11 @@ export default function GanttView() {
                                   title={t('gantt.dragMoveHint')}
                                 >
                                   <div className="flex-1 min-w-0 pointer-events-none select-none">
-                                    <div className="text-[11px] font-semibold text-white truncate leading-tight">
+                                    <div className={cn('text-[11px] font-semibold truncate leading-tight', textColor)}>
                                       {task.card.title}
                                     </div>
                                     {(curPos.width > 140 || isDragging) && (
-                                      <div className="text-[9px] text-white/85 truncate">
+                                      <div className={cn('text-[9px] truncate', task.card.status === 'todo' ? 'text-[#007AFF]/70' : 'text-black/70')}>
                                         {isDragging
                                           ? daysToLabel(drag!.curStartDays, drag!.curEndDays)
                                           : `${f(task.startDate, 'MM/dd')} → ${f(task.endDate, 'MM/dd')}`
@@ -539,7 +535,7 @@ export default function GanttView() {
                                   )}
                                   title={t('gantt.dragEndHint')}
                                 >
-                                  <div className="w-0.5 h-6 bg-white/80 rounded-full" />
+                                  <div className={cn('w-0.5 h-6 rounded-full', handleColor)} />
                                 </div>
                               </div>
                             );
@@ -567,16 +563,12 @@ export default function GanttView() {
         {/* Legend */}
         <div className="shrink-0 flex flex-wrap items-center gap-4 px-4 py-2.5 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-[#007AFF]" />
-            <span>{t('gantt.status.normal')}</span>
+            <div className="w-3 h-3 rounded border border-[#007AFF] bg-white" />
+            <span>{t('gantt.status.todo')}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-amber-500" />
-            <span>{t('gantt.status.soon')}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded bg-red-500" />
-            <span>{t('gantt.status.overdue')}</span>
+            <div className="w-3 h-3 rounded bg-amber-400" />
+            <span>{t('gantt.status.progress')}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded bg-emerald-500" />
