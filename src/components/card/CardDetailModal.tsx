@@ -475,7 +475,7 @@ export default function CardDetailModal({
                     <Users size={14} className="text-slate-500" />
                     <AvatarStack users={assignees} max={5} size="md" />
                   </div>
-                  {assignees.map(u => (
+                  {assignees.map((u: User) => (
                     <span key={u.id} className="text-xs text-slate-600 dark:text-slate-300">{u.name}</span>
                   )).slice(0, 2)}
                 </div>
