@@ -29,7 +29,7 @@ Rules:
 - Skip filler content and pleasantries`;
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1/models';
-const MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.5-flash'];
 
 // Diagnose which models the API key can access
 async function getAvailableModels(apiKey: string): Promise<string[]> {
