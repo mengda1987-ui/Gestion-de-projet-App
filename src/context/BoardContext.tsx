@@ -1078,22 +1078,51 @@ function syncMindMapCards(state: BoardState, action: Action): BoardState {
     }
 
     case 'DELETE_CHECKLIST_ITEM': {
-      const findC = (): { item: Checklist['items'][number] } | null => {
-        for (const col of next.board.columns) for (const card of col.cards) if (card.id === action.payload.cardId) {
-          for (const cl of card.checklists) {
-            const it = cl.items.find(x => x.id === action.payload.itemId);
-            if (it) return { item: it };
-          }
-        }
+      let mutated = false;
+      const { cardId, checklistId, itemId } = action.payload;
+
+      // 1. 从看板数据结构中删除
+      next.board.columns = next.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(card => {
+          if (card.id !== cardId) return card;
+          return {
+            ...card,
+            checklists: card.checklists.map(cl => {
+              if (cl.id !== checklistId) return cl;
+              const newItems = cl.items.filter(it => it.id !== itemId);
+              if (newItems.length !== cl.items.length) mutated = true;
+              return { ...cl, items: newItems };
+            }),
+          };
+        }),
+      }));
+
+      if (!mutated) return state;
+
+      // 2. 如果有关联的脑图节点，递归删除
+      const findItemInOldState = (): Checklist['items'][number] | null => {
+        for (const col of state.board.columns) 
+          for (const card of col.cards) 
+            if (card.id === cardId) 
+              for (const cl of card.checklists) 
+                if (cl.id === checklistId) 
+                  return cl.items.find(it => it.id === itemId) || null;
         return null;
       };
-      const info = findC();
-      if (!info?.item.mmNodeId) return state;
-      // 删除该节点 + 子孙（虽然清单通常无子，但保持健壮）
-      const idsToRemove = new Set<string>();
-      const walk = (nid: string) => { if (idsToRemove.has(nid)) return; idsToRemove.add(nid); next.board.mindmap.filter(n => n.parentId === nid).forEach(c => walk(c.id)); };
-      walk(info.item.mmNodeId);
-      next.board.mindmap = next.board.mindmap.filter(n => !idsToRemove.has(n.id));
+
+      const oldItem = findItemInOldState();
+      if (oldItem?.mmNodeId) {
+        const idsToRemove = new Set<string>();
+        const walk = (nid: string) => { 
+          if (idsToRemove.has(nid)) return; 
+          idsToRemove.add(nid); 
+          next.board.mindmap.filter(n => n.parentId === nid).forEach(c => walk(c.id)); 
+        };
+        walk(oldItem.mmNodeId);
+        next.board.mindmap = next.board.mindmap.filter(n => !idsToRemove.has(n.id));
+      }
+
       next.board.updatedAt = now;
       return next;
     }

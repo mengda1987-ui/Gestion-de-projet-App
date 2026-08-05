@@ -820,12 +820,10 @@ export default function CardDetailModal({
                                       )}
                                       <button
                                         onClick={() => {
-                                          if (confirm(lang === 'zh' ? '删除此清单项？' : 'Delete this item?')) {
-                                            broadcastChange({
-                                              type: 'DELETE_CHECKLIST_ITEM',
-                                              payload: { cardId: latestCard.id, checklistId: cl.id, itemId: item.id },
-                                            });
-                                          }
+                                          broadcastChange({
+                                            type: 'DELETE_CHECKLIST_ITEM',
+                                            payload: { cardId: latestCard.id, checklistId: cl.id, itemId: item.id },
+                                          });
                                         }}
                                         className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                                         title={lang === 'zh' ? '删除' : 'Delete'}
