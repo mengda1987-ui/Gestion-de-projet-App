@@ -194,6 +194,7 @@ export default function MainBoard() {
                 </button>
               )}
           </div>
+          </div>
 
           {/* View Toggle — icon only, label on lg+ */}
           <div className="flex items-center bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded-full p-0.5 shrink-0 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
