@@ -863,49 +863,12 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
 
   const applyAiResult = () => {
     if (!aiResult) return;
-    for (const col of aiResult.columns) {
-      const colId = generateId();
-      broadcastChange({
-        type: 'ADD_COLUMN',
-        payload: { title: col.title, id: colId },
-      } as any);
-      for (const card of col.cards) {
-        const cardId = generateId();
-        broadcastChange({
-          type: 'ADD_CARD',
-          payload: {
-            columnId: colId,
-            card: {
-              id: cardId,
-              title: card.title,
-              description: '',
-              labels: [],
-              assignees: [],
-              archived: false,
-              checklists: [],
-              comments: [],
-              attachments: [],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              order: col.cards.indexOf(card),
-            },
-          },
-        });
-        if (card.items.length > 0) {
-          const checklistId = generateId();
-          (broadcastChange as any)({
-            type: 'ADD_CHECKLIST',
-            payload: { cardId, name: 'Tasks', id: checklistId },
-          });
-          for (const item of card.items) {
-            (broadcastChange as any)({
-              type: 'ADD_CHECKLIST_ITEM',
-              payload: { cardId, checklistId, text: item, itemId: generateId() },
-            });
-          }
-        }
-      }
-    }
+    
+    broadcastChange({
+      type: 'IMPORT_AI_RESULT',
+      payload: aiResult,
+    });
+
     setAiModalOpen(false);
     setAiResult(null);
     // Scroll to first new column

@@ -68,6 +68,7 @@ type Action =
   | { type: 'ADD_USER'; payload: { user: User } }
   | { type: 'DELETE_USER'; payload: { userId: string } }
   | { type: 'SET_ONLINE_USERS'; payload: string[] }
+  | { type: 'IMPORT_AI_RESULT'; payload: { columns: { title: string; cards: { title: string; items: string[] }[] }[] } }
   | { type: 'ADD_MINDMAP_NODE'; payload: { node: Omit<MindMapNode, 'id' | 'createdAt' | 'updatedAt' | 'order'> & { order?: number } } }
   | { type: 'UPDATE_MINDMAP_NODE'; payload: { nodeId: string; updates: Partial<MindMapNode> } }
   | { type: 'DELETE_MINDMAP_NODE'; payload: { nodeId: string } }
@@ -343,7 +344,7 @@ function baseReducer(state: BoardState, action: Action): BoardState {
     case 'ADD_CARD': {
       const now = new Date().toISOString();
       const newCard: Card = {
-        id: generateId(),
+        id: action.payload.card.id || generateId(),
         title: action.payload.card.title || '新卡片',
         description: action.payload.card.description || '',
         coverImage: action.payload.card.coverImage,
@@ -729,6 +730,107 @@ function baseReducer(state: BoardState, action: Action): BoardState {
     case 'SET_ONLINE_USERS':
       return { ...state, onlineUsers: action.payload };
 
+    case 'IMPORT_AI_RESULT': {
+      const now = new Date().toISOString();
+      const newColumns = [...state.board.columns];
+      const newMindmap = [...state.board.mindmap];
+
+      action.payload.columns.forEach((colData) => {
+        const colId = generateId();
+        const mmRootId = `mm-root-${colId}`;
+
+        // Create Column Node
+        newMindmap.push({
+          id: mmRootId,
+          text: colData.title,
+          parentId: null,
+          color: '#6366F1',
+          order: newMindmap.filter(n => n.parentId === null).length,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        const newCards: Card[] = colData.cards.map((cardData, cardIdx) => {
+          const cardId = generateId();
+          const mmCardId = `mm-auto-${cardId}`;
+
+          // Create Card Node
+          newMindmap.push({
+            id: mmCardId,
+            text: cardData.title,
+            parentId: mmRootId,
+            color: '#6366F1',
+            order: cardIdx,
+            createdAt: now,
+            updatedAt: now,
+          });
+
+          const checklists: Checklist[] = cardData.items.length > 0 ? [{
+            id: generateId(),
+            name: 'Tasks',
+            items: cardData.items.map((itemText, itemIdx) => {
+              const itemId = generateId();
+              const mmItemId = `mm-auto-${itemId}`;
+
+              // Create Item Node
+              newMindmap.push({
+                id: mmItemId,
+                text: itemText,
+                parentId: mmCardId,
+                color: '#10B981',
+                order: itemIdx,
+                createdAt: now,
+                updatedAt: now,
+              });
+
+              return {
+                id: itemId,
+                text: itemText,
+                completed: false,
+                mmNodeId: mmItemId,
+              };
+            }),
+          }] : [];
+
+          return {
+            id: cardId,
+            title: cardData.title,
+            description: '',
+            status: 'todo',
+            archived: false,
+            checklists,
+            comments: [],
+            attachments: [],
+            labels: [],
+            assignees: [],
+            createdAt: now,
+            updatedAt: now,
+            order: cardIdx,
+            mmNodeId: mmCardId,
+          };
+        });
+
+        newColumns.push({
+          id: colId,
+          title: colData.title,
+          cards: newCards,
+          order: newColumns.length,
+          archived: false,
+          mmRootId: mmRootId,
+        });
+      });
+
+      return {
+        ...state,
+        board: {
+          ...state.board,
+          columns: newColumns,
+          mindmap: newMindmap,
+          updatedAt: now,
+        },
+      };
+    }
+
     case 'ADD_MINDMAP_NODE': {
       const parentId = action.payload.node.parentId;
       const siblings = state.board.mindmap.filter(n => n.parentId === parentId);
@@ -931,6 +1033,9 @@ function syncMindMapCards(state: BoardState, action: Action): BoardState {
   const withSkip: <A>(act: A) => A & { _skipSync: true } = (act) => ({ ...(act as any), _skipSync: true } as any);
 
   switch (action.type) {
+    case 'IMPORT_AI_RESULT':
+      return state;
+
     case 'ADD_COLUMN': {
       // Auto-create mmRootId for new columns so downstream mindmap sync works
       const newColId = (action.payload as any).id;
