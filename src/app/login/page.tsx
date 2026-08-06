@@ -30,22 +30,36 @@ export default function LoginPage() {
     }
     setError('');
     setIsLogging(true);
-    await new Promise(r => setTimeout(r, 600));
 
-    const user = users.find((u: User) => u.name.toLowerCase() === trimmed.toLowerCase());
-    if (!user) {
-      setError(lang === 'zh' ? '用户不存在，请联系管理员创建账号' : 'User not found. Contact admin to create an account.');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed, password })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(
+          data.error === 'User not found'
+            ? (lang === 'zh' ? '用户不存在，请联系管理员创建账号' : 'User not found. Contact admin to create an account.')
+            : data.error === 'Incorrect password'
+            ? (lang === 'zh' ? '密码错误' : 'Incorrect password')
+            : (lang === 'zh' ? '登录失败，请稍后重试' : 'Login failed. Please try again.')
+        );
+        setIsLogging(false);
+        return;
+      }
+
+      dispatch({ type: 'SET_CURRENT_USER', payload: data.user });
+      dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
+      setLang(data.user.lang || 'zh');
+    } catch (error) {
+      console.error('Login error:', error);
+      setError(lang === 'zh' ? '网络错误，请检查连接' : 'Network error. Please check your connection.');
       setIsLogging(false);
-      return;
     }
-    if (user.password !== password) {
-      setError(lang === 'zh' ? '密码错误' : 'Incorrect password');
-      setIsLogging(false);
-      return;
-    }
-    dispatch({ type: 'SET_CURRENT_USER', payload: user });
-    dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
-    setLang(user.lang || 'zh');
   };
 
   const getBgStyle = (bg: string): React.CSSProperties => {
@@ -182,7 +196,7 @@ export default function LoginPage() {
 
       {/* Version badge */}
       <div className="fixed bottom-3 right-4 text-[11px] text-white/60 font-medium select-none pointer-events-none z-50">
-        v1.5.06
+        v1.5.07
       </div>
 
       {/* Background Picker */}

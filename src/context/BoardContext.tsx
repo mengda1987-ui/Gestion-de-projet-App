@@ -87,7 +87,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           avatar: u.avatar || '',
           color: u.color || '#3B82F6',
           role: u.role || 'member',
-          password: u.password || '',
+          password: '', // 不再从数据库加载密码
           lang: u.lang || 'zh',
         }));
 
