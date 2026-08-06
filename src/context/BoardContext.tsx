@@ -98,6 +98,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           labels: b.labels || [],
           columns: b.data?.columns || [],
           mindmap: b.data?.mindmap || [],
+          emoji: b.emoji || undefined,
+          iconBg: b.iconBg || undefined,
+          iconImage: b.iconImage || undefined,
+          visibleTo: b.visibleTo || [],
+          order: b.order ?? 0,
           createdAt: b.created_at || new Date().toISOString(),
           updatedAt: b.updated_at || new Date().toISOString(),
         }));
@@ -178,7 +183,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             columns: b.columns,
             mindmap: b.mindmap
           },
-          order: b.order,
+          emoji: b.emoji || null,
+          iconBg: b.iconBg || null,
+          iconImage: b.iconImage || null,
+          visibleTo: b.visibleTo || [],
+          order: b.order ?? 0,
           updated_at: new Date().toISOString()
         }));
 
@@ -193,7 +202,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         const { error: settingsError } = await supabase
           .from('workspace_settings')
           .upsert({
-            id: 1, // 假设只有一个工作区设置
+            id: '00000000-0000-0000-0000-000000000001',
             workspace_background: state.workspaceBackground,
             login_background: state.loginBackground,
             logo: state.logo,
