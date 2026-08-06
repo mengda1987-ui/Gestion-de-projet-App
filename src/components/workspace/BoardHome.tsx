@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
@@ -103,19 +103,22 @@ export default function BoardHome() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
 
-  // 稳定的可见看板列表（按 order 排序，order 相同则按 createdAt）
-  const visibleBoards = boards
-    .filter(b => {
-      if (currentUser?.role === 'admin') return true;
-      if (!b.visibleTo || b.visibleTo.length === 0) return true;
-      return b.visibleTo.includes(currentUser?.id || '');
-    })
-    .sort((a, b) => {
-      const orderDiff = (a.order ?? 0) - (b.order ?? 0);
-      if (orderDiff !== 0) return orderDiff;
-      // 二级排序保证稳定性
-      return (a.createdAt || '').localeCompare(b.createdAt || '');
-    });
+  // 优化：useMemo 缓存 visibleBoards 过滤和排序，避免每次渲染重新计算
+  const visibleBoards = useMemo(() => 
+    boards
+      .filter(b => {
+        if (currentUser?.role === 'admin') return true;
+        if (!b.visibleTo || b.visibleTo.length === 0) return true;
+        return b.visibleTo.includes(currentUser?.id || '');
+      })
+      .sort((a, b) => {
+        const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+        if (orderDiff !== 0) return orderDiff;
+        // 二级排序保证稳定性
+        return (a.createdAt || '').localeCompare(b.createdAt || '');
+      }),
+    [boards, currentUser?.role, currentUser?.id]
+  );
 
   // 用 ref 避免闭包过期
   const boardsRef = useRef(boards);
@@ -878,7 +881,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.5.05
+        v1.5.06
       </div>
     </div>
   );

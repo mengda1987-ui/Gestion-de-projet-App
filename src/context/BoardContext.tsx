@@ -234,8 +234,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 优化：useMemo 包裹 context value，避免不必要的重渲染
+  const contextValue = React.useMemo(() => ({
+    state,
+    dispatch,
+    broadcastChange
+  }), [state, broadcastChange]);
+
   return (
-    <BoardContext.Provider value={{ state, dispatch, broadcastChange }}>
+    <BoardContext.Provider value={contextValue}>
       {children}
     </BoardContext.Provider>
   );
@@ -249,13 +256,16 @@ export function useBoardContext() {
 
 export function useBoard() {
   const { state, dispatch, broadcastChange } = useBoardContext();
-  const findCard = (cardId: string): { card: any; columnId: string } | undefined => {
+  
+  // 优化：缓存 findCard 函数，避免每次渲染重新创建
+  const findCard = useCallback((cardId: string): { card: any; columnId: string } | undefined => {
     for (const col of state.board.columns) {
       const card = col.cards.find(c => c.id === cardId);
       if (card) return { card, columnId: col.id };
     }
     return undefined;
-  };
+  }, [state.board.columns]);
+  
   return {
     users: state.users,
     boards: state.boards,
