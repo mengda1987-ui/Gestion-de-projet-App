@@ -62,21 +62,32 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const loadedRef = useRef(false);
 
-  // 从 Supabase 加载数据，失败则使用 Mock 数据
+  // 从 Supabase 加载数据，带超时保护，失败则使用 Mock 数据
   useEffect(() => {
     async function loadData() {
       try {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         if (!url) throw new Error('No Supabase URL configured');
 
-        const [{ data: usersData }, { data: boardsData }] = await Promise.all([
-          supabase.from('users').select('*'),
-          supabase.from('boards').select('*'),
-        ]);
+        // 设置 8 秒超时，避免在慢网络下卡太久
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
+        );
+
+        const [{ data: usersData }, { data: boardsData }] = await Promise.race([
+          Promise.all([
+            supabase.from('users').select('*'),
+            supabase.from('boards').select('*'),
+          ]),
+          timeout.then(() => { throw new Error('timeout'); }),
+        ]) as any;
 
         let settingsData: any = null;
         try {
-          const { data } = await supabase.from('workspace_settings').select('*').limit(1).maybeSingle();
+          const { data } = await Promise.race([
+            supabase.from('workspace_settings').select('*').limit(1).maybeSingle(),
+            timeout.then(() => { throw new Error('timeout'); }),
+          ]) as any;
           settingsData = data;
         } catch {}
 

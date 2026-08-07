@@ -310,11 +310,23 @@ export default function CardDetailModal({
   useEffect(() => {
     setTitleValue(latestCard.title);
     setDescValue(latestCard.description);
-  }, [latestCard.title, latestCard.description]);
+    setDueDateValue(latestCard.dueDate ? format(parseISO(latestCard.dueDate), 'yyyy-MM-dd') : '');
+    setStartDateValue(latestCard.startDate ? format(parseISO(latestCard.startDate), 'yyyy-MM-dd') : '');
+  }, [latestCard.title, latestCard.description, latestCard.dueDate, latestCard.startDate]);
 
+  // Stable onClose reference to avoid re-binding event listeners
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      // Prevent Esc from closing modal when a date picker or input is active
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+        return;
+      }
+      onCloseRef.current();
     };
     document.addEventListener('keydown', handleEsc);
     document.body.style.overflow = 'hidden';
@@ -322,7 +334,7 @@ export default function CardDetailModal({
       document.removeEventListener('keydown', handleEsc);
       document.body.style.overflow = '';
     };
-  }, [onClose]);
+  }, []);
 
   const updateCard = (updates: Partial<Card>) => {
     broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates } });
@@ -1113,11 +1125,16 @@ export default function CardDetailModal({
                       <input
                         type="date"
                         value={startDateValue}
-                        onChange={(e) => {
-                          setStartDateValue(e.target.value);
-                          updateCard({ startDate: e.target.value ? new Date(e.target.value).toISOString() : undefined });
+                        onChange={(e) => setStartDateValue(e.target.value)}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                            updateCard({ startDate: new Date(val).toISOString() });
+                          } else if (!val) {
+                            updateCard({ startDate: undefined });
+                          }
                         }}
-                        className="input text-xs py-1.5"
+                        className="input text-xs py-1.5 min-w-[150px]"
                       />
                     </div>
                     <div>
@@ -1125,12 +1142,16 @@ export default function CardDetailModal({
                       <input
                         type="date"
                         value={dueDateValue}
-                        onChange={(e) => {
-                          setDueDateValue(e.target.value);
-                          if (e.target.value) updateCard({ dueDate: new Date(e.target.value + 'T23:59:59').toISOString() });
-                          else updateCard({ dueDate: undefined });
+                        onChange={(e) => setDueDateValue(e.target.value)}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                            updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
+                          } else if (!val) {
+                            updateCard({ dueDate: undefined });
+                          }
                         }}
-                        className="input text-xs py-1.5"
+                        className="input text-xs py-1.5 min-w-[150px]"
                       />
                     </div>
                     {latestCard.dueDate && (
@@ -1339,11 +1360,13 @@ export default function CardDetailModal({
                           type="date"
                           value={startDateValue}
                           onChange={(e) => {
-                            setStartDateValue(e.target.value);
-                            const updates: Partial<Card> = { startDate: e.target.value ? new Date(e.target.value).toISOString() : undefined };
-                            updateCard(updates);
+                            const val = e.target.value;
+                            setStartDateValue(val);
+                            if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                              updateCard({ startDate: new Date(val).toISOString() });
+                            }
                           }}
-                          className="input text-xs py-1.5"
+                          className="input text-xs py-1.5 min-w-[150px]"
                         />
                       </div>
                       <div>
@@ -1352,29 +1375,36 @@ export default function CardDetailModal({
                           type="date"
                           value={dueDateValue}
                           onChange={(e) => {
-                            setDueDateValue(e.target.value);
-                            const updates: Partial<Card> = {};
-                            if (e.target.value) updates.dueDate = new Date(e.target.value + 'T23:59:59').toISOString();
-                            else updates.dueDate = undefined;
-                            updateCard(updates);
-                            setShowDueDate(false);
+                            const val = e.target.value;
+                            setDueDateValue(val);
+                            if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                              updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
+                            }
                           }}
-                          className="input text-xs py-1.5"
+                          className="input text-xs py-1.5 min-w-[150px]"
                         />
                       </div>
-                      {latestCard.dueDate && (
+                      <div className="flex items-center gap-2">
+                        {latestCard.dueDate && (
+                          <button
+                            onClick={() => {
+                              setDueDateValue('');
+                              setStartDateValue('');
+                              updateCard({ dueDate: undefined, startDate: undefined });
+                              setShowDueDate(false);
+                            }}
+                            className="btn-ghost text-xs py-1.5"
+                          >
+                            {t('card.clearDue')}
+                          </button>
+                        )}
                         <button
-                          onClick={() => {
-                            setDueDateValue('');
-                            setStartDateValue('');
-                            updateCard({ dueDate: undefined, startDate: undefined });
-                            setShowDueDate(false);
-                          }}
-                          className="btn-ghost text-xs py-1.5 w-full"
+                          onClick={() => setShowDueDate(false)}
+                          className="btn-primary text-xs py-1.5 ml-auto"
                         >
-                          {t('card.clearDue')}
+                          {lang === 'zh' ? '完成' : 'Done'}
                         </button>
-                      )}
+                      </div>
                     </div>
                   )}
                 </div>

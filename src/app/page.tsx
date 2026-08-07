@@ -1,6 +1,7 @@
 'use client';
 
 import { useBoard } from '@/context/BoardContext';
+import { useLang } from '@/context/LangContext';
 import dynamic from 'next/dynamic';
 
 const LoginPageDynamic = dynamic(() => import('./login/page'), { ssr: false });
@@ -9,13 +10,20 @@ const BoardHomeDynamic = dynamic(() => import('@/components/workspace/BoardHome'
 
 export default function Home() {
   const { currentUser, boards, currentBoardId, _loaded } = useBoard();
+  const { lang } = useLang();
 
   if (!_loaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-slate-300 border-t-sky-500 rounded-full animate-spin" />
-          <p className="text-sm text-slate-500">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-slate-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-10 h-10 border-[3px] border-slate-200 dark:border-slate-700 border-t-[#007AFF] rounded-full animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-3 h-3 bg-[#007AFF] rounded-full opacity-20 animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{lang === 'zh' ? '正在连接服务器...' : 'Connecting to server...'}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{lang === 'zh' ? '首次加载可能需要几秒钟' : 'First load may take a few seconds'}</p>
         </div>
       </div>
     );
