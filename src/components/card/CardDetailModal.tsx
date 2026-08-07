@@ -339,7 +339,7 @@ export default function CardDetailModal({
     if (!showDueDate) return;
     const handler = (e: MouseEvent) => {
       if (dueDatePanelRef.current && !dueDatePanelRef.current.contains(e.target as Node)) {
-        setShowDueDate(false);
+        setTimeout(() => setShowDueDate(false), 10);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -1110,13 +1110,11 @@ export default function CardDetailModal({
                       <input
                         type="date"
                         value={startDateValue}
-                        onChange={(e) => setStartDateValue(e.target.value)}
-                        onBlur={(e) => {
+                        onChange={(e) => {
                           const val = e.target.value;
+                          setStartDateValue(val);
                           if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                             updateCard({ startDate: new Date(val).toISOString() });
-                          } else if (!val) {
-                            updateCard({ startDate: undefined });
                           }
                         }}
                         className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
@@ -1127,13 +1125,11 @@ export default function CardDetailModal({
                       <input
                         type="date"
                         value={dueDateValue}
-                        onChange={(e) => setDueDateValue(e.target.value)}
-                        onBlur={(e) => {
+                        onChange={(e) => {
                           const val = e.target.value;
+                          setDueDateValue(val);
                           if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                             updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
-                          } else if (!val) {
-                            updateCard({ dueDate: undefined });
                           }
                         }}
                         className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
@@ -1344,13 +1340,11 @@ export default function CardDetailModal({
                         <input
                           type="date"
                           value={startDateValue}
-                          onChange={(e) => setStartDateValue(e.target.value)}
-                          onBlur={(e) => {
+                          onChange={(e) => {
                             const val = e.target.value;
+                            setStartDateValue(val);
                             if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               updateCard({ startDate: new Date(val).toISOString() });
-                            } else if (!val) {
-                              updateCard({ startDate: undefined });
                             }
                           }}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
@@ -1361,13 +1355,11 @@ export default function CardDetailModal({
                         <input
                           type="date"
                           value={dueDateValue}
-                          onChange={(e) => setDueDateValue(e.target.value)}
-                          onBlur={(e) => {
+                          onChange={(e) => {
                             const val = e.target.value;
+                            setDueDateValue(val);
                             if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
-                            } else if (!val) {
-                              updateCard({ dueDate: undefined });
                             }
                           }}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"

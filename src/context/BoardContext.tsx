@@ -61,7 +61,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const loadedRef = useRef(false);
-  const needsSaveRef = useRef(false);
+  const boardsSnapshotRef = useRef<string>('');
+  const settingsSnapshotRef = useRef<string>('');
   const saveVersionRef = useRef(0);
 
   // 从 Supabase 加载数据，带超时保护，失败则使用 Mock 数据
@@ -132,6 +133,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           },
         });
         loadedRef.current = true;
+        boardsSnapshotRef.current = JSON.stringify(boards);
+        settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, logo: wsSettings.logo });
       } catch (err) {
         console.warn('Supabase load failed, using mock data:', err);
         dispatch({
@@ -145,6 +148,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           },
         });
         loadedRef.current = true;
+        boardsSnapshotRef.current = JSON.stringify(MOCK_BOARDS);
+        settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: '' });
       }
     }
     loadData();
