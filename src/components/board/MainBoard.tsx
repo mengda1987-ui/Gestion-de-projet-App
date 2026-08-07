@@ -11,7 +11,6 @@ import {
   List,
   BarChart3,
   ClipboardList,
-  Search,
   Moon,
   Sun,
   LogOut,
@@ -245,7 +244,6 @@ export default function MainBoard() {
               'bg-white/90 dark:bg-slate-800/90 backdrop-blur',
               searchFocused ? 'ring-2 ring-[#007AFF]/30' : ''
             )}>
-              <Search size={14} className="ml-2 text-slate-500 shrink-0" />
               <input
                 type="text"
                 value={filters.search}
@@ -664,7 +662,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.5.11</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.5.12</span>
     </div>
   );
 }
