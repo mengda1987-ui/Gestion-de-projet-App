@@ -278,6 +278,7 @@ export default function CardDetailModal({
 
   const modalRef = useRef<HTMLDivElement>(null);
   const descTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const dueDatePanelRef = useRef<HTMLDivElement>(null);
 
   const insertFormat = (prefix: string, suffix = '') => {
     const ta = descTextareaRef.current;
@@ -334,6 +335,17 @@ export default function CardDetailModal({
     };
   }, []);
 
+  useEffect(() => {
+    if (!showDueDate) return;
+    const handler = (e: MouseEvent) => {
+      if (dueDatePanelRef.current && !dueDatePanelRef.current.contains(e.target as Node)) {
+        setShowDueDate(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showDueDate]);
+
   const updateCard = (updates: Partial<Card>) => {
     broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates } });
   };
@@ -345,16 +357,6 @@ export default function CardDetailModal({
       setTitleValue(latestCard.title);
     }
     setEditingTitle(false);
-  };
-
-  const handleSaveDates = () => {
-    const updates: Partial<Card> = {};
-    if (dueDateValue) updates.dueDate = new Date(dueDateValue + 'T23:59:59').toISOString();
-    else updates.dueDate = undefined;
-    if (startDateValue) updates.startDate = new Date(startDateValue).toISOString();
-    else updates.startDate = undefined;
-    updateCard(updates);
-    setShowDueDate(false);
   };
 
   const handleAddComment = () => {
@@ -1336,7 +1338,7 @@ export default function CardDetailModal({
                   </button>
 
                   {showDueDate && (
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2 animate-slide-up">
+                    <div ref={dueDatePanelRef} className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2 animate-slide-up">
                       <div>
                         <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{lang === 'zh' ? '开始日期' : 'Start date'}</label>
                         <input
@@ -1385,12 +1387,6 @@ export default function CardDetailModal({
                             {t('card.clearDue')}
                           </button>
                         )}
-                        <button
-                          onClick={() => setShowDueDate(false)}
-                          className="btn-primary text-xs py-1.5 ml-auto"
-                        >
-                          {lang === 'zh' ? '完成' : 'Done'}
-                        </button>
                       </div>
                     </div>
                   )}

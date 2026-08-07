@@ -11,6 +11,7 @@ import {
   List,
   BarChart3,
   ClipboardList,
+  Search,
   Moon,
   Sun,
   LogOut,
@@ -51,7 +52,7 @@ export default function MainBoard() {
   } = useBoard();
   const { lang, toggleLang, t } = useLang();
 
-  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -237,31 +238,41 @@ export default function MainBoard() {
           {/* Spacer — pushes everything after to the right */}
           <div className="flex-1" />
 
-          {/* Search Bar */}
-          <div className="relative sm:flex-none min-w-0">
-            <div className={cn(
-              'flex items-center gap-1.5 rounded-lg transition-all duration-200',
-              'bg-white/90 dark:bg-slate-800/90 backdrop-blur',
-              searchFocused ? 'ring-2 ring-[#007AFF]/30' : ''
-            )}>
-              <input
-                type="text"
-                value={filters.search}
-                onChange={(e) => dispatch({ type: 'SET_FILTERS', payload: { search: e.target.value } })}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                placeholder={t('nav.searchPlaceholder')}
-                className="w-full sm:w-36 md:w-44 lg:w-56 bg-transparent py-1.5 pr-2 text-xs sm:text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none"
-              />
-              {filters.search && (
-                <button
-                  onClick={() => dispatch({ type: 'SET_FILTERS', payload: { search: '' } })}
-                  className="mr-1.5 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
+          {/* Search */}
+          <div className="relative flex items-center">
+            {searchExpanded ? (
+              <div className={cn(
+                'flex items-center gap-1.5 rounded-lg transition-all duration-200',
+                'bg-white/90 dark:bg-slate-800/90 backdrop-blur ring-2 ring-[#007AFF]/30'
+              )}>
+                <input
+                  type="text"
+                  autoFocus
+                  value={filters.search}
+                  onChange={(e) => dispatch({ type: 'SET_FILTERS', payload: { search: e.target.value } })}
+                  onBlur={() => { if (!filters.search) setSearchExpanded(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { dispatch({ type: 'SET_FILTERS', payload: { search: '' } }); setSearchExpanded(false); } }}
+                  placeholder={t('nav.searchPlaceholder')}
+                  className="w-36 md:w-44 lg:w-52 bg-transparent py-1.5 pl-2.5 pr-1.5 text-xs sm:text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none"
+                />
+                {filters.search && (
+                  <button
+                    onClick={() => dispatch({ type: 'SET_FILTERS', payload: { search: '' } })}
+                    className="mr-1 text-slate-500 hover:text-slate-600 shrink-0"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => setSearchExpanded(true)}
+                className="p-2 rounded-lg hover:bg-slate-200/70 dark:hover:bg-slate-700/70 text-slate-600 dark:text-slate-300 transition-colors"
+                title={t('nav.searchPlaceholder')}
+              >
+                <Search size={16} />
+              </button>
+            )}
           </div>
 
           {/* Current User Avatar */}
@@ -662,7 +673,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.5.13</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.5.14</span>
     </div>
   );
 }
