@@ -310,9 +310,7 @@ export default function CardDetailModal({
   useEffect(() => {
     setTitleValue(latestCard.title);
     setDescValue(latestCard.description);
-    setDueDateValue(latestCard.dueDate ? format(parseISO(latestCard.dueDate), 'yyyy-MM-dd') : '');
-    setStartDateValue(latestCard.startDate ? format(parseISO(latestCard.startDate), 'yyyy-MM-dd') : '');
-  }, [latestCard.title, latestCard.description, latestCard.dueDate, latestCard.startDate]);
+  }, [latestCard.title, latestCard.description]);
 
   // Stable onClose reference to avoid re-binding event listeners
   const onCloseRef = useRef(onClose);
@@ -1359,11 +1357,13 @@ export default function CardDetailModal({
                         <input
                           type="date"
                           value={startDateValue}
-                          onChange={(e) => {
+                          onChange={(e) => setStartDateValue(e.target.value)}
+                          onBlur={(e) => {
                             const val = e.target.value;
-                            setStartDateValue(val);
                             if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               updateCard({ startDate: new Date(val).toISOString() });
+                            } else if (!val) {
+                              updateCard({ startDate: undefined });
                             }
                           }}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
@@ -1374,11 +1374,13 @@ export default function CardDetailModal({
                         <input
                           type="date"
                           value={dueDateValue}
-                          onChange={(e) => {
+                          onChange={(e) => setDueDateValue(e.target.value)}
+                          onBlur={(e) => {
                             const val = e.target.value;
-                            setDueDateValue(val);
                             if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
+                            } else if (!val) {
+                              updateCard({ dueDate: undefined });
                             }
                           }}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
