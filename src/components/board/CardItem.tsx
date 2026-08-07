@@ -20,6 +20,9 @@ import {
   ChevronDown,
   Check,
   AlertTriangle,
+  MoreHorizontal,
+  Copy,
+  Archive,
 } from 'lucide-react';
 import { cn, calculateChecklistProgress, getDueDateStatus } from '@/lib/utils';
 import { parseISO, isToday } from 'date-fns';
@@ -37,11 +40,14 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const [statusMenuPos, setStatusMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [memberPickerPos, setMemberPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [showCardMenu, setShowCardMenu] = useState(false);
+  const [cardMenuPos, setCardMenuPos] = useState<{ top: number; left: number } | null>(null);
   const statusBtnRef = useRef<HTMLButtonElement>(null);
   const memberBtnRef = useRef<HTMLDivElement>(null);
+  const cardMenuBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!showStatusMenu && !showMemberPicker) return;
+    if (!showStatusMenu && !showMemberPicker && !showCardMenu) return;
     const handler = (e: MouseEvent) => {
       if (showStatusMenu && statusBtnRef.current && !statusBtnRef.current.contains(e.target as Node)) {
         setShowStatusMenu(false);
@@ -49,10 +55,13 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
       if (showMemberPicker && memberBtnRef.current && !memberBtnRef.current.contains(e.target as Node)) {
         setShowMemberPicker(false);
       }
+      if (showCardMenu && cardMenuBtnRef.current && !cardMenuBtnRef.current.contains(e.target as Node)) {
+        setShowCardMenu(false);
+      }
     };
     window.addEventListener('click', handler);
     return () => window.removeEventListener('click', handler);
-  }, [showStatusMenu, showMemberPicker]);
+  }, [showStatusMenu, showMemberPicker, showCardMenu]);
 
   // 优化：useMemo 缓存派生计算，避免每次渲染重新计算
   const allChecklistItems = useMemo(() => 
@@ -130,19 +139,68 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
         isDragging && 'ring-2 ring-[#007AFF] shadow-2xl'
       )}
     >
-      {/* Delete Button */}
+      {/* Three-dot Menu Button */}
       <button
+        ref={cardMenuBtnRef}
         onClick={(e) => {
           e.stopPropagation();
-          if (confirm(`确定要删除卡片「${card.title}」吗？`)) {
-            broadcastChange({ type: 'DELETE_CARD', payload: { cardId: card.id } });
+          const rect = (e.target as HTMLElement).closest('button')?.getBoundingClientRect();
+          if (rect) {
+            setCardMenuPos({ top: rect.bottom + 4, left: rect.right - 160 });
           }
+          setShowCardMenu(!showCardMenu);
         }}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm"
-        title="删除卡片"
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm"
+        title={lang === 'zh' ? '更多操作' : 'More actions'}
       >
-        <Trash2 size={14} />
+        <MoreHorizontal size={14} />
       </button>
+
+      {/* Card Menu Dropdown (Portal) */}
+      {showCardMenu && cardMenuPos && createPortal(
+        <div
+          className="fixed z-[99999] w-40 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 animate-slide-up overflow-hidden"
+          style={{ top: cardMenuPos.top, left: cardMenuPos.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              broadcastChange({ type: 'DUPLICATE_CARD', payload: { cardId: card.id } });
+              setShowCardMenu(false);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+          >
+            <Copy size={13} className="text-slate-500" />
+            {lang === 'zh' ? '复制卡片' : 'Duplicate'}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              broadcastChange({ type: 'ARCHIVE_CARD', payload: { cardId: card.id } });
+              setShowCardMenu(false);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+          >
+            <Archive size={13} className="text-slate-500" />
+            {card.archived ? (lang === 'zh' ? '取消归档' : 'Unarchive') : (lang === 'zh' ? '归档' : 'Archive')}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm(lang === 'zh' ? `确定要删除卡片「${card.title}」吗？` : `Delete card "${card.title}"?`)) {
+                broadcastChange({ type: 'DELETE_CARD', payload: { cardId: card.id } });
+              }
+              setShowCardMenu(false);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            <Trash2 size={13} />
+            {lang === 'zh' ? '删除' : 'Delete'}
+          </button>
+        </div>,
+        document.body
+      )}
 
       {/* Status Dropdown - compact, in top-right */}
       <div className="absolute top-2 right-10 z-10 opacity-0 group-hover:opacity-100 transition-all duration-200">
