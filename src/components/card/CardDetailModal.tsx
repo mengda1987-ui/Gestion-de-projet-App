@@ -1134,7 +1134,7 @@ export default function CardDetailModal({
                             updateCard({ startDate: undefined });
                           }
                         }}
-                        className="input text-xs py-1.5 min-w-[150px]"
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                       />
                     </div>
                     <div>
@@ -1151,7 +1151,7 @@ export default function CardDetailModal({
                             updateCard({ dueDate: undefined });
                           }
                         }}
-                        className="input text-xs py-1.5 min-w-[150px]"
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                       />
                     </div>
                     {latestCard.dueDate && (
@@ -1366,7 +1366,7 @@ export default function CardDetailModal({
                               updateCard({ startDate: new Date(val).toISOString() });
                             }
                           }}
-                          className="input text-xs py-1.5 min-w-[150px]"
+                          className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                         />
                       </div>
                       <div>
@@ -1381,7 +1381,7 @@ export default function CardDetailModal({
                               updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
                             }
                           }}
-                          className="input text-xs py-1.5 min-w-[150px]"
+                          className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                         />
                       </div>
                       <div className="flex items-center gap-2">
