@@ -185,10 +185,19 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // 数据持久化：仅当用户主动修改时才保存到 Supabase（初始加载不触发）
+  // 数据持久化：快照对比，仅当看板/设置数据变化时才保存（初始加载不触发）
   useEffect(() => {
     if (!state._loaded) return;
-    if (!needsSaveRef.current) return;
+
+    const currentBoardsJSON = JSON.stringify(state.boards);
+    const currentSettingsJSON = JSON.stringify({
+      bg: state.workspaceBackground,
+      login: state.loginBackground,
+      logo: state.logo,
+    });
+
+    // 与上次保存时的快照一致 → 无需保存
+    if (currentBoardsJSON === boardsSnapshotRef.current && currentSettingsJSON === settingsSnapshotRef.current) return;
 
     const version = ++saveVersionRef.current;
 
@@ -231,9 +240,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         if (settingsError) throw settingsError;
 
-        // 保存成功，且期间没有新的变更，重置脏标记
+        // 保存成功且期间无新变更，更新快照
         if (saveVersionRef.current === version) {
-          needsSaveRef.current = false;
+          boardsSnapshotRef.current = currentBoardsJSON;
+          settingsSnapshotRef.current = currentSettingsJSON;
         }
 
         console.log('[Persistence] 数据已成功保存至 Supabase');
@@ -248,7 +258,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   }, [state.boards, state.workspaceBackground, state.loginBackground, state.logo, state._loaded]);
 
   const broadcastChange = useCallback((action: Action) => {
-    needsSaveRef.current = true;
     dispatch(action);
     if (channelRef.current) {
       channelRef.current
