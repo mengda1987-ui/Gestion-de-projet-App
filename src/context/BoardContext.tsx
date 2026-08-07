@@ -61,6 +61,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const loadedRef = useRef(false);
+  const needsSaveRef = useRef(false);
+  const saveVersionRef = useRef(0);
 
   // 从 Supabase 加载数据，带超时保护，失败则使用 Mock 数据
   useEffect(() => {
@@ -178,9 +180,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // 数据持久化：当状态变化时自动保存到 Supabase
+  // 数据持久化：仅当用户主动修改时才保存到 Supabase（初始加载不触发）
   useEffect(() => {
     if (!state._loaded) return;
+    if (!needsSaveRef.current) return;
+
+    const version = ++saveVersionRef.current;
 
     const saveData = async () => {
       try {
@@ -202,7 +207,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           updated_at: new Date().toISOString()
         }));
 
-        // 使用 upsert 批量更新/插入看板
         const { error: boardsError } = await supabase
           .from('boards')
           .upsert(boardsToSave);
@@ -222,18 +226,24 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         if (settingsError) throw settingsError;
 
+        // 保存成功，且期间没有新的变更，重置脏标记
+        if (saveVersionRef.current === version) {
+          needsSaveRef.current = false;
+        }
+
         console.log('[Persistence] 数据已成功保存至 Supabase');
       } catch (err) {
         console.error('[Persistence] 数据保存失败:', err);
       }
     };
 
-    // 使用防抖避免频繁请求
-    const timer = setTimeout(saveData, 2000);
+    // 500ms 防抖避免频繁请求
+    const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
   }, [state.boards, state.workspaceBackground, state.loginBackground, state.logo, state._loaded]);
 
   const broadcastChange = useCallback((action: Action) => {
+    needsSaveRef.current = true;
     dispatch(action);
     if (channelRef.current) {
       channelRef.current
