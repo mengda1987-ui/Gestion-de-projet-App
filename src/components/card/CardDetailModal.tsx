@@ -347,13 +347,6 @@ export default function CardDetailModal({
     setEditingTitle(false);
   };
 
-  const handleSaveDesc = () => {
-    if (descValue !== latestCard.description) {
-      updateCard({ description: descValue });
-    }
-    setEditingDesc(false);
-  };
-
   const handleSaveDates = () => {
     const updates: Partial<Card> = {};
     if (dueDateValue) updates.dueDate = new Date(dueDateValue + 'T23:59:59').toISOString();
@@ -897,23 +890,15 @@ export default function CardDetailModal({
                         autoFocus
                         value={descValue}
                         onChange={(e) => setDescValue(e.target.value)}
+                        onBlur={() => {
+                          if (descValue !== latestCard.description) {
+                            updateCard({ description: descValue });
+                          }
+                          setEditingDesc(false);
+                        }}
                         className="input min-h-[160px] resize-y font-mono text-xs leading-relaxed"
                         placeholder={t('card.desc.placeholder')}
                       />
-                      <div className="flex items-center gap-2">
-                        <button onClick={handleSaveDesc} className="btn-primary text-xs py-1.5">
-                          {t('common.save')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setDescValue(latestCard.description);
-                            setEditingDesc(false);
-                          }}
-                          className="btn-ghost text-xs py-1.5"
-                        >
-                          {t('common.cancel')}
-                        </button>
-                      </div>
                     </div>
                   ) : latestCard.description ? (
                     <div
