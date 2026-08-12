@@ -239,7 +239,7 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
               key={s}
               onClick={(e) => {
                 e.stopPropagation();
-                broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: s } } });
+                broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: s, ...(s === 'complete' ? { urgent: false } : {}) } } });
                 setShowStatusMenu(false);
               }}
               className={cn(

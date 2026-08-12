@@ -541,7 +541,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       if (card) {
         const next: Record<string, string> = { todo: 'in_progress', in_progress: 'complete', complete: 'todo' };
         const newStatus = (next[card.status] || 'todo') as Card['status'];
-        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: n.refId, updates: { status: newStatus } } });
+        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: n.refId, updates: { status: newStatus, ...(newStatus === 'complete' ? { urgent: false } : {}) } } });
       }
     } else if (n.kind === 'item') {
       const pair = findItem(n.refId);
