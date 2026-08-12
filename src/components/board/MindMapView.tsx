@@ -541,7 +541,14 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       if (card) {
         const next: Record<string, string> = { todo: 'in_progress', in_progress: 'complete', complete: 'todo' };
         const newStatus = (next[card.status] || 'todo') as Card['status'];
-        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: n.refId, updates: { status: newStatus, ...(newStatus === 'complete' ? { urgent: false } : {}) } } });
+        const updates: Partial<Card> & { labels?: string[] } = { status: newStatus };
+        if (newStatus === 'complete') {
+          updates.labels = card.labels.filter(id => {
+            const label = board.labels.find(l => l.id === id);
+            return !(label && (label.name.toLowerCase() === 'urgent' || label.name === '紧急' || label.name.toLowerCase() === 'urgente'));
+          });
+        }
+        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: n.refId, updates } });
       }
     } else if (n.kind === 'item') {
       const pair = findItem(n.refId);

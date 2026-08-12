@@ -239,7 +239,14 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
               key={s}
               onClick={(e) => {
                 e.stopPropagation();
-                broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { status: s, ...(s === 'complete' ? { urgent: false } : {}) } } });
+                const updates: Partial<Card> & { labels?: string[] } = { status: s };
+                if (s === 'complete') {
+                  updates.labels = card.labels.filter(id => {
+                    const label = board.labels.find(l => l.id === id);
+                    return !(label && (label.name.toLowerCase() === 'urgent' || label.name === '紧急' || label.name.toLowerCase() === 'urgente'));
+                  });
+                }
+                broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates } });
                 setShowStatusMenu(false);
               }}
               className={cn(
