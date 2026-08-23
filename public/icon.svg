@@ -1,28 +1,52 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="96" fill="#ffffff"/>
-  <g fill="#0047AB" transform="translate(64 48) scale(0.76)">
-    <path d="M 80 16 C 64 16 52 28 52 44 L 52 220 C 52 300 92 368 176 400 C 260 368 300 300 300 220 L 300 44 C 300 28 288 16 272 16 Z" fill="#ffffff" stroke="#0047AB" stroke-width="28" stroke-linejoin="round"/>
-    <line x1="176" y1="108" x2="176" y2="300" stroke="#0047AB" stroke-width="26" stroke-linecap="round"/>
-    <line x1="176" y1="120" x2="210" y2="120" stroke="#0047AB" stroke-width="24" stroke-linecap="round"/>
-    <rect x="160" y="272" width="32" height="20" fill="#ffffff" stroke="#0047AB" stroke-width="18" rx="10"/>
-    <g transform="translate(176 204) rotate(-35) translate(-176 -204)">
-      <line x1="80" y1="204" x2="240" y2="204" stroke="#0047AB" stroke-width="24" stroke-linecap="round"/>
-      <circle cx="72" cy="204" r="26" fill="#ffffff" stroke="#0047AB" stroke-width="18"/>
-      <rect x="58" y="194" width="18" height="20" fill="#0047AB" rx="4" transform="rotate(-10)"/>
-      <rect x="220" y="188" width="22" height="16" fill="#0047AB" rx="3"/>
-      <rect x="240" y="208" width="20" height="16" fill="#0047AB" rx="3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <filter id="smoother" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur stdDeviation="0.3"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <g fill="#0047AB" filter="url(#smoother)">
+    <path d="M 232 160
+             L 792 160
+             Q 818 160 818 186
+             L 818 486
+             C 818 634 702 758 512 812
+             C 322 758 206 634 206 486
+             L 206 186
+             Q 206 160 232 160 Z"/>
+    <path d="M 278 226
+             L 746 226
+             Q 762 226 762 242
+             L 762 486
+             C 762 602 668 702 512 752
+             C 356 702 262 602 262 486
+             L 262 242
+             Q 262 226 278 226 Z" fill="#ffffff"/>
+    <rect x="492" y="288" width="44" height="38" rx="3"/>
+    <rect x="492" y="334" width="40" height="224" rx="3"/>
+    <rect x="486" y="580" width="60" height="44" rx="12" fill="#0047AB"/>
+    <rect x="498" y="596" width="36" height="12" rx="3" fill="#ffffff"/>
+    <rect x="500" y="624" width="32" height="20" rx="4" fill="#ffffff"/>
+    <g transform="translate(512 448)">
+      <g transform="rotate(-40)">
+        <rect x="-220" y="-16" width="256" height="36" rx="6"/>
+        <circle cx="-238" cy="0" r="60" fill="#ffffff" stroke="#0047AB" stroke-width="36"/>
+        <rect x="-276" y="-12" width="30" height="42" rx="6" transform="rotate(-8 -261 9)"/>
+        <rect x="74" y="-60" width="36" height="28" rx="4"/>
+        <rect x="110" y="-26" width="34" height="28" rx="4"/>
+        <rect x="146" y="10" width="32" height="28" rx="4"/>
+      </g>
+      <g transform="rotate(40)">
+        <rect x="-220" y="-16" width="256" height="36" rx="6"/>
+        <circle cx="-238" cy="0" r="60" fill="#ffffff" stroke="#0047AB" stroke-width="36"/>
+        <rect x="-276" y="-30" width="30" height="42" rx="6" transform="rotate(8 -261 -9)"/>
+        <rect x="74" y="-60" width="36" height="28" rx="4"/>
+        <rect x="110" y="-26" width="34" height="28" rx="4"/>
+        <rect x="146" y="10" width="32" height="28" rx="4"/>
+      </g>
     </g>
-    <g transform="translate(176 204) rotate(35) translate(-176 -204)">
-      <line x1="112" y1="204" x2="272" y2="204" stroke="#0047AB" stroke-width="24" stroke-linecap="round"/>
-      <circle cx="96" cy="204" r="26" fill="#ffffff" stroke="#0047AB" stroke-width="18"/>
-      <rect x="86" y="196" width="18" height="18" fill="#0047AB" rx="4" transform="rotate(10) translate(-4 -2)"/>
-      <rect x="252" y="188" width="22" height="16" fill="#0047AB" rx="3"/>
-      <rect x="272" y="208" width="20" height="16" fill="#0047AB" rx="3"/>
-    </g>
-  </g>
-  <g fill="#0047AB" transform="translate(64 424) scale(0.84 0.76)">
-    <rect x="20" y="0" width="168" height="48" rx="6"/>
-    <rect x="240" y="0" width="168" height="48" rx="6"/>
-    <path d="M 188 0 Q 204 0 212 20 Q 220 0 236 0 L 236 48 L 188 48 Z"/>
+    <rect x="232" y="824" width="292" height="74" rx="4"/>
+    <rect x="500" y="824" width="292" height="74" rx="4"/>
+    <path d="M 524 824 L 488 824 L 512 898 Z"/>
   </g>
 </svg>
