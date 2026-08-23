@@ -881,7 +881,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.5.21
+        v1.5.22
       </div>
     </div>
   );
