@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#ffffff"/>
+  <g fill="#0047AB" transform="translate(64 48) scale(0.76)">
+    <path d="M 80 16 C 64 16 52 28 52 44 L 52 220 C 52 300 92 368 176 400 C 260 368 300 300 300 220 L 300 44 C 300 28 288 16 272 16 Z" fill="#ffffff" stroke="#0047AB" stroke-width="28" stroke-linejoin="round"/>
+    <line x1="176" y1="108" x2="176" y2="300" stroke="#0047AB" stroke-width="26" stroke-linecap="round"/>
+    <line x1="176" y1="120" x2="210" y2="120" stroke="#0047AB" stroke-width="24" stroke-linecap="round"/>
+    <rect x="160" y="272" width="32" height="20" fill="#ffffff" stroke="#0047AB" stroke-width="18" rx="10"/>
+    <g transform="translate(176 204) rotate(-35) translate(-176 -204)">
+      <line x1="80" y1="204" x2="240" y2="204" stroke="#0047AB" stroke-width="24" stroke-linecap="round"/>
+      <circle cx="72" cy="204" r="26" fill="#ffffff" stroke="#0047AB" stroke-width="18"/>
+      <rect x="58" y="194" width="18" height="20" fill="#0047AB" rx="4" transform="rotate(-10)"/>
+      <rect x="220" y="188" width="22" height="16" fill="#0047AB" rx="3"/>
+      <rect x="240" y="208" width="20" height="16" fill="#0047AB" rx="3"/>
+    </g>
+    <g transform="translate(176 204) rotate(35) translate(-176 -204)">
+      <line x1="112" y1="204" x2="272" y2="204" stroke="#0047AB" stroke-width="24" stroke-linecap="round"/>
+      <circle cx="96" cy="204" r="26" fill="#ffffff" stroke="#0047AB" stroke-width="18"/>
+      <rect x="86" y="196" width="18" height="18" fill="#0047AB" rx="4" transform="rotate(10) translate(-4 -2)"/>
+      <rect x="252" y="188" width="22" height="16" fill="#0047AB" rx="3"/>
+      <rect x="272" y="208" width="20" height="16" fill="#0047AB" rx="3"/>
+    </g>
+  </g>
+  <g fill="#0047AB" transform="translate(64 424) scale(0.84 0.76)">
+    <rect x="20" y="0" width="168" height="48" rx="6"/>
+    <rect x="240" y="0" width="168" height="48" rx="6"/>
+    <path d="M 188 0 Q 204 0 212 20 Q 220 0 236 0 L 236 48 L 188 48 Z"/>
+  </g>
+</svg>
