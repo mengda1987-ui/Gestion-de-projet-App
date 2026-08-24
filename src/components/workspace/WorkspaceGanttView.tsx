@@ -230,7 +230,7 @@ export default function WorkspaceGanttView({ onBack }: { onBack: () => void }) {
             <p className="text-xs mt-1">{lang === 'zh' ? '在看板里添加卡片后即可在此查看' : 'Add cards in a board to see them here'}</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-auto" ref={scrollRef}>
+          <div className="flex-1 overflow-auto thick-h-scroll" ref={scrollRef}>
             <div className="flex min-w-max">
               {/* Left: board / task names */}
               <div className="sticky left-0 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur w-80 border-r border-slate-200 dark:border-slate-700 shrink-0">

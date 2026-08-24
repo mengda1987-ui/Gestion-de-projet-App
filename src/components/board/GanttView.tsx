@@ -333,7 +333,7 @@ export default function GanttView() {
       </div>
 
       <div className="glass rounded-xl overflow-hidden flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-auto" ref={scrollRef}>
+        <div className="flex-1 overflow-auto thick-h-scroll" ref={scrollRef}>
           <div className="flex min-w-max" style={{ minWidth: '100%' }}>
             {/* Left Side: Task Names */}
             <div className="sticky left-0 z-20 bg-white/95 dark:bg-slate-800/95 backdrop-blur w-72 border-r border-slate-200 dark:border-slate-700 shrink-0">

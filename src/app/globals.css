@@ -34,6 +34,29 @@
   }
 }
 
+/* 明显的可拖动横向滚动条（甘特图 / 看板列视图） */
+.thick-h-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 122, 255, 0.55) transparent;
+}
+.thick-h-scroll::-webkit-scrollbar {
+  height: 14px;
+}
+.thick-h-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 9999px;
+}
+.thick-h-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 122, 255, 0.55);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.thick-h-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 122, 255, 0.85);
+  background-clip: padding-box;
+}
+
 @layer components {
   .glass {
     @apply bg-white/75 backdrop-blur-xl border border-white/30;
