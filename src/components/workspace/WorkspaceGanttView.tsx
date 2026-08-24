@@ -62,9 +62,10 @@ export default function WorkspaceGanttView({ onBack }: { onBack: () => void }) {
         for (const card of col.cards) {
           if (card.archived) continue;
           if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) continue;
-          let s = card.startDate ? parseISO(card.startDate) : card.createdAt ? parseISO(card.createdAt) : new Date();
-          let e = card.dueDate ? parseISO(card.dueDate) : addDays(s, 3);
-          if (isBefore(e, s)) e = addDays(s, 2);
+          // 与单看板甘特图逻辑一致：优先用 startDate，没有则用 dueDate - 1天
+          let e = card.dueDate ? parseISO(card.dueDate) : addDays(card.createdAt ? parseISO(card.createdAt) : new Date(), 3);
+          let s = card.startDate ? parseISO(card.startDate) : addDays(e, -1);
+          if (isBefore(e, s)) e = addDays(s, 1); // 确保 endDate >= startDate + 1天
           all.push({ id: card.id, card, column: col, board, startDate: startOfDay(s), endDate: startOfDay(e) });
         }
       }
@@ -240,14 +241,14 @@ export default function WorkspaceGanttView({ onBack }: { onBack: () => void }) {
                 </div>
                 {boardGroups.map(({ board, tasks: boardTasks }) => (
                   <div key={board.id}>
-                    <div className="px-3 h-[34px] flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50 text-xs font-bold text-slate-700 dark:text-slate-200">
+                    <div className="px-3 h-[34px] flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800/30 text-sm font-bold text-blue-900 dark:text-blue-100">
                       <span>{board.emoji || '📋'}</span>
                       <span className="truncate">{board.title}</span>
-                      <span className="ml-auto text-[10px] font-normal text-slate-400">{boardTasks.length}</span>
+                      <span className="ml-auto text-[10px] font-normal text-blue-600 dark:text-blue-400">{boardTasks.length}</span>
                     </div>
                     {columnGroupsOf(boardTasks).map(({ column, tasks: colTasks }) => (
                       <div key={column.id}>
-                        <div className="px-3 h-[24px] flex items-center bg-slate-50/60 dark:bg-slate-900/40 border-b border-slate-100/70 dark:border-slate-700/30 text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider">
+                        <div className="px-3 h-[24px] flex items-center bg-violet-50/80 dark:bg-violet-900/20 border-b border-violet-100/70 dark:border-violet-800/30 text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
                           {column.title}
                         </div>
                         {colTasks.map(task => {
@@ -326,10 +327,10 @@ export default function WorkspaceGanttView({ onBack }: { onBack: () => void }) {
                 <div className="pt-[72px]">
                   {boardGroups.map(({ board, tasks: boardTasks }) => (
                     <div key={board.id}>
-                      <div className="h-[34px] bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/50" />
+                      <div className="h-[34px] bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800/30" />
                       {columnGroupsOf(boardTasks).map(({ column, tasks: colTasks }) => (
                         <div key={column.id}>
-                          <div className="h-[24px] bg-slate-50/60 dark:bg-slate-900/40 border-b border-slate-100/70 dark:border-slate-700/30" />
+                          <div className="h-[24px] bg-violet-50/80 dark:bg-violet-900/20 border-b border-violet-100/70 dark:border-violet-800/30" />
                           {colTasks.map(task => {
                             const pos = getTaskPosition(task);
                             const barColor = statusColors[task.card.status] || statusColors.todo;
