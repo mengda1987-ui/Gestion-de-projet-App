@@ -82,9 +82,10 @@ export default function GanttView() {
         // Admin visibility control
         if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) continue;
 
-        // 统一逻辑：endDate 取 dueDate（或创建时间+3天），startDate 强制为 endDate - 1天
+        // 优先用 startDate，没有则用 dueDate - 1天；endDate 取 dueDate（或创建时间+3天）
         let e = card.dueDate ? parseISO(card.dueDate) : addDays(card.createdAt ? parseISO(card.createdAt) : new Date(), 3);
-        let s = addDays(e, -1);
+        let s = card.startDate ? parseISO(card.startDate) : addDays(e, -1);
+        if (isBefore(e, s)) e = addDays(s, 1); // 确保 endDate >= startDate + 1天
         all.push({ id: card.id, card, column: col, startDate: startOfDay(s), endDate: startOfDay(e) });
       }
     }
@@ -232,8 +233,8 @@ export default function GanttView() {
           const task = tasks.find(t => t.id === cur.taskId);
           if (task) {
             const vStart = viewStartRef.current;
+            const newStart = startOfDay(addDays(vStart, cur.curStartDays));
             const newEnd = startOfDay(addDays(vStart, cur.curEndDays));
-            const newStart = startOfDay(addDays(newEnd, -1)); // 强制开始日期 = 截止日期 - 1天
             broadcastChange({
               type: 'UPDATE_CARD',
               payload: {
