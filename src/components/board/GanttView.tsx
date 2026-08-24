@@ -82,9 +82,9 @@ export default function GanttView() {
         // Admin visibility control
         if (card.visibleTo?.length && currentUser?.role !== 'admin' && !card.visibleTo.includes(currentUser?.id ?? '')) continue;
 
-        let s = card.startDate ? parseISO(card.startDate) : card.createdAt ? parseISO(card.createdAt) : new Date();
-        let e = card.dueDate ? parseISO(card.dueDate) : addDays(s, 3);
-        if (isBefore(e, s)) e = addDays(s, 2);
+        // 统一逻辑：endDate 取 dueDate（或创建时间+3天），startDate 强制为 endDate - 1天
+        let e = card.dueDate ? parseISO(card.dueDate) : addDays(card.createdAt ? parseISO(card.createdAt) : new Date(), 3);
+        let s = addDays(e, -1);
         all.push({ id: card.id, card, column: col, startDate: startOfDay(s), endDate: startOfDay(e) });
       }
     }
@@ -206,12 +206,15 @@ export default function GanttView() {
       let s = cur.initStartDays;
       let en = cur.initEndDays;
       if (cur.mode === 'left') {
+        // 拖左边：调整开始日期，但保持任务条最小1天长度
         s = clampDay(cur.initStartDays + dDays);
         if (s > en - 1) s = en - 1;
       } else if (cur.mode === 'right') {
+        // 拖右边：调整截止日期，但保持任务条最小1天长度
         en = clampDay(cur.initEndDays + dDays);
         if (en < s + 1) en = s + 1;
       } else if (cur.mode === 'move') {
+        // 平移：开始和截止同步移动
         const shift = clampDay(dDays);
         s = cur.initStartDays + shift;
         en = cur.initEndDays + shift;
@@ -229,8 +232,8 @@ export default function GanttView() {
           const task = tasks.find(t => t.id === cur.taskId);
           if (task) {
             const vStart = viewStartRef.current;
-            const newStart = startOfDay(addDays(vStart, cur.curStartDays));
             const newEnd = startOfDay(addDays(vStart, cur.curEndDays));
+            const newStart = startOfDay(addDays(newEnd, -1)); // 强制开始日期 = 截止日期 - 1天
             broadcastChange({
               type: 'UPDATE_CARD',
               payload: {
