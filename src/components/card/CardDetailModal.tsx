@@ -262,9 +262,6 @@ export default function CardDetailModal({
   const [dueDateValue, setDueDateValue] = useState(
     latestCard.dueDate ? format(parseISO(latestCard.dueDate), 'yyyy-MM-dd') : ''
   );
-  const [startDateValue, setStartDateValue] = useState(
-    latestCard.startDate ? format(parseISO(latestCard.startDate), 'yyyy-MM-dd') : ''
-  );
   const [commentText, setCommentText] = useState('');
   const [newChecklistName, setNewChecklistName] = useState('');
   const [showAddChecklist, setShowAddChecklist] = useState(false);
@@ -279,8 +276,6 @@ export default function CardDetailModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const descTextareaRef = useRef<HTMLTextAreaElement>(null);
   const dueDatePanelRef = useRef<HTMLDivElement>(null);
-  const startDateInputRef = useRef<HTMLInputElement>(null);
-  const dueDateInputRef = useRef<HTMLInputElement>(null);
 
   const insertFormat = (prefix: string, suffix = '') => {
     const ta = descTextareaRef.current;
@@ -352,37 +347,12 @@ export default function CardDetailModal({
     broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates } });
   };
 
-  // 打开日期选择器（Chrome/Edge/Firefox 用 showPicker，Safari 降级为 focus）
-  const openDatePicker = (ref: React.RefObject<HTMLInputElement>) => {
-    const el = ref.current;
-    if (!el) return;
-    const anyEl = el as HTMLInputElement & { showPicker?: () => void };
-    if (typeof anyEl.showPicker === 'function') {
-      try { anyEl.showPicker(); return; } catch {}
-    }
-    el.focus();
-  };
-
-  // 设置开始日期；openDue 为 true 时选完自动打开截止日期选择器
-  const handleStartDateChange = (val: string, openDue = false) => {
-    setStartDateValue(val);
-    if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      updateCard({ startDate: new Date(val).toISOString() });
-      if (openDue) openDatePicker(dueDateInputRef);
-    }
-  };
-
-  // 设置截止日期；需求1：无开始日期时自动补为截止日期前一天；closePanel 选完自动关闭面板
+  // 设置截止日期：后台自动将开始日期设为截止日期前一天（供甘特图使用），closePanel 选完自动关闭面板
   const handleDueDateChange = (val: string, closePanel = false) => {
     setDueDateValue(val);
     if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      if (!startDateValue) {
-        const prev = format(addDays(parseISO(val), -1), 'yyyy-MM-dd');
-        setStartDateValue(prev);
-        updateCard({ startDate: new Date(prev).toISOString(), dueDate: new Date(val + 'T23:59:59').toISOString() });
-      } else {
-        updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
-      }
+      const prev = format(addDays(parseISO(val), -1), 'yyyy-MM-dd');
+      updateCard({ startDate: new Date(prev).toISOString(), dueDate: new Date(val + 'T23:59:59').toISOString() });
       if (closePanel) setShowDueDate(false);
     }
   };
@@ -1143,15 +1113,6 @@ export default function CardDetailModal({
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{lang === 'zh' ? '开始日期' : 'Start date'}</label>
-                      <input
-                        type="date"
-                        value={startDateValue}
-                        onChange={(e) => handleStartDateChange(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
-                      />
-                    </div>
-                    <div>
                       <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{t('card.dueDate')}</label>
                       <input
                         type="date"
@@ -1161,7 +1122,7 @@ export default function CardDetailModal({
                       />
                     </div>
                     {latestCard.dueDate && (
-                      <button onClick={() => { setDueDateValue(''); setStartDateValue(''); updateCard({ dueDate: undefined, startDate: undefined }); }}
+                      <button onClick={() => { setDueDateValue(''); updateCard({ dueDate: undefined, startDate: undefined }); }}
                         className="btn-ghost text-xs py-1.5 w-full">
                         {t('card.clearDue')}
                       </button>
@@ -1361,20 +1322,9 @@ export default function CardDetailModal({
                   {showDueDate && (
                     <div ref={dueDatePanelRef} className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2 animate-slide-up">
                       <div>
-                        <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{lang === 'zh' ? '开始日期' : 'Start date'}</label>
-                        <input
-                          type="date"
-                          ref={startDateInputRef}
-                          value={startDateValue}
-                          onChange={(e) => handleStartDateChange(e.target.value, true)}
-                          className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
-                        />
-                      </div>
-                      <div>
                         <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{t('card.dueDate')}</label>
                         <input
                           type="date"
-                          ref={dueDateInputRef}
                           value={dueDateValue}
                           onChange={(e) => handleDueDateChange(e.target.value, true)}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
@@ -1385,7 +1335,6 @@ export default function CardDetailModal({
                           <button
                             onClick={() => {
                               setDueDateValue('');
-                              setStartDateValue('');
                               updateCard({ dueDate: undefined, startDate: undefined });
                               setShowDueDate(false);
                             }}
