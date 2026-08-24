@@ -52,7 +52,7 @@ import {
   formatFileSize,
   generateId,
 } from '@/lib/utils';
-import { parseISO, format } from 'date-fns';
+import { parseISO, format, addDays } from 'date-fns';
 
 interface CardDetailModalProps {
   card: Card;
@@ -279,6 +279,8 @@ export default function CardDetailModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const descTextareaRef = useRef<HTMLTextAreaElement>(null);
   const dueDatePanelRef = useRef<HTMLDivElement>(null);
+  const startDateInputRef = useRef<HTMLInputElement>(null);
+  const dueDateInputRef = useRef<HTMLInputElement>(null);
 
   const insertFormat = (prefix: string, suffix = '') => {
     const ta = descTextareaRef.current;
@@ -348,6 +350,41 @@ export default function CardDetailModal({
 
   const updateCard = (updates: Partial<Card>) => {
     broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates } });
+  };
+
+  // 打开日期选择器（Chrome/Edge/Firefox 用 showPicker，Safari 降级为 focus）
+  const openDatePicker = (ref: React.RefObject<HTMLInputElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const anyEl = el as HTMLInputElement & { showPicker?: () => void };
+    if (typeof anyEl.showPicker === 'function') {
+      try { anyEl.showPicker(); return; } catch {}
+    }
+    el.focus();
+  };
+
+  // 设置开始日期；openDue 为 true 时选完自动打开截止日期选择器
+  const handleStartDateChange = (val: string, openDue = false) => {
+    setStartDateValue(val);
+    if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      updateCard({ startDate: new Date(val).toISOString() });
+      if (openDue) openDatePicker(dueDateInputRef);
+    }
+  };
+
+  // 设置截止日期；需求1：无开始日期时自动补为截止日期前一天；closePanel 选完自动关闭面板
+  const handleDueDateChange = (val: string, closePanel = false) => {
+    setDueDateValue(val);
+    if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      if (!startDateValue) {
+        const prev = format(addDays(parseISO(val), -1), 'yyyy-MM-dd');
+        setStartDateValue(prev);
+        updateCard({ startDate: new Date(prev).toISOString(), dueDate: new Date(val + 'T23:59:59').toISOString() });
+      } else {
+        updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
+      }
+      if (closePanel) setShowDueDate(false);
+    }
   };
 
   const handleSaveTitle = () => {
@@ -1110,13 +1147,7 @@ export default function CardDetailModal({
                       <input
                         type="date"
                         value={startDateValue}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setStartDateValue(val);
-                          if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                            updateCard({ startDate: new Date(val).toISOString() });
-                          }
-                        }}
+                        onChange={(e) => handleStartDateChange(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                       />
                     </div>
@@ -1125,13 +1156,7 @@ export default function CardDetailModal({
                       <input
                         type="date"
                         value={dueDateValue}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setDueDateValue(val);
-                          if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                            updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
-                          }
-                        }}
+                        onChange={(e) => handleDueDateChange(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                       />
                     </div>
@@ -1339,14 +1364,9 @@ export default function CardDetailModal({
                         <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{lang === 'zh' ? '开始日期' : 'Start date'}</label>
                         <input
                           type="date"
+                          ref={startDateInputRef}
                           value={startDateValue}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setStartDateValue(val);
-                            if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                              updateCard({ startDate: new Date(val).toISOString() });
-                            }
-                          }}
+                          onChange={(e) => handleStartDateChange(e.target.value, true)}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                         />
                       </div>
@@ -1354,14 +1374,9 @@ export default function CardDetailModal({
                         <label className="text-[11px] text-slate-500 font-medium mb-0.5 block">{t('card.dueDate')}</label>
                         <input
                           type="date"
+                          ref={dueDateInputRef}
                           value={dueDateValue}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setDueDateValue(val);
-                            if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                              updateCard({ dueDate: new Date(val + 'T23:59:59').toISOString() });
-                            }
-                          }}
+                          onChange={(e) => handleDueDateChange(e.target.value, true)}
                           className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
                         />
                       </div>
