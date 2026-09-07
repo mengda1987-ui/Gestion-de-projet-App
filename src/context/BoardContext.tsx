@@ -250,7 +250,23 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
     const saveData = async () => {
       try {
-        // 1. 保存看板数据
+        // 1. 找出被删除的看板并从数据库中删除
+        const prevBoards = boardsSnapshotRef.current ? JSON.parse(boardsSnapshotRef.current) : [];
+        const currentBoardIds = new Set(state.boards.map(b => b.id));
+        const deletedIds = prevBoards
+          .filter((b: any) => !currentBoardIds.has(b.id))
+          .map((b: any) => b.id);
+
+        if (deletedIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('boards')
+            .delete()
+            .in('id', deletedIds);
+          
+          if (deleteError) throw deleteError;
+        }
+
+        // 2. 保存/更新现有的看板数据
         const boardsToSave = state.boards.map(b => ({
           id: b.id,
           title: b.title,
@@ -274,7 +290,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         if (boardsError) throw boardsError;
 
-        // 2. 保存工作区设置
+        // 3. 保存工作区设置
         const { error: settingsError } = await supabase
           .from('workspace_settings')
           .upsert({
