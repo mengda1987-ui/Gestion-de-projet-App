@@ -1,9 +1,6 @@
 import { BoardState } from '../types';
 import { Action } from '../actions';
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2);
-}
+import { generateId } from '@/lib/utils';
 
 export function checklistOpsReducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {

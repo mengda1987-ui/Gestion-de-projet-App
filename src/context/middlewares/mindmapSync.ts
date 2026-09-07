@@ -1,10 +1,7 @@
 import { BoardState } from '../types';
 import { Action } from '../actions';
 import { Card, MindMapNode } from '@/types';
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2);
-}
+import { generateId } from '@/lib/utils';
 
 export function syncMindMapCards(state: BoardState, action: Action): BoardState {
   const now = new Date().toISOString();

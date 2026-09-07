@@ -1,5 +1,6 @@
 'use client';
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { BoardState, createInitialState } from './types';
 import { Action } from './actions';
 import { settingsReducer } from './reducers/settingsReducer';
@@ -14,10 +15,26 @@ import { supabase } from '@/lib/supabase';
 import { MOCK_USERS, MOCK_BOARDS } from '@/data/mockData';
 import type { User, Board } from '@/types';
 
+const BACKUP_KEY = 'trello_local_backup_v1';
+
+function readLocalBackup(): { boards: Board[]; workspaceBackground: string; loginBackground: string; logo: string; savedAt: string } | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.boards)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 interface BoardContextType {
   state: BoardState;
   dispatch: React.Dispatch<Action>;
   broadcastChange: (action: Action) => void;
+  saveError: string | null;
 }
 
 const BoardContext = createContext<BoardContextType | undefined>(undefined);
@@ -64,6 +81,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const boardsSnapshotRef = useRef<string>('');
   const settingsSnapshotRef = useRef<string>('');
   const saveVersionRef = useRef(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // 从 Supabase 加载数据，带超时保护，失败则使用 Mock 数据
   useEffect(() => {
@@ -136,20 +154,38 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         boardsSnapshotRef.current = JSON.stringify(boards);
         settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, logo: wsSettings.logo });
       } catch (err) {
-        console.warn('Supabase load failed, using mock data:', err);
-        dispatch({
-          type: 'LOAD_ALL_DATA',
-          payload: {
-            users: MOCK_USERS,
-            boards: MOCK_BOARDS,
-            workspaceBackground: '#f5f5f7',
-            loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-            logo: '',
-          },
-        });
-        loadedRef.current = true;
-        boardsSnapshotRef.current = JSON.stringify(MOCK_BOARDS);
-        settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: '' });
+        console.warn('Supabase load failed:', err);
+        const backup = readLocalBackup();
+        if (backup && backup.boards.length > 0) {
+          dispatch({
+            type: 'LOAD_ALL_DATA',
+            payload: {
+              users: MOCK_USERS,
+              boards: backup.boards,
+              workspaceBackground: backup.workspaceBackground || '#f5f5f7',
+              loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+              logo: backup.logo || '',
+            },
+          });
+          loadedRef.current = true;
+          boardsSnapshotRef.current = JSON.stringify(backup.boards);
+          settingsSnapshotRef.current = JSON.stringify({ bg: backup.workspaceBackground || '#f5f5f7', login: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: backup.logo || '' });
+          setSaveError('服务器连接失败，已加载本地备份数据');
+        } else {
+          dispatch({
+            type: 'LOAD_ALL_DATA',
+            payload: {
+              users: MOCK_USERS,
+              boards: MOCK_BOARDS,
+              workspaceBackground: '#f5f5f7',
+              loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+              logo: '',
+            },
+          });
+          loadedRef.current = true;
+          boardsSnapshotRef.current = JSON.stringify(MOCK_BOARDS);
+          settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: '' });
+        }
       }
     }
     loadData();
@@ -188,6 +224,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // 数据持久化：快照对比，仅当看板/设置数据变化时才保存（初始加载不触发）
   useEffect(() => {
     if (!state._loaded) return;
+
+    // 本地留底：每次数据变化立即写入 localStorage，防止保存失败导致内容丢失
+    try {
+      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({
+        boards: state.boards,
+        workspaceBackground: state.workspaceBackground,
+        loginBackground: state.loginBackground,
+        logo: state.logo,
+        savedAt: new Date().toISOString(),
+      }));
+    } catch {}
 
     const currentBoardsJSON = JSON.stringify(state.boards);
     const currentSettingsJSON = JSON.stringify({
@@ -246,9 +293,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           settingsSnapshotRef.current = currentSettingsJSON;
         }
 
+        setSaveError(null);
         console.log('[Persistence] 数据已成功保存至 Supabase');
       } catch (err) {
         console.error('[Persistence] 数据保存失败:', err);
+        setSaveError('数据保存失败，已暂存在本地备份。请检查网络后重试。');
       }
     };
 
@@ -273,12 +322,34 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const contextValue = React.useMemo(() => ({
     state,
     dispatch,
-    broadcastChange
-  }), [state, broadcastChange]);
+    broadcastChange,
+    saveError
+  }), [state, broadcastChange, saveError]);
+
+  // 保存失败提示自动消失
+  useEffect(() => {
+    if (!saveError) return;
+    const timer = setTimeout(() => setSaveError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [saveError]);
 
   return (
     <BoardContext.Provider value={contextValue}>
       {children}
+      {saveError && createPortal(
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[90vw]">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-medium shadow-xl animate-slide-up">
+            <span>{saveError}</span>
+            <button
+              onClick={() => setSaveError(null)}
+              className="shrink-0 px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors text-xs"
+            >
+              ✕
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
     </BoardContext.Provider>
   );
 }
@@ -290,7 +361,7 @@ export function useBoardContext() {
 }
 
 export function useBoard() {
-  const { state, dispatch, broadcastChange } = useBoardContext();
+  const { state, dispatch, broadcastChange, saveError } = useBoardContext();
   
   // 优化：缓存 findCard 函数，避免每次渲染重新创建
   const findCard = useCallback((cardId: string): { card: any; columnId: string } | undefined => {
@@ -318,6 +389,7 @@ export function useBoard() {
     _loaded: state._loaded,
     dispatch,
     broadcastChange,
+    saveError,
     findCard,
   };
 }
