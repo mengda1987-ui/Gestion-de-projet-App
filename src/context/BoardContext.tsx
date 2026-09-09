@@ -17,7 +17,7 @@ import type { User, Board } from '@/types';
 
 const BACKUP_KEY = 'trello_local_backup_v1';
 
-function readLocalBackup(): { boards: Board[]; workspaceBackground: string; loginBackground: string; logo: string; savedAt: string } | null {
+function readLocalBackup(): { boards: Board[]; users?: User[]; workspaceBackground: string; loginBackground: string; logo: string; savedAt: string } | null {
   try {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(BACKUP_KEY);
@@ -79,6 +79,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const loadedRef = useRef(false);
   const boardsSnapshotRef = useRef<string>('');
+  const usersSnapshotRef = useRef<string>('');
   const settingsSnapshotRef = useRef<string>('');
   const saveVersionRef = useRef(0);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -119,7 +120,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           avatar: u.avatar || '',
           color: u.color || '#3B82F6',
           role: u.role || 'member',
-          password: '', // 不再从数据库加载密码
+          password: u.password || '', // 加载密码以确保保存时不会丢失
           lang: u.lang || 'zh',
         }));
 
@@ -143,8 +144,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         dispatch({
           type: 'LOAD_ALL_DATA',
           payload: {
-            users: users.length > 0 ? users : MOCK_USERS,
-            boards: boards.length > 0 ? boards : MOCK_BOARDS,
+            users: users, // 允许空用户列表
+            boards: boards, // 允许空看板列表
             workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
             loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
             logo: wsSettings.logo || '',
@@ -152,15 +153,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         });
         loadedRef.current = true;
         boardsSnapshotRef.current = JSON.stringify(boards);
+        usersSnapshotRef.current = JSON.stringify(users);
         settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, logo: wsSettings.logo });
       } catch (err) {
         console.warn('Supabase load failed:', err);
         const backup = readLocalBackup();
         if (backup && backup.boards.length > 0) {
+          const loadedUsers = backup.users || [];
           dispatch({
             type: 'LOAD_ALL_DATA',
             payload: {
-              users: MOCK_USERS,
+              users: loadedUsers,
               boards: backup.boards,
               workspaceBackground: backup.workspaceBackground || '#f5f5f7',
               loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
@@ -169,9 +172,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           });
           loadedRef.current = true;
           boardsSnapshotRef.current = JSON.stringify(backup.boards);
+          usersSnapshotRef.current = JSON.stringify(loadedUsers);
           settingsSnapshotRef.current = JSON.stringify({ bg: backup.workspaceBackground || '#f5f5f7', login: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: backup.logo || '' });
           setSaveError('服务器连接失败，已加载本地备份数据');
         } else {
+          // 只有在完全没有数据（数据库失败且无本地备份）时才使用 Mock 数据作为兜底
           dispatch({
             type: 'LOAD_ALL_DATA',
             payload: {
@@ -184,6 +189,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           });
           loadedRef.current = true;
           boardsSnapshotRef.current = JSON.stringify(MOCK_BOARDS);
+          usersSnapshotRef.current = JSON.stringify(MOCK_USERS);
           settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: '' });
         }
       }
@@ -229,6 +235,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     try {
       window.localStorage.setItem(BACKUP_KEY, JSON.stringify({
         boards: state.boards,
+        users: state.users,
         workspaceBackground: state.workspaceBackground,
         loginBackground: state.loginBackground,
         logo: state.logo,
@@ -237,6 +244,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     } catch {}
 
     const currentBoardsJSON = JSON.stringify(state.boards);
+    const currentUsersJSON = JSON.stringify(state.users);
     const currentSettingsJSON = JSON.stringify({
       bg: state.workspaceBackground,
       login: state.loginBackground,
@@ -244,7 +252,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     });
 
     // 与上次保存时的快照一致 → 无需保存
-    if (currentBoardsJSON === boardsSnapshotRef.current && currentSettingsJSON === settingsSnapshotRef.current) return;
+    if (
+      currentBoardsJSON === boardsSnapshotRef.current && 
+      currentUsersJSON === usersSnapshotRef.current &&
+      currentSettingsJSON === settingsSnapshotRef.current
+    ) return;
 
     const version = ++saveVersionRef.current;
 
@@ -253,20 +265,36 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 1. 找出被删除的看板并从数据库中删除
         const prevBoards = boardsSnapshotRef.current ? JSON.parse(boardsSnapshotRef.current) : [];
         const currentBoardIds = new Set(state.boards.map(b => b.id));
-        const deletedIds = prevBoards
+        const deletedBoardIds = prevBoards
           .filter((b: any) => !currentBoardIds.has(b.id))
           .map((b: any) => b.id);
 
-        if (deletedIds.length > 0) {
+        if (deletedBoardIds.length > 0) {
           const { error: deleteError } = await supabase
             .from('boards')
             .delete()
-            .in('id', deletedIds);
+            .in('id', deletedBoardIds);
           
           if (deleteError) throw deleteError;
         }
 
-        // 2. 保存/更新现有的看板数据
+        // 2. 找出被删除的用户并从数据库中删除
+        const prevUsers = usersSnapshotRef.current ? JSON.parse(usersSnapshotRef.current) : [];
+        const currentUserIds = new Set(state.users.map(u => u.id));
+        const deletedUserIds = prevUsers
+          .filter((u: any) => !currentUserIds.has(u.id))
+          .map((u: any) => u.id);
+
+        if (deletedUserIds.length > 0) {
+          const { error: deleteUserError } = await supabase
+            .from('users')
+            .delete()
+            .in('id', deletedUserIds);
+          
+          if (deleteUserError) throw deleteUserError;
+        }
+
+        // 3. 保存/更新现有的看板数据
         const boardsToSave = state.boards.map(b => ({
           id: b.id,
           title: b.title,
@@ -290,7 +318,26 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         if (boardsError) throw boardsError;
 
-        // 3. 保存工作区设置
+        // 4. 保存/更新现有的用户数据
+        const usersToSave = state.users.map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatar: u.avatar,
+          color: u.color,
+          role: u.role,
+          password: u.password,
+          lang: u.lang,
+          updated_at: new Date().toISOString()
+        }));
+
+        const { error: usersError } = await supabase
+          .from('users')
+          .upsert(usersToSave);
+
+        if (usersError) throw usersError;
+
+        // 5. 保存工作区设置
         const { error: settingsError } = await supabase
           .from('workspace_settings')
           .upsert({
@@ -306,6 +353,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 保存成功且期间无新变更，更新快照
         if (saveVersionRef.current === version) {
           boardsSnapshotRef.current = currentBoardsJSON;
+          usersSnapshotRef.current = currentUsersJSON;
           settingsSnapshotRef.current = currentSettingsJSON;
         }
 
@@ -320,7 +368,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     // 500ms 防抖避免频繁请求
     const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
-  }, [state.boards, state.workspaceBackground, state.loginBackground, state.logo, state._loaded]);
+  }, [state.boards, state.users, state.workspaceBackground, state.loginBackground, state.logo, state._loaded]);
 
   const broadcastChange = useCallback((action: Action) => {
     dispatch(action);
