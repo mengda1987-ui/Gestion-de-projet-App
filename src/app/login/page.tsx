@@ -196,7 +196,7 @@ export default function LoginPage() {
 
       {/* Version badge */}
       <div className="fixed bottom-3 right-4 text-[11px] text-white/60 font-medium select-none pointer-events-none z-50">
-        v1.5.31
+        v1.5.32
       </div>
 
       {/* Background Picker */}

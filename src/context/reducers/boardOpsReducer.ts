@@ -1,7 +1,22 @@
-import { BoardState, createInitialState } from '../types';
+import { BoardState, createInitialState, defaultCrmFields } from '../types';
 import { Action } from '../actions';
 import { Board, Label } from '@/types';
 import { generateId } from '@/lib/utils';
+
+// CRM 看板默认的阶段列
+function crmDefaultColumns(crmType: string) {
+  const stageTitles =
+    crmType === 'cours' ? ['待报名', '已报名', '进行中', '已完成'] :
+    crmType === 'voyages' ? ['询价', '已预订', '已确认', '已完成'] :
+    ['潜在', '已签约', '进行中', '已完成'];
+  return stageTitles.map((title, order) => ({
+    id: generateId(),
+    title,
+    order,
+    archived: false,
+    cards: [],
+  }));
+}
 
 export function boardOpsReducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
@@ -34,6 +49,10 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
         loginBackground,
         logo,
         boardLabels,
+        crmFields: action.payload.crmFields || defaultCrmFields(),
+        savedFilters: action.payload.savedFilters || [],
+        calendarEvents: action.payload.calendarEvents || [],
+        operationLogs: action.payload.operationLogs || [],
         _loaded: true,
       };
     }
@@ -59,12 +78,13 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
         id: generateId(),
         title: action.payload.title,
         background: action.payload.background,
-        columns: [],
+        columns: action.payload.crmType ? crmDefaultColumns(action.payload.crmType) : [],
         labels: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         mindmap: [],
         order: maxOrder + 1,
+        crmType: action.payload.crmType,
       };
       return {
         ...state,

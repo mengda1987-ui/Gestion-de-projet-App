@@ -1,4 +1,4 @@
-import { Board, Card, Column, Label, ViewMode, FilterState, User, Comment, Attachment, MindMapNode } from '@/types';
+import { Board, Card, Column, Label, ViewMode, FilterState, User, Comment, Attachment, MindMapNode, CrmField, SavedFilter, CalendarEvent, OperationLog, CrmType } from '@/types';
 import { BoardState } from './types';
 
 export type Action =
@@ -8,7 +8,7 @@ export type Action =
   | { type: 'TOGGLE_DARK_MODE' }
   | { type: 'SET_DARK_MODE'; payload: boolean }
   | { type: 'UPDATE_BOARD'; payload: Partial<Board> }
-  | { type: 'CREATE_BOARD'; payload: { title: string; background: string } }
+  | { type: 'CREATE_BOARD'; payload: { title: string; background: string; crmType?: CrmType } }
   | { type: 'SET_CURRENT_BOARD'; payload: string }
   | { type: 'DELETE_BOARD'; payload: string }
   | { type: 'RENAME_BOARD'; payload: { boardId: string; title: string } }
@@ -59,4 +59,14 @@ export type Action =
   | { type: 'UPDATE_WORKSPACE_BG'; payload: string }
   | { type: 'UPDATE_LOGIN_BG'; payload: string }
   | { type: 'UPDATE_LOGO'; payload: string }
-  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string; logo: string } };
+  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string; logo: string; crmFields?: Record<string, CrmField[]>; savedFilters?: SavedFilter[]; calendarEvents?: CalendarEvent[]; operationLogs?: OperationLog[] } }
+  // ===== CRM actions =====
+  | { type: 'ADD_CRM_FIELD'; payload: { crmType: string; field: CrmField } }
+  | { type: 'UPDATE_CRM_FIELD'; payload: { crmType: string; fieldId: string; updates: Partial<CrmField> } }
+  | { type: 'DELETE_CRM_FIELD'; payload: { crmType: string; fieldId: string } }
+  | { type: 'SAVE_FILTER'; payload: { name: string; filter: FilterState } }
+  | { type: 'DELETE_SAVED_FILTER'; payload: { id: string } }
+  | { type: 'ADD_CALENDAR_EVENT'; payload: { event: CalendarEvent } }
+  | { type: 'UPDATE_CALENDAR_EVENT'; payload: { eventId: string; updates: Partial<CalendarEvent> } }
+  | { type: 'DELETE_CALENDAR_EVENT'; payload: { eventId: string } }
+  | { type: 'ADD_OPERATION_LOG'; payload: { log: OperationLog } };

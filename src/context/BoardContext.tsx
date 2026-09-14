@@ -9,15 +9,16 @@ import { columnOpsReducer } from './reducers/columnOpsReducer';
 import { cardOpsReducer } from './reducers/cardOpsReducer';
 import { checklistOpsReducer } from './reducers/checklistOpsReducer';
 import { mindmapOpsReducer } from './reducers/mindmapOpsReducer';
+import { crmReducer } from './reducers/crmReducer';
 import { syncMindMapCards } from './middlewares/mindmapSync';
 import { syncBoardInList } from './middlewares/boardListSync';
 import { supabase } from '@/lib/supabase';
 import { MOCK_USERS, MOCK_BOARDS } from '@/data/mockData';
-import type { User, Board } from '@/types';
+import type { User, Board, CrmField, SavedFilter, CalendarEvent, OperationLog } from '@/types';
 
 const BACKUP_KEY = 'trello_local_backup_v1';
 
-function readLocalBackup(): { boards: Board[]; users?: User[]; workspaceBackground: string; loginBackground: string; logo: string; savedAt: string } | null {
+function readLocalBackup(): { boards: Board[]; users?: User[]; workspaceBackground: string; loginBackground: string; logo: string; savedAt: string; crmFields?: Record<string, CrmField[]>; savedFilters?: SavedFilter[]; calendarEvents?: CalendarEvent[]; operationLogs?: OperationLog[] } | null {
   try {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(BACKUP_KEY);
@@ -60,6 +61,9 @@ function baseReducer(state: BoardState, action: Action): BoardState {
   newState = mindmapOpsReducer(newState, action);
   if (newState !== state) return newState;
   
+  newState = crmReducer(newState, action);
+  if (newState !== state) return newState;
+  
   return state;
 }
 
@@ -87,6 +91,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // 从 Supabase 加载数据，带超时保护，失败则使用 Mock 数据
   useEffect(() => {
     async function loadData() {
+      const backup = readLocalBackup();
       try {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         if (!url) throw new Error('No Supabase URL configured');
@@ -149,6 +154,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
             loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
             logo: wsSettings.logo || '',
+            crmFields: backup?.crmFields,
+            savedFilters: backup?.savedFilters,
+            calendarEvents: backup?.calendarEvents,
+            operationLogs: backup?.operationLogs,
           },
         });
         loadedRef.current = true;
@@ -157,7 +166,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, logo: wsSettings.logo });
       } catch (err) {
         console.warn('Supabase load failed:', err);
-        const backup = readLocalBackup();
         if (backup && backup.boards.length > 0) {
           const loadedUsers = backup.users || [];
           dispatch({
@@ -168,6 +176,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
               workspaceBackground: backup.workspaceBackground || '#f5f5f7',
               loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
               logo: backup.logo || '',
+              crmFields: backup.crmFields,
+              savedFilters: backup.savedFilters,
+              calendarEvents: backup.calendarEvents,
+              operationLogs: backup.operationLogs,
             },
           });
           loadedRef.current = true;
@@ -239,6 +251,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         workspaceBackground: state.workspaceBackground,
         loginBackground: state.loginBackground,
         logo: state.logo,
+        crmFields: state.crmFields,
+        savedFilters: state.savedFilters,
+        calendarEvents: state.calendarEvents,
+        operationLogs: state.operationLogs,
         savedAt: new Date().toISOString(),
       }));
     } catch {}
@@ -327,8 +343,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           color: u.color,
           role: u.role,
           password: u.password,
-          lang: u.lang,
-          updated_at: new Date().toISOString()
+          lang: u.lang
         }));
 
         const { error: usersError } = await supabase
@@ -368,7 +383,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     // 500ms 防抖避免频繁请求
     const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
-  }, [state.boards, state.users, state.workspaceBackground, state.loginBackground, state.logo, state._loaded]);
+  }, [state.boards, state.users, state.workspaceBackground, state.loginBackground, state.logo, state.crmFields, state.savedFilters, state.calendarEvents, state.operationLogs, state._loaded]);
 
   const broadcastChange = useCallback((action: Action) => {
     dispatch(action);
@@ -450,6 +465,10 @@ export function useBoard() {
     loginBackground: state.loginBackground,
     logo: state.logo,
     boardLabels: state.boardLabels,
+    crmFields: state.crmFields,
+    savedFilters: state.savedFilters,
+    calendarEvents: state.calendarEvents,
+    operationLogs: state.operationLogs,
     _loaded: state._loaded,
     dispatch,
     broadcastChange,

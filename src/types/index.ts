@@ -48,6 +48,49 @@ export interface Attachment {
 
 export type CardStatus = 'todo' | 'in_progress' | 'complete';
 
+// ===== CRM 相关类型 =====
+
+export type CrmType = 'cours' | 'voyages' | 'projets';
+
+export type CrmFieldType = 'text' | 'number' | 'date' | 'select';
+
+export interface CrmField {
+  id: string;
+  name: string;
+  type: CrmFieldType;
+  options?: string[]; // type === 'select' 时的选项
+}
+
+export interface SavedFilter {
+  id: string;
+  name: string;
+  filter: FilterState;
+  createdAt: string;
+}
+
+export type CalendarEventType = 'meeting' | 'call' | 'task' | 'reminder';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string; // ISO 日期时间
+  end?: string;
+  type: CalendarEventType;
+  boardId?: string;
+  cardId?: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface OperationLog {
+  id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  detail: string;
+  createdAt: string;
+}
+
 export interface Card {
   id: string;
   title: string;
@@ -68,6 +111,7 @@ export interface Card {
   mmNodeId?: string;
   mmPosition?: { x: number; y: number };
   visibleTo?: string[]; // Admin: user IDs who can see this card
+  customFields?: Record<string, string>; // CRM 自定义字段值（key 为 CrmField.id）
 }
 
 export interface Column {
@@ -107,9 +151,10 @@ export interface Board {
   updatedAt: string;
   visibleTo?: string[];
   order?: number;
+  crmType?: CrmType;
 }
 
-export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary';
+export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary' | 'calendar';
 
 export interface FilterState {
   search: string;

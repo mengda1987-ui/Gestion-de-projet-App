@@ -41,6 +41,7 @@ import {
   Quote,
   List as ListIcon,
   Link,
+  Database,
 } from 'lucide-react';
 import {
   cn,
@@ -63,7 +64,7 @@ interface CardDetailModalProps {
   onDelete: () => void;
 }
 
-type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'duedate';
+type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'duedate' | 'fields';
 
 const LABEL_COLOR_PALETTE = [
   '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
@@ -246,7 +247,7 @@ export default function CardDetailModal({
   onArchive,
   onDelete,
 }: CardDetailModalProps) {
-  const { board, users, currentUser, dispatch, broadcastChange, findCard, onlineUsers } = useBoard();
+  const { board, users, currentUser, dispatch, broadcastChange, findCard, onlineUsers, crmFields } = useBoard();
   const { lang, t } = useLang();
 
   const latestCard = findCard(card.id)?.card || card;
@@ -345,6 +346,11 @@ export default function CardDetailModal({
 
   const updateCard = (updates: Partial<Card>) => {
     broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates } });
+  };
+
+  const updateCustomField = (fieldId: string, value: string) => {
+    const current = latestCard.customFields || {};
+    updateCard({ customFields: { ...current, [fieldId]: value } });
   };
 
   // 设置截止日期：后台自动将开始日期设为截止日期前一天（供甘特图使用），closePanel 选完自动关闭面板
@@ -578,6 +584,7 @@ export default function CardDetailModal({
                 { id: 'labels' as SectionTab, label: t('card.labels'), icon: Tags },
                 { id: 'members' as SectionTab, label: t('card.members'), icon: Users },
                 { id: 'duedate' as SectionTab, label: t('card.dueDate'), icon: Calendar },
+                ...(board.crmType ? [{ id: 'fields' as SectionTab, label: t('crm.fields'), icon: Database }] : []),
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -871,6 +878,52 @@ export default function CardDetailModal({
                     })}
                   </div>
                 </section>
+
+                {/* Custom Fields (CRM) */}
+                {board.crmType && (
+                  <section className={cn(activeTab !== 'fields' && 'hidden md:block')}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Database size={16} className="text-slate-500" />
+                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('crm.fields')}</h3>
+                    </div>
+                    {(crmFields[board.crmType] || []).length === 0 ? (
+                      <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-400">
+                        {t('crm.fields.empty')}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {(crmFields[board.crmType] || []).map((field) => {
+                          const value = latestCard.customFields?.[field.id] || '';
+                          return (
+                            <div key={field.id} className="flex flex-col gap-1">
+                              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{field.name}</label>
+                              {field.type === 'select' ? (
+                                <select
+                                  value={value}
+                                  onChange={(e) => updateCustomField(field.id, e.target.value)}
+                                  className="input text-sm"
+                                >
+                                  <option value="">—</option>
+                                  {(field.options || []).map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                  value={value}
+                                  onChange={(e) => updateCustomField(field.id, e.target.value)}
+                                  className="input text-sm"
+                                  placeholder={field.name}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {/* Description */}
                 <section className={cn(activeTab !== 'description' && 'hidden md:block')}>
