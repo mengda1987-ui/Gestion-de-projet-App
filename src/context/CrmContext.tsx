@@ -552,18 +552,18 @@ export function useCrm() {
   const context = useContext(CrmContext);
   if (!context) throw new Error('useCrm must be used within CrmProvider');
   const { state, dispatch, saveError } = context;
-  const module = state.modules.find(m => m.id === state.activeModuleId) || state.modules[0] || null;
+  const activeModule = state.modules.find(m => m.id === state.activeModuleId) || state.modules[0] || null;
 
   return {
     state,
     dispatch,
     saveError,
     modules: state.modules,
-    module,
+    module: activeModule,
     activeModuleId: state.activeModuleId,
     view: state.view,
-    contacts: module?.contacts || [],
-    stages: [...(module?.stages || [])].sort((a, b) => a.order - b.order),
-    fields: module?.fields || [],
+    contacts: activeModule?.contacts || [],
+    stages: [...(activeModule?.stages || [])].sort((a, b) => a.order - b.order),
+    fields: activeModule?.fields || [],
   };
 }
