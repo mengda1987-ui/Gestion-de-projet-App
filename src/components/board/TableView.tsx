@@ -28,8 +28,8 @@ interface CardWithMeta {
 }
 
 export default function TableView() {
-  const { t, lang } = useLang();
-  const { board, users, onlineUsers, currentUser, filters, dispatch, findCard, broadcastChange } = useBoard();
+  const { t } = useLang();
+  const { board, users, currentUser, filters, findCard } = useBoard();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -183,7 +183,7 @@ export default function TableView() {
                   </td>
                 </tr>
               )}
-              {cardsWithMeta.map(({ card, columnId, columnTitle }) => {
+              {cardsWithMeta.map(({ card, columnTitle }) => {
                 const progress = calculateChecklistProgress(card.checklists.flatMap(cl => cl.items));
                 const rawDueStatus = getDueDateStatus(card.dueDate, card.status);
                 const dueStatus = rawDueStatus ? {
@@ -305,12 +305,6 @@ export default function TableView() {
           card={selectedCard.card}
           columnId={selectedCard.columnId}
           onClose={() => setSelectedCardId(null)}
-          onDuplicate={() => broadcastChange({ type: 'DUPLICATE_CARD', payload: { cardId: selectedCard.card.id } })}
-          onArchive={() => broadcastChange({ type: 'ARCHIVE_CARD', payload: { cardId: selectedCard.card.id } })}
-          onDelete={() => {
-            broadcastChange({ type: 'DELETE_CARD', payload: { cardId: selectedCard.card.id } });
-            setSelectedCardId(null);
-          }}
         />
       )}
     </div>

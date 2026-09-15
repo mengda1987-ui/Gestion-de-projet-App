@@ -1,27 +1,12 @@
-import { BoardState, createInitialState, defaultCrmFields } from '../types';
+import { BoardState, createInitialState } from '../types';
 import { Action } from '../actions';
 import { Board, Label } from '@/types';
 import { generateId } from '@/lib/utils';
 
-// CRM 看板默认的阶段列
-function crmDefaultColumns(crmType: string) {
-  const stageTitles =
-    crmType === 'cours' ? ['待报名', '已报名', '进行中', '已完成'] :
-    crmType === 'voyages' ? ['询价', '已预订', '已确认', '已完成'] :
-    ['潜在', '已签约', '进行中', '已完成'];
-  return stageTitles.map((title, order) => ({
-    id: generateId(),
-    title,
-    order,
-    archived: false,
-    cards: [],
-  }));
-}
-
 export function boardOpsReducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
     case 'LOAD_ALL_DATA': {
-      const { users, boards, workspaceBackground, loginBackground, logo } = action.payload;
+      const { users, boards, workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo } = action.payload;
       // Migrate old cards: completed boolean → status
       const migratedBoards = boards.map((b, idx) => ({
         ...b,
@@ -47,12 +32,12 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
         currentBoardId: '',
         workspaceBackground,
         loginBackground,
+        portalBackground,
+        crmBackground,
+        portalImageOpacity,
+        crmImageOpacity,
         logo,
         boardLabels,
-        crmFields: action.payload.crmFields || defaultCrmFields(),
-        savedFilters: action.payload.savedFilters || [],
-        calendarEvents: action.payload.calendarEvents || [],
-        operationLogs: action.payload.operationLogs || [],
         _loaded: true,
       };
     }
@@ -78,13 +63,12 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
         id: generateId(),
         title: action.payload.title,
         background: action.payload.background,
-        columns: action.payload.crmType ? crmDefaultColumns(action.payload.crmType) : [],
+        columns: [],
         labels: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         mindmap: [],
         order: maxOrder + 1,
-        crmType: action.payload.crmType,
       };
       return {
         ...state,
@@ -92,16 +76,17 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
         board: newBoard,
         currentBoardId: newBoard.id,
         viewMode: 'board',
+        appSection: 'board',
       };
     }
 
     case 'SET_CURRENT_BOARD': {
       if (!action.payload) {
-        return { ...state, currentBoardId: '' };
+        return { ...state, currentBoardId: '', appSection: 'board' };
       }
       const board = state.boards.find(b => b.id === action.payload);
       if (!board) return state;
-      return { ...state, board, currentBoardId: board.id, viewMode: 'board' };
+      return { ...state, board, currentBoardId: board.id, viewMode: 'board', appSection: 'board' };
     }
 
     case 'DELETE_BOARD': {

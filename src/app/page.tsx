@@ -7,9 +7,11 @@ import dynamic from 'next/dynamic';
 const LoginPageDynamic = dynamic(() => import('./login/page'), { ssr: false });
 const MainBoardDynamic = dynamic(() => import('@/components/board/MainBoard'), { ssr: false });
 const BoardHomeDynamic = dynamic(() => import('@/components/workspace/BoardHome'), { ssr: false });
+const PortalDynamic = dynamic(() => import('@/components/portal/Portal'), { ssr: false });
+const CrmAppDynamic = dynamic(() => import('@/components/crm/CrmApp'), { ssr: false });
 
 export default function Home() {
-  const { currentUser, boards, currentBoardId, _loaded } = useBoard();
+  const { currentUser, boards, currentBoardId, appSection, _loaded } = useBoard();
   const { lang } = useLang();
 
   if (!_loaded) {
@@ -33,11 +35,17 @@ export default function Home() {
     return <LoginPageDynamic />;
   }
 
-  // If there's a current board open (after user clicked one), show the board
-  if (currentBoardId && boards.some(b => b.id === currentBoardId)) {
-    return <MainBoardDynamic />;
+  if (appSection === 'crm') {
+    return <CrmAppDynamic />;
   }
 
-  // Show workspace home (user just logged in or went back)
-  return <BoardHomeDynamic />;
+  if (appSection === 'board') {
+    if (currentBoardId && boards.some(b => b.id === currentBoardId)) {
+      return <MainBoardDynamic />;
+    }
+    return <BoardHomeDynamic />;
+  }
+
+  // Portal: choose between Board and CRM
+  return <PortalDynamic />;
 }

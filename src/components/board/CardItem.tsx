@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { Card, User, Label } from '@/types';
 import { useBoard } from '@/context/BoardContext';
@@ -35,7 +35,7 @@ interface CardItemProps {
 
 function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const { t, lang } = useLang();
-  const { board, users, onlineUsers, broadcastChange } = useBoard();
+  const { board, users, broadcastChange } = useBoard();
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [statusMenuPos, setStatusMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
@@ -375,10 +375,10 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
                 {card.attachments.length}
               </span>
             )}
-            {checklistProgress.total > 0 && (
+            {card.checklists.length > 0 && (
               <span className="flex items-center gap-0.5">
                 <CheckSquare size={11} className={checklistProgress.percentage === 100 ? 'text-emerald-500' : ''} />
-                {checklistProgress.percentage}%
+                {card.checklists.length}
               </span>
             )}
             {checklistOverdue > 0 && (

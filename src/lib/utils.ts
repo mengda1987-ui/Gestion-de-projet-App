@@ -2,9 +2,29 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, formatDistanceToNow, isBefore, isToday, differenceInDays, parseISO } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
+import type { CSSProperties } from 'react';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function getBgStyle(bg: string): CSSProperties {
+  if (bg.startsWith('url(') || bg.startsWith('data:')) {
+    return {
+      backgroundImage: bg,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    };
+  }
+  if (bg.startsWith('linear-gradient') || bg.startsWith('radial-gradient')) {
+    return { background: bg };
+  }
+  return { backgroundColor: bg };
+}
+
+export function isImageBackground(bg: string): boolean {
+  return bg.startsWith('url(') || bg.startsWith('data:');
 }
 
 export function formatDate(date: string, lang?: string) {

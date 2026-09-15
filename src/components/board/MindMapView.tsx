@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import { Card, Column } from '@/types';
+import { Card } from '@/types';
 import { cn, generateId, getContrastColor } from '@/lib/utils';
 import {
   Network,
@@ -886,13 +886,6 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
 
   const totalCanvasW = Math.max(bbox.w, 1600);
   const totalCanvasH = Math.max(bbox.h, 900);
-
-  const stats = useMemo(() => {
-    const cols = board.columns.filter(c => !c.archived).length;
-    const cards = board.columns.reduce((s, c) => s + c.cards.filter(x => !x.archived).length, 0);
-    const items = board.columns.reduce((s, c) => s + c.cards.reduce((s2, card) => s2 + card.checklists.reduce((s3, cl) => s3 + cl.items.length, 0), 0), 0);
-    return { cols, cards, items };
-  }, [board.columns]);
 
   return (
     <div

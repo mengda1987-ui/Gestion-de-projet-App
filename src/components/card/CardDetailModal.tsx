@@ -19,16 +19,12 @@ import {
   Paperclip,
   MessageSquare,
   FileText,
-  Archive,
-  Trash2,
-  Copy,
   Plus,
   Check,
   ChevronDown,
   Send,
   Upload,
   Image,
-  MoreHorizontal,
   Clock,
   Trash,
   Pencil,
@@ -41,7 +37,6 @@ import {
   Quote,
   List as ListIcon,
   Link,
-  Database,
 } from 'lucide-react';
 import {
   cn,
@@ -59,12 +54,9 @@ interface CardDetailModalProps {
   card: Card;
   columnId: string;
   onClose: () => void;
-  onDuplicate: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
 }
 
-type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'duedate' | 'fields';
+type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'duedate';
 
 const LABEL_COLOR_PALETTE = [
   '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
@@ -243,11 +235,8 @@ export default function CardDetailModal({
   card,
   columnId,
   onClose,
-  onDuplicate,
-  onArchive,
-  onDelete,
 }: CardDetailModalProps) {
-  const { board, users, currentUser, dispatch, broadcastChange, findCard, onlineUsers, crmFields } = useBoard();
+  const { board, users, currentUser, broadcastChange, findCard } = useBoard();
   const { lang, t } = useLang();
 
   const latestCard = findCard(card.id)?.card || card;
@@ -264,8 +253,6 @@ export default function CardDetailModal({
     latestCard.dueDate ? format(parseISO(latestCard.dueDate), 'yyyy-MM-dd') : ''
   );
   const [commentText, setCommentText] = useState('');
-  const [newChecklistName, setNewChecklistName] = useState('');
-  const [showAddChecklist, setShowAddChecklist] = useState(false);
   const [checklistNewItems, setChecklistNewItems] = useState<Record<string, string>>({});
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemText, setEditingItemText] = useState('');
@@ -348,11 +335,6 @@ export default function CardDetailModal({
     broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: latestCard.id, updates } });
   };
 
-  const updateCustomField = (fieldId: string, value: string) => {
-    const current = latestCard.customFields || {};
-    updateCard({ customFields: { ...current, [fieldId]: value } });
-  };
-
   // 设置截止日期：后台自动将开始日期设为截止日期前一天（供甘特图使用），closePanel 选完自动关闭面板
   const handleDueDateChange = (val: string, closePanel = false) => {
     setDueDateValue(val);
@@ -382,13 +364,10 @@ export default function CardDetailModal({
   };
 
   const handleAddChecklist = () => {
-    if (!newChecklistName.trim()) return;
     broadcastChange({
       type: 'ADD_CHECKLIST',
-      payload: { cardId: latestCard.id, name: newChecklistName.trim() },
+      payload: { cardId: latestCard.id, name: '' },
     });
-    setNewChecklistName('');
-    setShowAddChecklist(false);
   };
 
   const handleAddChecklistItem = (clId: string) => {
@@ -584,7 +563,6 @@ export default function CardDetailModal({
                 { id: 'labels' as SectionTab, label: t('card.labels'), icon: Tags },
                 { id: 'members' as SectionTab, label: t('card.members'), icon: Users },
                 { id: 'duedate' as SectionTab, label: t('card.dueDate'), icon: Calendar },
-                ...(board.crmType ? [{ id: 'fields' as SectionTab, label: t('crm.fields'), icon: Database }] : []),
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -624,37 +602,14 @@ export default function CardDetailModal({
                       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('card.checklist')}</h3>
                     </div>
                     <button
-                      onClick={() => setShowAddChecklist(true)}
+                      onClick={handleAddChecklist}
                       className="btn-ghost text-xs py-1"
                     >
                       {t('card.checklist.addList')}
                     </button>
                   </div>
 
-                  {showAddChecklist && (
-                    <div className="mb-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 animate-slide-up">
-                      <input
-                        autoFocus
-                        value={newChecklistName}
-                        onChange={(e) => setNewChecklistName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddChecklist()}
-                        placeholder={lang === 'zh' ? '清单名称，如：开发步骤' : 'Checklist name, e.g. Dev steps'}
-                        className="input mb-2 text-sm"
-                      />
-                      <div className="flex items-center gap-2">
-                        <button onClick={handleAddChecklist} className="btn-primary text-xs py-1.5">{t('common.add')}</button>
-                        <button
-                          onClick={() => {
-                            setShowAddChecklist(false);
-                            setNewChecklistName('');
-                          }}
-                          className="btn-ghost text-xs py-1.5"
-                        >{t('common.cancel')}</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {latestCard.checklists.length === 0 && !showAddChecklist && (
+                  {latestCard.checklists.length === 0 && (
                     <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-400">
                       {lang === 'zh' ? '暂无清单，点击"新建清单"开始添加待办子任务' : 'No checklists yet. Click "New checklist" to start adding items.'}
                     </div>
@@ -666,15 +621,14 @@ export default function CardDetailModal({
                       return (
                         <div key={cl.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                           <div className="p-3 pb-2">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{cl.name}</h4>
+                            <div className="flex items-center justify-end mb-2">
                               <div className="flex items-center gap-1">
                                 <span className="text-xs text-slate-500 font-medium">
                                   {t('card.checklist.progress', { done: progress.completed, total: progress.total, pct: progress.percentage })}
                                 </span>
                                 <button
                                   onClick={() => {
-                                    if (confirm(lang === 'zh' ? `删除整个清单「${cl.name}」？` : `Delete checklist "${cl.name}"?`)) {
+                                    if (confirm(lang === 'zh' ? '删除该清单及其所有子任务？' : 'Delete this checklist and all its items?')) {
                                       broadcastChange({
                                         type: 'DELETE_CHECKLIST',
                                         payload: { cardId: latestCard.id, checklistId: cl.id },
@@ -712,20 +666,25 @@ export default function CardDetailModal({
                                     )}
                                   >
                                     <div className="pt-0.5">
-                                      <div
-                                        onClick={() => broadcastChange({
-                                          type: 'TOGGLE_CHECKLIST_ITEM',
-                                          payload: { cardId: latestCard.id, checklistId: cl.id, itemId: item.id },
-                                        })}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          broadcastChange({
+                                            type: 'TOGGLE_CHECKLIST_ITEM',
+                                            payload: { cardId: latestCard.id, checklistId: cl.id, itemId: item.id },
+                                          });
+                                        }}
+                                        aria-label={item.completed ? (lang === 'zh' ? '标记为未完成' : 'Mark incomplete') : (lang === 'zh' ? '标记为完成' : 'Mark complete')}
                                         className={cn(
-                                          'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 cursor-pointer transition-all',
+                                          'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007AFF]/40',
                                           item.completed
                                             ? 'bg-emerald-500 border-emerald-500 text-white'
                                             : 'border-slate-300 dark:border-slate-500 hover:border-[#007AFF]'
                                         )}
                                       >
                                         {item.completed && <Check size={10} strokeWidth={4} />}
-                                      </div>
+                                      </button>
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       {editingItemId === item.id ? (
@@ -878,52 +837,6 @@ export default function CardDetailModal({
                     })}
                   </div>
                 </section>
-
-                {/* Custom Fields (CRM) */}
-                {board.crmType && (
-                  <section className={cn(activeTab !== 'fields' && 'hidden md:block')}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Database size={16} className="text-slate-500" />
-                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('crm.fields')}</h3>
-                    </div>
-                    {(crmFields[board.crmType] || []).length === 0 ? (
-                      <div className="p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-400">
-                        {t('crm.fields.empty')}
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {(crmFields[board.crmType] || []).map((field) => {
-                          const value = latestCard.customFields?.[field.id] || '';
-                          return (
-                            <div key={field.id} className="flex flex-col gap-1">
-                              <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{field.name}</label>
-                              {field.type === 'select' ? (
-                                <select
-                                  value={value}
-                                  onChange={(e) => updateCustomField(field.id, e.target.value)}
-                                  className="input text-sm"
-                                >
-                                  <option value="">—</option>
-                                  {(field.options || []).map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <input
-                                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                  value={value}
-                                  onChange={(e) => updateCustomField(field.id, e.target.value)}
-                                  className="input text-sm"
-                                  placeholder={field.name}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
-                )}
 
                 {/* Description */}
                 <section className={cn(activeTab !== 'description' && 'hidden md:block')}>

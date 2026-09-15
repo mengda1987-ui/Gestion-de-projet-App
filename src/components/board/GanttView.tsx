@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import { Avatar, AvatarStack } from '@/components/ui/Avatar';
+import { AvatarStack } from '@/components/ui/Avatar';
 import CardDetailModal from '../card/CardDetailModal';
 import {
   BarChart3,
@@ -42,7 +42,7 @@ interface GanttTask {
 export default function GanttView() {
   const { t, lang } = useLang();
   const dateLocale = lang === 'zh' ? zhCN : enUS;
-  const { board, users, onlineUsers, currentUser, filters, findCard, broadcastChange } = useBoard();
+  const { board, users, currentUser, filters, findCard, broadcastChange } = useBoard();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomLevel>('week');
   const [viewStart, setViewStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -603,12 +603,6 @@ export default function GanttView() {
           card={selectedCard.card}
           columnId={selectedCard.columnId}
           onClose={() => setSelectedCardId(null)}
-          onDuplicate={() => broadcastChange({ type: 'DUPLICATE_CARD', payload: { cardId: selectedCard.card.id } })}
-          onArchive={() => broadcastChange({ type: 'ARCHIVE_CARD', payload: { cardId: selectedCard.card.id } })}
-          onDelete={() => {
-            broadcastChange({ type: 'DELETE_CARD', payload: { cardId: selectedCard.card.id } });
-            setSelectedCardId(null);
-          }}
         />
       )}
     </div>

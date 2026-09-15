@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { BoardProvider } from '@/context/BoardContext';
+import { CrmProvider } from '@/context/CrmContext';
 import { LangProvider } from '@/context/LangContext';
 
 export const metadata: Metadata = {
@@ -56,7 +57,9 @@ export default function RootLayout({
       <body>
         <LangProvider>
           <BoardProvider>
-            {children}
+            <CrmProvider>
+              {children}
+            </CrmProvider>
           </BoardProvider>
         </LangProvider>
       </body>

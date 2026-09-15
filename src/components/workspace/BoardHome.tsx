@@ -23,19 +23,16 @@ import {
   Upload,
   MoreHorizontal,
   Eye,
-  EyeOff,
   ChevronDown,
   ChevronUp,
   AlertTriangle,
   BarChart3,
-  ScrollText,
+  Home,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 import WorkspaceGanttView from './WorkspaceGanttView';
-import CrmSection from '@/components/crm/CrmSection';
-import OperationLogsModal from '@/components/crm/OperationLogsModal';
 import { parseISO, isToday } from 'date-fns';
 
 const BOARD_BG_GRADIENTS = [
@@ -108,7 +105,6 @@ export default function BoardHome() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [showAllGantt, setShowAllGantt] = useState(false);
-  const [showLogs, setShowLogs] = useState(false);
 
   // 优化：useMemo 缓存 visibleBoards 过滤和排序，避免每次渲染重新计算
   const visibleBoards = useMemo(() => 
@@ -348,7 +344,7 @@ export default function BoardHome() {
     return (
       <>
         <WorkspaceGanttView onBack={() => setShowAllGantt(false)} />
-        <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">v1.5.32</div>
+        <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">v2.0.0</div>
       </>
     );
   }
@@ -373,6 +369,13 @@ export default function BoardHome() {
             </button>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{lang === 'zh' ? '工作区' : 'Workspace'}</h1>
             <button
+              onClick={() => dispatch({ type: 'SET_APP_SECTION', payload: 'portal' })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-600 hover:text-[#007AFF] hover:bg-white hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
+            >
+              <Home size={14} />
+              <span>{lang === 'zh' ? '首页' : 'Home'}</span>
+            </button>
+            <button
               onClick={() => setShowAllGantt(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-600 hover:text-[#007AFF] hover:bg-white hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
             >
@@ -388,9 +391,6 @@ export default function BoardHome() {
             <span className="hidden sm:inline">{lang === 'zh' ? '退出' : 'Logout'}</span>
           </button>
         </div>
-
-        {/* CRM 入口 */}
-        <CrmSection />
 
         {/* Board Grid */}
         {visibleBoards.length === 0 ? (
@@ -726,8 +726,6 @@ export default function BoardHome() {
 
       {showMemberManage && <MemberManageModal onClose={() => setShowMemberManage(false)} />}
 
-      {showLogs && <OperationLogsModal onClose={() => setShowLogs(false)} />}
-
       {/* Admin: Board Visibility Management Panel */}
       {showVisibilityPanel && expandedBoardId && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
@@ -881,13 +879,6 @@ export default function BoardHome() {
                   <span>{lang === 'zh' ? '成员管理' : 'Members'}</span>
                 </button>
                 <button
-                  onClick={() => { setShowLogs(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
-                >
-                  <ScrollText size={15} className="text-slate-400" />
-                  <span>{lang === 'zh' ? '操作日志' : 'Operation Logs'}</span>
-                </button>
-                <button
                   onClick={() => { setShowBgPicker(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
                 >
@@ -916,7 +907,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v1.5.32
+        v2.0.0
       </div>
     </div>
   );

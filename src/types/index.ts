@@ -50,8 +50,6 @@ export type CardStatus = 'todo' | 'in_progress' | 'complete';
 
 // ===== CRM 相关类型 =====
 
-export type CrmType = 'cours' | 'voyages' | 'projets';
-
 export type CrmFieldType = 'text' | 'number' | 'date' | 'select';
 
 export interface CrmField {
@@ -61,35 +59,41 @@ export interface CrmField {
   options?: string[]; // type === 'select' 时的选项
 }
 
-export interface SavedFilter {
+export interface CrmStage {
   id: string;
   name: string;
-  filter: FilterState;
-  createdAt: string;
+  order: number;
 }
 
-export type CalendarEventType = 'meeting' | 'call' | 'task' | 'reminder';
-
-export interface CalendarEvent {
+export interface CrmContact {
   id: string;
-  title: string;
-  start: string; // ISO 日期时间
-  end?: string;
-  type: CalendarEventType;
-  boardId?: string;
-  cardId?: string;
-  note?: string;
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  tags: string[];
+  ownerId: string;
+  stageId: string;
+  notes: string;
+  customFields: Record<string, string>;
   createdAt: string;
+  updatedAt: string;
 }
 
-export interface OperationLog {
-  id: string;
-  userId: string;
-  userName: string;
-  action: string;
-  detail: string;
+export interface CrmModule {
+  id: string; // 板块唯一 ID
+  name: string; // 中文名
+  nameEn: string; // 英文名
+  emoji: string;
+  color: string; // 图标渐变色
+  stages: CrmStage[];
+  fields: CrmField[];
+  contacts: CrmContact[];
   createdAt: string;
+  updatedAt: string;
 }
+
+export type CrmModules = CrmModule[];
 
 export interface Card {
   id: string;
@@ -111,7 +115,6 @@ export interface Card {
   mmNodeId?: string;
   mmPosition?: { x: number; y: number };
   visibleTo?: string[]; // Admin: user IDs who can see this card
-  customFields?: Record<string, string>; // CRM 自定义字段值（key 为 CrmField.id）
 }
 
 export interface Column {
@@ -151,10 +154,9 @@ export interface Board {
   updatedAt: string;
   visibleTo?: string[];
   order?: number;
-  crmType?: CrmType;
 }
 
-export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary' | 'calendar';
+export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary';
 
 export interface FilterState {
   search: string;

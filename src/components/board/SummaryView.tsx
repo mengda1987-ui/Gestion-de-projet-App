@@ -17,7 +17,6 @@ import {
   UserCheck,
   BarChart3,
 } from 'lucide-react';
-import type { Card, User } from '@/types';
 
 export default function SummaryView() {
   const { board, users, filters } = useBoard();

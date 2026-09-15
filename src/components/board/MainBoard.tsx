@@ -29,10 +29,6 @@ import {
   Archive,
   Image,
   Undo2,
-  CalendarDays,
-  Database,
-  Save,
-  Bookmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ViewMode, Label, User } from '@/types';
@@ -41,9 +37,7 @@ import TableView from './TableView';
 import GanttView from './GanttView';
 import MindMapView from './MindMapView';
 import SummaryView from './SummaryView';
-import CalendarView from './CalendarView';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
-import CrmFieldsManager from '@/components/crm/CrmFieldsManager';
 
 export default function MainBoard() {
   const {
@@ -55,7 +49,6 @@ export default function MainBoard() {
     dispatch,
     darkMode,
     filters,
-    savedFilters,
   } = useBoard();
   const { lang, toggleLang, t } = useLang();
 
@@ -66,9 +59,6 @@ export default function MainBoard() {
   const [showAppMenu, setShowAppMenu] = useState(false);
   const [showBoardBgPicker, setShowBoardBgPicker] = useState(false);
   const [showArchivePanel, setShowArchivePanel] = useState(false);
-  const [showCrmFields, setShowCrmFields] = useState(false);
-  const [showSaveFilter, setShowSaveFilter] = useState(false);
-  const [filterName, setFilterName] = useState('');
 
   const viewOptions = useMemo<{ id: ViewMode; label: string; icon: typeof LayoutGrid }[]>(() => [
     { id: 'board', label: t('nav.kanban'), icon: LayoutDashboard },
@@ -76,7 +66,6 @@ export default function MainBoard() {
     { id: 'gantt', label: t('nav.gantt'), icon: BarChart3 },
     { id: 'mindmap', label: t('nav.mindmap'), icon: Network },
     { id: 'summary', label: t('nav.summary'), icon: ClipboardList },
-    { id: 'calendar', label: t('calendar.title'), icon: CalendarDays },
   ], [t]);
 
   const handleLogout = () => {
@@ -400,17 +389,6 @@ export default function MainBoard() {
                 <span className="ml-auto text-xs font-semibold text-slate-500 dark:text-white/60">{lang === 'zh' ? 'EN' : '中'}</span>
               </button>
 
-              {/* CRM 字段管理 */}
-              {board.crmType && (
-                <button
-                  onClick={() => { setShowCrmFields(true); setShowAppMenu(false); }}
-                  className="w-full flex items-center gap-3 px-5 py-3 text-sm text-slate-700 dark:text-white/80 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
-                >
-                  <Database size={18} className="text-slate-500 dark:text-white/70" />
-                  <span>{t('crm.fields.manage')}</span>
-                </button>
-              )}
-
               {/* Change Background (admin only) */}
               {currentUser?.role === 'admin' && (
                 <button
@@ -548,83 +526,6 @@ export default function MainBoard() {
               </label>
             </div>
           </div>
-
-          {/* Saved Filters */}
-          <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-white/90">
-                <Bookmark size={12} />
-                {t('filters.saved')}
-              </div>
-              <button
-                onClick={() => setShowSaveFilter(!showSaveFilter)}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[#007AFF] text-white hover:bg-[#007AFF]/90"
-              >
-                <Save size={12} />
-                {t('filters.save')}
-              </button>
-            </div>
-
-            {showSaveFilter && (
-              <div className="flex items-center gap-2 mb-2 animate-fade-in">
-                <input
-                  autoFocus
-                  value={filterName}
-                  onChange={(e) => setFilterName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && filterName.trim()) {
-                      dispatch({ type: 'SAVE_FILTER', payload: { name: filterName.trim(), filter: filters } });
-                      setFilterName('');
-                      setShowSaveFilter(false);
-                    }
-                    if (e.key === 'Escape') { setShowSaveFilter(false); setFilterName(''); }
-                  }}
-                  placeholder={t('filters.savePlaceholder')}
-                  className="input flex-1 text-sm"
-                />
-                <button
-                  onClick={() => {
-                    if (filterName.trim()) {
-                      dispatch({ type: 'SAVE_FILTER', payload: { name: filterName.trim(), filter: filters } });
-                      setFilterName('');
-                      setShowSaveFilter(false);
-                    }
-                  }}
-                  disabled={!filterName.trim()}
-                  className="btn-primary text-xs py-1.5"
-                >
-                  {t('common.save')}
-                </button>
-              </div>
-            )}
-
-            {savedFilters.length === 0 ? (
-              <div className="text-xs text-slate-400">{t('filters.none')}</div>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {savedFilters.map((sf) => (
-                  <div
-                    key={sf.id}
-                    className="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-slate-100 dark:bg-white/15 text-xs font-medium text-slate-700 dark:text-white/85"
-                  >
-                    <button
-                      onClick={() => dispatch({ type: 'SET_FILTERS', payload: { ...sf.filter } })}
-                      className="hover:text-[#007AFF]"
-                    >
-                      {sf.name}
-                    </button>
-                    <button
-                      onClick={() => dispatch({ type: 'DELETE_SAVED_FILTER', payload: { id: sf.id } })}
-                      className="p-0.5 rounded text-slate-400 hover:text-red-500"
-                      title={t('common.delete')}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -635,15 +536,10 @@ export default function MainBoard() {
         {viewMode === 'gantt' && <GanttView />}
         {viewMode === 'mindmap' && <MindMapView />}
         {viewMode === 'summary' && <SummaryView />}
-        {viewMode === 'calendar' && <CalendarView />}
       </main>
 
       {showProfile && (
         <UserProfileModal onClose={() => setShowProfile(false)} />
-      )}
-
-      {showCrmFields && board.crmType && (
-        <CrmFieldsManager crmType={board.crmType} onClose={() => setShowCrmFields(false)} />
       )}
 
       {/* Board Background Picker */}
@@ -777,7 +673,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v1.5.32</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.0.0</span>
     </div>
   );
 }

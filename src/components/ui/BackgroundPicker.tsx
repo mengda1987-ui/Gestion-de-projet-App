@@ -36,21 +36,27 @@ const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 interface BackgroundPickerProps {
   current: string;
   defaultBg: string;
-  onSelect: (bg: string) => void;
+  imageOpacity?: number;
+  onSelect: (bg: string, opacity?: number) => void;
   onClose: () => void;
 }
 
-export default function BackgroundPicker({ current, defaultBg, onSelect, onClose }: BackgroundPickerProps) {
+export default function BackgroundPicker({ current, defaultBg, imageOpacity, onSelect, onClose }: BackgroundPickerProps) {
   const { lang } = useLang();
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [opacity, setOpacity] = useState<number>(imageOpacity ?? 1);
+
+  const isImageCurrent = current.startsWith('url(') || current.startsWith('data:');
+  const supportsOpacity = imageOpacity !== undefined;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
+    setOpacity(1);
 
     if (file.size > MAX_FILE_SIZE) {
       setError(lang === 'zh' ? '文件大小不能超过 2MB' : 'File size must be under 2MB');
@@ -96,7 +102,14 @@ export default function BackgroundPicker({ current, defaultBg, onSelect, onClose
 
   const handleApplyUpload = () => {
     if (uploadPreview) {
-      onSelect(`url(${uploadPreview})`);
+      onSelect(`url(${uploadPreview})`, supportsOpacity ? opacity : undefined);
+      onClose();
+    }
+  };
+
+  const handleApplyOpacity = () => {
+    if (isImageCurrent) {
+      onSelect(current, opacity);
       onClose();
     }
   };
@@ -132,10 +145,12 @@ export default function BackgroundPicker({ current, defaultBg, onSelect, onClose
                 <X size={12} />
               </button>
             </div>
-            <button onClick={handleApplyUpload} className="btn-primary w-full text-xs py-2">
-              <Check size={14} />
-              {lang === 'zh' ? '应用此图片' : 'Apply this image'}
-            </button>
+            {!supportsOpacity && (
+              <button onClick={handleApplyUpload} className="btn-primary w-full text-xs py-2">
+                <Check size={14} />
+                {lang === 'zh' ? '应用此图片' : 'Apply this image'}
+              </button>
+            )}
           </div>
         ) : (
           <button
@@ -160,6 +175,35 @@ export default function BackgroundPicker({ current, defaultBg, onSelect, onClose
           </p>
         )}
       </div>
+
+      {/* Image Opacity */}
+      {supportsOpacity && (uploadPreview || isImageCurrent) && (
+        <div className="space-y-2">
+          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
+            {lang === 'zh' ? '图片透明度' : 'Image opacity'}
+            <span className="text-slate-400 font-normal ml-1">{Math.round(opacity * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            min={10}
+            max={100}
+            value={Math.round(opacity * 100)}
+            onChange={(e) => setOpacity(Number(e.target.value) / 100)}
+            className="w-full accent-[#007AFF]"
+          />
+          {uploadPreview ? (
+            <button onClick={handleApplyUpload} className="btn-primary w-full text-xs py-2">
+              <Check size={14} />
+              {lang === 'zh' ? '应用此图片' : 'Apply this image'}
+            </button>
+          ) : (
+            <button onClick={handleApplyOpacity} className="btn-primary w-full text-xs py-2">
+              <Check size={14} />
+              {lang === 'zh' ? '应用透明度' : 'Apply opacity'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Preset Gradients */}
       <div>

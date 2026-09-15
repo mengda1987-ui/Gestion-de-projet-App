@@ -84,7 +84,6 @@ export async function POST(request: NextRequest) {
     const availableModels = allModels
       .filter((m: string) => m.includes('gemini') && m.includes('generateContent'))
       .map((m: string) => m.split(' [methods:')[0]);
-    console.log('Available models:', availableModels);
 
     const modelsToTry = availableModels.length > 0 ? availableModels : MODELS;
 

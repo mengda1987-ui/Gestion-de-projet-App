@@ -30,7 +30,7 @@ interface BoardColumnProps {
 
 export default function BoardColumn({ column, isDragging, dragHandleProps, onCardClick }: BoardColumnProps) {
   const { t, lang } = useLang();
-  const { dispatch, broadcastChange, users, currentUser } = useBoard();
+  const { broadcastChange, users, currentUser } = useBoard();
   const [addingCard, setAddingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);

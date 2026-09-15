@@ -9,16 +9,15 @@ import { columnOpsReducer } from './reducers/columnOpsReducer';
 import { cardOpsReducer } from './reducers/cardOpsReducer';
 import { checklistOpsReducer } from './reducers/checklistOpsReducer';
 import { mindmapOpsReducer } from './reducers/mindmapOpsReducer';
-import { crmReducer } from './reducers/crmReducer';
 import { syncMindMapCards } from './middlewares/mindmapSync';
 import { syncBoardInList } from './middlewares/boardListSync';
 import { supabase } from '@/lib/supabase';
 import { MOCK_USERS, MOCK_BOARDS } from '@/data/mockData';
-import type { User, Board, CrmField, SavedFilter, CalendarEvent, OperationLog } from '@/types';
+import type { User, Board } from '@/types';
 
 const BACKUP_KEY = 'trello_local_backup_v1';
 
-function readLocalBackup(): { boards: Board[]; users?: User[]; workspaceBackground: string; loginBackground: string; logo: string; savedAt: string; crmFields?: Record<string, CrmField[]>; savedFilters?: SavedFilter[]; calendarEvents?: CalendarEvent[]; operationLogs?: OperationLog[] } | null {
+function readLocalBackup(): { boards: Board[]; users?: User[]; workspaceBackground: string; loginBackground: string; portalBackground?: string; crmBackground?: string; portalImageOpacity?: number; crmImageOpacity?: number; logo: string; savedAt: string } | null {
   try {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(BACKUP_KEY);
@@ -59,9 +58,6 @@ function baseReducer(state: BoardState, action: Action): BoardState {
   if (newState !== state) return newState;
   
   newState = mindmapOpsReducer(newState, action);
-  if (newState !== state) return newState;
-  
-  newState = crmReducer(newState, action);
   if (newState !== state) return newState;
   
   return state;
@@ -153,17 +149,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             boards: boards, // 允许空看板列表
             workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
             loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            portalBackground: wsSettings.portal_background || '#f5f5f7',
+            crmBackground: wsSettings.crm_background || '#f5f5f7',
+            portalImageOpacity: typeof wsSettings.portal_image_opacity === 'number' ? wsSettings.portal_image_opacity : 1,
+            crmImageOpacity: typeof wsSettings.crm_image_opacity === 'number' ? wsSettings.crm_image_opacity : 1,
             logo: wsSettings.logo || '',
-            crmFields: backup?.crmFields,
-            savedFilters: backup?.savedFilters,
-            calendarEvents: backup?.calendarEvents,
-            operationLogs: backup?.operationLogs,
           },
         });
         loadedRef.current = true;
         boardsSnapshotRef.current = JSON.stringify(boards);
         usersSnapshotRef.current = JSON.stringify(users);
-        settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, logo: wsSettings.logo });
+        settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, portal: wsSettings.portal_background, crm: wsSettings.crm_background, portalOpacity: wsSettings.portal_image_opacity ?? 1, crmOpacity: wsSettings.crm_image_opacity ?? 1, logo: wsSettings.logo });
       } catch (err) {
         console.warn('Supabase load failed:', err);
         if (backup && backup.boards.length > 0) {
@@ -175,17 +171,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
               boards: backup.boards,
               workspaceBackground: backup.workspaceBackground || '#f5f5f7',
               loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+              portalBackground: backup.portalBackground || '#f5f5f7',
+              crmBackground: backup.crmBackground || '#f5f5f7',
+              portalImageOpacity: typeof backup.portalImageOpacity === 'number' ? backup.portalImageOpacity : 1,
+              crmImageOpacity: typeof backup.crmImageOpacity === 'number' ? backup.crmImageOpacity : 1,
               logo: backup.logo || '',
-              crmFields: backup.crmFields,
-              savedFilters: backup.savedFilters,
-              calendarEvents: backup.calendarEvents,
-              operationLogs: backup.operationLogs,
             },
           });
           loadedRef.current = true;
           boardsSnapshotRef.current = JSON.stringify(backup.boards);
           usersSnapshotRef.current = JSON.stringify(loadedUsers);
-          settingsSnapshotRef.current = JSON.stringify({ bg: backup.workspaceBackground || '#f5f5f7', login: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: backup.logo || '' });
+          settingsSnapshotRef.current = JSON.stringify({ bg: backup.workspaceBackground || '#f5f5f7', login: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', portal: backup.portalBackground || '#f5f5f7', crm: backup.crmBackground || '#f5f5f7', portalOpacity: backup.portalImageOpacity ?? 1, crmOpacity: backup.crmImageOpacity ?? 1, logo: backup.logo || '' });
           setSaveError('服务器连接失败，已加载本地备份数据');
         } else {
           // 只有在完全没有数据（数据库失败且无本地备份）时才使用 Mock 数据作为兜底
@@ -196,13 +192,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
               boards: MOCK_BOARDS,
               workspaceBackground: '#f5f5f7',
               loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+              portalBackground: '#f5f5f7',
+              crmBackground: '#f5f5f7',
+              portalImageOpacity: 1,
+              crmImageOpacity: 1,
               logo: '',
             },
           });
           loadedRef.current = true;
           boardsSnapshotRef.current = JSON.stringify(MOCK_BOARDS);
           usersSnapshotRef.current = JSON.stringify(MOCK_USERS);
-          settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', logo: '' });
+          settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', portal: '#f5f5f7', crm: '#f5f5f7', portalOpacity: 1, crmOpacity: 1, logo: '' });
         }
       }
     }
@@ -225,11 +225,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           dispatch({ ...(payload as any), _skipSync: true });
         }
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[Realtime] 实时协作通道已连接');
-        }
-      });
+      .subscribe();
 
     channelRef.current = channel;
 
@@ -250,11 +246,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         users: state.users,
         workspaceBackground: state.workspaceBackground,
         loginBackground: state.loginBackground,
+        portalBackground: state.portalBackground,
+        crmBackground: state.crmBackground,
+        portalImageOpacity: state.portalImageOpacity,
+        crmImageOpacity: state.crmImageOpacity,
         logo: state.logo,
-        crmFields: state.crmFields,
-        savedFilters: state.savedFilters,
-        calendarEvents: state.calendarEvents,
-        operationLogs: state.operationLogs,
         savedAt: new Date().toISOString(),
       }));
     } catch {}
@@ -264,6 +260,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const currentSettingsJSON = JSON.stringify({
       bg: state.workspaceBackground,
       login: state.loginBackground,
+      portal: state.portalBackground,
+      crm: state.crmBackground,
+      portalOpacity: state.portalImageOpacity,
+      crmOpacity: state.crmImageOpacity,
       logo: state.logo,
     });
 
@@ -359,6 +359,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             id: '00000000-0000-0000-0000-000000000001',
             workspace_background: state.workspaceBackground,
             login_background: state.loginBackground,
+            portal_background: state.portalBackground,
+            crm_background: state.crmBackground,
+            portal_image_opacity: state.portalImageOpacity,
+            crm_image_opacity: state.crmImageOpacity,
             logo: state.logo,
             updated_at: new Date().toISOString()
           });
@@ -373,7 +377,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         }
 
         setSaveError(null);
-        console.log('[Persistence] 数据已成功保存至 Supabase');
       } catch (err) {
         console.error('[Persistence] 数据保存失败:', err);
         setSaveError('数据保存失败，已暂存在本地备份。请检查网络后重试。');
@@ -383,7 +386,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     // 500ms 防抖避免频繁请求
     const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
-  }, [state.boards, state.users, state.workspaceBackground, state.loginBackground, state.logo, state.crmFields, state.savedFilters, state.calendarEvents, state.operationLogs, state._loaded]);
+  }, [state.boards, state.users, state.workspaceBackground, state.loginBackground, state.portalBackground, state.crmBackground, state.portalImageOpacity, state.crmImageOpacity, state.logo, state._loaded]);
 
   const broadcastChange = useCallback((action: Action) => {
     dispatch(action);
@@ -463,12 +466,13 @@ export function useBoard() {
     onlineUsers: state.onlineUsers,
     workspaceBackground: state.workspaceBackground,
     loginBackground: state.loginBackground,
+    portalBackground: state.portalBackground,
+    crmBackground: state.crmBackground,
+    portalImageOpacity: state.portalImageOpacity,
+    crmImageOpacity: state.crmImageOpacity,
     logo: state.logo,
     boardLabels: state.boardLabels,
-    crmFields: state.crmFields,
-    savedFilters: state.savedFilters,
-    calendarEvents: state.calendarEvents,
-    operationLogs: state.operationLogs,
+    appSection: state.appSection,
     _loaded: state._loaded,
     dispatch,
     broadcastChange,

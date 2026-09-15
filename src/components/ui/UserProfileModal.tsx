@@ -57,7 +57,7 @@ const AVATAR_PRESETS = [
 ];
 
 export default function UserProfileModal({ onClose }: UserProfileModalProps) {
-  const { currentUser, dispatch, broadcastChange } = useBoard();
+  const { currentUser, broadcastChange } = useBoard();
   const { lang, t } = useLang();
   const [form, setForm] = useState({ name: '', email: '', avatar: '', color: '' });
   const [saving, setSaving] = useState(false);

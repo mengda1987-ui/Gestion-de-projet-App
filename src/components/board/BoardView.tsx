@@ -10,7 +10,7 @@ import {
 } from '@hello-pangea/dnd';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import { Column, Card as CardType } from '@/types';
+import { Column } from '@/types';
 import BoardColumn from './BoardColumn';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,7 +18,7 @@ import CardDetailModal from '../card/CardDetailModal';
 
 export default function BoardView() {
   const { t, lang } = useLang();
-  const { board, currentUser, dispatch, filters, broadcastChange, findCard } = useBoard();
+  const { board, currentUser, filters, broadcastChange, findCard } = useBoard();
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -274,16 +274,6 @@ export default function BoardView() {
           card={selectedCard.card}
           columnId={selectedCard.columnId}
           onClose={() => setSelectedCardId(null)}
-          onDuplicate={() => {
-            broadcastChange({ type: 'DUPLICATE_CARD', payload: { cardId: selectedCard.card.id } });
-          }}
-          onArchive={() => {
-            broadcastChange({ type: 'ARCHIVE_CARD', payload: { cardId: selectedCard.card.id } });
-          }}
-          onDelete={() => {
-            broadcastChange({ type: 'DELETE_CARD', payload: { cardId: selectedCard.card.id } });
-            setSelectedCardId(null);
-          }}
         />
       )}
     </>

@@ -6,12 +6,11 @@ import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { LogIn, Languages, User2, Lock, Palette, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { User } from '@/types';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function LoginPage() {
   const { users, dispatch, loginBackground } = useBoard();
-  const { lang, toggleLang, t, setLang } = useLang();
+  const { lang, toggleLang, setLang } = useLang();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [isLogging, setIsLogging] = useState(false);
@@ -53,7 +52,6 @@ export default function LoginPage() {
       }
 
       dispatch({ type: 'SET_CURRENT_USER', payload: data.user });
-      dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
       setLang(data.user.lang || 'zh');
     } catch (error) {
       console.error('Login error:', error);
@@ -196,7 +194,7 @@ export default function LoginPage() {
 
       {/* Version badge */}
       <div className="fixed bottom-3 right-4 text-[11px] text-white/60 font-medium select-none pointer-events-none z-50">
-        v1.5.32
+        v2.0.0
       </div>
 
       {/* Background Picker */}
