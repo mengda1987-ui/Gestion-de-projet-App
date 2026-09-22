@@ -42,6 +42,39 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
       };
     }
 
+    case 'APPLY_EXTERNAL_STATE': {
+      const { users, boards, workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo } = action.payload;
+      const migratedBoards = boards.map((b, idx) => ({
+        ...b,
+        order: b.order ?? idx,
+        columns: b.columns.map(col => ({
+          ...col,
+          cards: col.cards.map(c => ({
+            ...c,
+            status: (c as any).status || ((c as any).completed ? 'complete' : 'todo'),
+          })),
+        })),
+      }));
+      const labelMap = new Map<string, Label>();
+      migratedBoards.forEach(b => b.labels?.forEach(l => labelMap.set(l.id, l)));
+      const boardLabels = Array.from(labelMap.values());
+      const currentBoard = migratedBoards.find(b => b.id === state.currentBoardId) || migratedBoards[0] || state.board;
+      return {
+        ...state,
+        users,
+        boards: migratedBoards,
+        board: currentBoard,
+        boardLabels,
+        workspaceBackground,
+        loginBackground,
+        portalBackground,
+        crmBackground,
+        portalImageOpacity,
+        crmImageOpacity,
+        logo,
+      };
+    }
+
     case 'REORDER_BOARDS': {
       const { fromIndex, toIndex } = action.payload;
       const boards = [...state.boards];

@@ -491,6 +491,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(crmReducer, null, createInitialCrmState);
   const [saveError, setSaveError] = useState<string | null>(null);
   const snapshotRef = useRef<string>('');
+  const lastLocalContentRef = useRef<string>('');
+  const bcRef = useRef<BroadcastChannel | null>(null);
 
   // 首次加载：优先读取本地备份，否则使用默认模块（含示例数据）
   useEffect(() => {
@@ -498,17 +500,46 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     if (backup && backup.length > 0) {
       dispatch({ type: 'CRM_LOAD', payload: backup });
       snapshotRef.current = JSON.stringify(backup);
+      lastLocalContentRef.current = JSON.stringify(backup);
     } else {
       const def = createDefaultCrmModules();
       dispatch({ type: 'CRM_LOAD', payload: def });
       snapshotRef.current = JSON.stringify(def);
+      lastLocalContentRef.current = JSON.stringify(def);
     }
   }, []);
 
-  // 持久化：数据变化时写入 localStorage，留底防丢失
+  // 跨标签页实时同步
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (typeof BroadcastChannel === 'undefined') return;
+
+    const bc = new BroadcastChannel('trello-crm-sync-channel');
+    bcRef.current = bc;
+    bc.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (!msg || msg.kind !== 'full-snapshot' || !Array.isArray(msg.modules)) return;
+      const content = JSON.stringify(msg.modules);
+      if (content === lastLocalContentRef.current) return;
+      lastLocalContentRef.current = content;
+      try {
+        window.localStorage.setItem(BACKUP_KEY, content);
+      } catch {}
+      dispatch({ type: 'CRM_LOAD', payload: msg.modules });
+    };
+
+    return () => {
+      bc.close();
+      bcRef.current = null;
+    };
+  }, []);
+
+  // 持久化：数据变化时写入 localStorage，留底防丢失 + 广播给其他标签页
   useEffect(() => {
     if (!state._loaded) return;
     const current = JSON.stringify(state.modules);
+    if (current === lastLocalContentRef.current) return;
+    lastLocalContentRef.current = current;
     try {
       window.localStorage.setItem(BACKUP_KEY, current);
       snapshotRef.current = current;
@@ -517,6 +548,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       console.error('[CRM] 保存失败:', err);
       setSaveError('CRM 数据保存失败，请检查浏览器存储空间');
     }
+    try {
+      bcRef.current?.postMessage({ kind: 'full-snapshot', modules: state.modules });
+    } catch {}
   }, [state.modules, state._loaded]);
 
   useEffect(() => {

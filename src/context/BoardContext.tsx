@@ -16,8 +16,25 @@ import { MOCK_USERS, MOCK_BOARDS } from '@/data/mockData';
 import type { User, Board } from '@/types';
 
 const BACKUP_KEY = 'trello_local_backup_v1';
+const SYNC_CHANNEL = 'trello-sync-channel';
 
-function readLocalBackup(): { boards: Board[]; users?: User[]; workspaceBackground: string; loginBackground: string; portalBackground?: string; crmBackground?: string; portalImageOpacity?: number; crmImageOpacity?: number; logo: string; savedAt: string } | null {
+interface BackupData {
+  boards: Board[];
+  users: User[];
+  workspaceBackground: string;
+  loginBackground: string;
+  portalBackground: string;
+  crmBackground: string;
+  portalImageOpacity: number;
+  crmImageOpacity: number;
+  logo: string;
+}
+
+interface LocalBackup extends BackupData {
+  savedAt: string;
+}
+
+function readLocalBackup(): LocalBackup | null {
   try {
     if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(BACKUP_KEY);
@@ -74,17 +91,155 @@ function boardReducer(state: BoardState, action: Action): BoardState {
   return newState;
 }
 
+function buildBackup(state: BoardState): BackupData {
+  return {
+    boards: state.boards,
+    users: state.users,
+    workspaceBackground: state.workspaceBackground,
+    loginBackground: state.loginBackground,
+    portalBackground: state.portalBackground,
+    crmBackground: state.crmBackground,
+    portalImageOpacity: state.portalImageOpacity,
+    crmImageOpacity: state.crmImageOpacity,
+    logo: state.logo,
+  };
+}
+
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const loadedRef = useRef(false);
   const boardsSnapshotRef = useRef<string>('');
   const usersSnapshotRef = useRef<string>('');
-  const settingsSnapshotRef = useRef<string>('');
-  const saveVersionRef = useRef(0);
+  const lastLocalContentRef = useRef<string>('');
+  const latestSnapshotRef = useRef<BackupData | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const bcRef = useRef<BroadcastChannel | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // 从 Supabase 加载数据，带超时保护，失败则使用 Mock 数据
+  // ===== 保存到 Supabase（串行队列，避免并发覆盖）=====
+  const doSave = useCallback(async (data: BackupData) => {
+    try {
+      // 1. 删除已从本地移除的看板
+      const prevBoards = boardsSnapshotRef.current ? JSON.parse(boardsSnapshotRef.current) : [];
+      const currentBoardIds = new Set(data.boards.map(b => b.id));
+      const deletedBoardIds = prevBoards
+        .filter((b: any) => !currentBoardIds.has(b.id))
+        .map((b: any) => b.id);
+
+      if (deletedBoardIds.length > 0) {
+        const { error } = await supabase.from('boards').delete().in('id', deletedBoardIds);
+        if (error) throw error;
+      }
+
+      // 2. 删除已从本地移除的用户
+      const prevUsers = usersSnapshotRef.current ? JSON.parse(usersSnapshotRef.current) : [];
+      const currentUserIds = new Set(data.users.map(u => u.id));
+      const deletedUserIds = prevUsers
+        .filter((u: any) => !currentUserIds.has(u.id))
+        .map((u: any) => u.id);
+
+      if (deletedUserIds.length > 0) {
+        const { error } = await supabase.from('users').delete().in('id', deletedUserIds);
+        if (error) throw error;
+      }
+
+      // 3. 保存/更新看板
+      const boardsToSave = data.boards.map(b => ({
+        id: b.id,
+        title: b.title,
+        background: b.background,
+        labels: b.labels,
+        data: { columns: b.columns, mindmap: b.mindmap },
+        emoji: b.emoji || null,
+        iconBg: b.iconBg || null,
+        iconImage: b.iconImage || null,
+        visibleTo: b.visibleTo || [],
+        order: b.order ?? 0,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error: boardsError } = await supabase.from('boards').upsert(boardsToSave);
+      if (boardsError) throw boardsError;
+
+      // 4. 保存/更新用户
+      const usersToSave = data.users.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar,
+        color: u.color,
+        role: u.role,
+        password: u.password,
+        lang: u.lang,
+      }));
+
+      const { error: usersError } = await supabase.from('users').upsert(usersToSave);
+      if (usersError) throw usersError;
+
+      // 5. 保存工作区设置
+      const { error: settingsError } = await supabase.from('workspace_settings').upsert({
+        id: '00000000-0000-0000-0000-000000000001',
+        workspace_background: data.workspaceBackground,
+        login_background: data.loginBackground,
+        portal_background: data.portalBackground,
+        crm_background: data.crmBackground,
+        portal_image_opacity: data.portalImageOpacity,
+        crm_image_opacity: data.crmImageOpacity,
+        logo: data.logo,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (settingsError) throw settingsError;
+
+      // 保存成功后更新快照
+      boardsSnapshotRef.current = JSON.stringify(data.boards);
+      usersSnapshotRef.current = JSON.stringify(data.users);
+      setSaveError(null);
+    } catch (err) {
+      console.error('[Persistence] 数据保存失败:', err);
+      setSaveError('数据保存失败，已暂存在本地备份。请检查网络后重试。');
+    }
+  }, []);
+
+  const enqueueSave = useCallback((data: BackupData) => {
+    saveQueueRef.current = saveQueueRef.current.then(() => doSave(data)).catch(() => {});
+  }, [doSave]);
+
+  // ===== 跨标签页广播 =====
+  const broadcastSnapshot = useCallback((data: BackupData, savedAt: string) => {
+    try {
+      bcRef.current?.postMessage({ kind: 'full-snapshot', savedAt, data });
+    } catch {}
+  }, []);
+
+  // ===== 初始化 BroadcastChannel（跨标签页实时同步）=====
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (typeof BroadcastChannel === 'undefined') return;
+
+    const bc = new BroadcastChannel(SYNC_CHANNEL);
+    bcRef.current = bc;
+    bc.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (!msg || msg.kind !== 'full-snapshot' || !msg.data) return;
+      const content = JSON.stringify(msg.data);
+      // 内容与本地一致则忽略，避免循环
+      if (content === lastLocalContentRef.current) return;
+      // 先落本地，再应用到 state（防止回环）
+      lastLocalContentRef.current = content;
+      try {
+        window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...msg.data, savedAt: msg.savedAt }));
+      } catch {}
+      dispatch({ type: 'APPLY_EXTERNAL_STATE', payload: msg.data });
+    };
+
+    return () => {
+      bc.close();
+      bcRef.current = null;
+    };
+  }, []);
+
+  // ===== 加载数据：本地备份与 Supabase 比较，取较新者，防止旧数据覆盖 =====
   useEffect(() => {
     async function loadData() {
       const backup = readLocalBackup();
@@ -92,7 +247,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         if (!url) throw new Error('No Supabase URL configured');
 
-        // 设置 8 秒超时，避免在慢网络下卡太久
         const timeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
         );
@@ -121,7 +275,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           avatar: u.avatar || '',
           color: u.color || '#3B82F6',
           role: u.role || 'member',
-          password: u.password || '', // 加载密码以确保保存时不会丢失
+          password: u.password || '',
           lang: u.lang || 'zh',
         }));
 
@@ -142,11 +296,38 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         }));
 
         const wsSettings = settingsData || {};
-        dispatch({
-          type: 'LOAD_ALL_DATA',
-          payload: {
-            users: users, // 允许空用户列表
-            boards: boards, // 允许空看板列表
+
+        // 计算服务器最新更新时间
+        let serverLatest: string | null = null;
+        const serverTimes: string[] = [];
+        (boardsData || []).forEach((b: any) => { if (b.updated_at) serverTimes.push(b.updated_at); });
+        if (wsSettings?.updated_at) serverTimes.push(wsSettings.updated_at);
+        if (serverTimes.length > 0) {
+          serverLatest = serverTimes.reduce((a, b) => (a > b ? a : b));
+        }
+
+        // 本地备份比服务器新，则采用本地（防止旧数据覆盖刚写入的内容）
+        const backupNewer = !!backup?.savedAt && (!serverLatest || backup.savedAt > serverLatest);
+
+        let dataToUse: BackupData;
+        let savedAt: string;
+        if (backupNewer && backup) {
+          dataToUse = {
+            boards: backup.boards,
+            users: backup.users || [],
+            workspaceBackground: backup.workspaceBackground || '#f5f5f7',
+            loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            portalBackground: backup.portalBackground || '#f5f5f7',
+            crmBackground: backup.crmBackground || '#f5f5f7',
+            portalImageOpacity: typeof backup.portalImageOpacity === 'number' ? backup.portalImageOpacity : 1,
+            crmImageOpacity: typeof backup.crmImageOpacity === 'number' ? backup.crmImageOpacity : 1,
+            logo: backup.logo || '',
+          };
+          savedAt = backup.savedAt;
+        } else {
+          dataToUse = {
+            boards,
+            users,
             workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
             loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
             portalBackground: wsSettings.portal_background || '#f5f5f7',
@@ -154,251 +335,126 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             portalImageOpacity: typeof wsSettings.portal_image_opacity === 'number' ? wsSettings.portal_image_opacity : 1,
             crmImageOpacity: typeof wsSettings.crm_image_opacity === 'number' ? wsSettings.crm_image_opacity : 1,
             logo: wsSettings.logo || '',
-          },
-        });
+          };
+          savedAt = new Date().toISOString();
+        }
+
+        dispatch({ type: 'LOAD_ALL_DATA', payload: dataToUse });
         loadedRef.current = true;
+
+        // 快照记录“服务器当前值”，用于删除判断
         boardsSnapshotRef.current = JSON.stringify(boards);
         usersSnapshotRef.current = JSON.stringify(users);
-        settingsSnapshotRef.current = JSON.stringify({ bg: wsSettings.workspace_background, login: wsSettings.login_background, portal: wsSettings.portal_background, crm: wsSettings.crm_background, portalOpacity: wsSettings.portal_image_opacity ?? 1, crmOpacity: wsSettings.crm_image_opacity ?? 1, logo: wsSettings.logo });
+
+        // 避免首次持久化 effect 重复写回 / 广播
+        lastLocalContentRef.current = JSON.stringify(dataToUse);
+        latestSnapshotRef.current = dataToUse;
+
+        if (backupNewer && backup) {
+          // 本地更新：写回本地并补保存到服务器
+          try {
+            window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt }));
+          } catch {}
+          enqueueSave(dataToUse);
+        }
       } catch (err) {
         console.warn('Supabase load failed:', err);
+        let dataToUse: BackupData;
         if (backup && backup.boards.length > 0) {
-          const loadedUsers = backup.users || [];
-          dispatch({
-            type: 'LOAD_ALL_DATA',
-            payload: {
-              users: loadedUsers,
-              boards: backup.boards,
-              workspaceBackground: backup.workspaceBackground || '#f5f5f7',
-              loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-              portalBackground: backup.portalBackground || '#f5f5f7',
-              crmBackground: backup.crmBackground || '#f5f5f7',
-              portalImageOpacity: typeof backup.portalImageOpacity === 'number' ? backup.portalImageOpacity : 1,
-              crmImageOpacity: typeof backup.crmImageOpacity === 'number' ? backup.crmImageOpacity : 1,
-              logo: backup.logo || '',
-            },
-          });
-          loadedRef.current = true;
-          boardsSnapshotRef.current = JSON.stringify(backup.boards);
-          usersSnapshotRef.current = JSON.stringify(loadedUsers);
-          settingsSnapshotRef.current = JSON.stringify({ bg: backup.workspaceBackground || '#f5f5f7', login: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', portal: backup.portalBackground || '#f5f5f7', crm: backup.crmBackground || '#f5f5f7', portalOpacity: backup.portalImageOpacity ?? 1, crmOpacity: backup.crmImageOpacity ?? 1, logo: backup.logo || '' });
+          dataToUse = {
+            boards: backup.boards,
+            users: backup.users || [],
+            workspaceBackground: backup.workspaceBackground || '#f5f5f7',
+            loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            portalBackground: backup.portalBackground || '#f5f5f7',
+            crmBackground: backup.crmBackground || '#f5f5f7',
+            portalImageOpacity: typeof backup.portalImageOpacity === 'number' ? backup.portalImageOpacity : 1,
+            crmImageOpacity: typeof backup.crmImageOpacity === 'number' ? backup.crmImageOpacity : 1,
+            logo: backup.logo || '',
+          };
           setSaveError('服务器连接失败，已加载本地备份数据');
         } else {
-          // 只有在完全没有数据（数据库失败且无本地备份）时才使用 Mock 数据作为兜底
-          dispatch({
-            type: 'LOAD_ALL_DATA',
-            payload: {
-              users: MOCK_USERS,
-              boards: MOCK_BOARDS,
-              workspaceBackground: '#f5f5f7',
-              loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-              portalBackground: '#f5f5f7',
-              crmBackground: '#f5f5f7',
-              portalImageOpacity: 1,
-              crmImageOpacity: 1,
-              logo: '',
-            },
-          });
-          loadedRef.current = true;
-          boardsSnapshotRef.current = JSON.stringify(MOCK_BOARDS);
-          usersSnapshotRef.current = JSON.stringify(MOCK_USERS);
-          settingsSnapshotRef.current = JSON.stringify({ bg: '#f5f5f7', login: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)', portal: '#f5f5f7', crm: '#f5f5f7', portalOpacity: 1, crmOpacity: 1, logo: '' });
+          dataToUse = {
+            boards: MOCK_BOARDS,
+            users: MOCK_USERS,
+            workspaceBackground: '#f5f5f7',
+            loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            portalBackground: '#f5f5f7',
+            crmBackground: '#f5f5f7',
+            portalImageOpacity: 1,
+            crmImageOpacity: 1,
+            logo: '',
+          };
         }
+
+        dispatch({ type: 'LOAD_ALL_DATA', payload: dataToUse });
+        loadedRef.current = true;
+        boardsSnapshotRef.current = JSON.stringify(dataToUse.boards);
+        usersSnapshotRef.current = JSON.stringify(dataToUse.users);
+        lastLocalContentRef.current = JSON.stringify(dataToUse);
+        latestSnapshotRef.current = dataToUse;
       }
     }
     loadData();
-  }, [dispatch]);
+  }, [dispatch, enqueueSave]);
 
-  // Supabase Realtime 多人实时协作
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const channel = supabase.channel('trello-realtime-sync', {
-      config: {
-        broadcast: { self: false },
-      },
-    });
-
-    channel
-      .on('broadcast', { event: 'action' }, ({ payload }: { payload: Action }) => {
-        if (payload && typeof payload === 'object' && 'type' in payload) {
-          dispatch({ ...(payload as any), _skipSync: true });
-        }
-      })
-      .subscribe();
-
-    channelRef.current = channel;
-
-    return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-    };
-  }, []);
-
-  // 数据持久化：快照对比，仅当看板/设置数据变化时才保存（初始加载不触发）
+  // ===== 持久化：内容变化时立即落本地 + 广播 + 串行保存 =====
   useEffect(() => {
     if (!state._loaded) return;
 
-    // 本地留底：每次数据变化立即写入 localStorage，防止保存失败导致内容丢失
+    const data = buildBackup(state);
+    const content = JSON.stringify(data);
+    if (content === lastLocalContentRef.current) return;
+
+    lastLocalContentRef.current = content;
+    latestSnapshotRef.current = data;
+    const savedAt = new Date().toISOString();
+
+    // 1. 本地兜底
     try {
-      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({
-        boards: state.boards,
-        users: state.users,
-        workspaceBackground: state.workspaceBackground,
-        loginBackground: state.loginBackground,
-        portalBackground: state.portalBackground,
-        crmBackground: state.crmBackground,
-        portalImageOpacity: state.portalImageOpacity,
-        crmImageOpacity: state.crmImageOpacity,
-        logo: state.logo,
-        savedAt: new Date().toISOString(),
-      }));
+      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt }));
     } catch {}
 
-    const currentBoardsJSON = JSON.stringify(state.boards);
-    const currentUsersJSON = JSON.stringify(state.users);
-    const currentSettingsJSON = JSON.stringify({
-      bg: state.workspaceBackground,
-      login: state.loginBackground,
-      portal: state.portalBackground,
-      crm: state.crmBackground,
-      portalOpacity: state.portalImageOpacity,
-      crmOpacity: state.crmImageOpacity,
-      logo: state.logo,
-    });
+    // 2. 广播给其他标签页
+    broadcastSnapshot(data, savedAt);
 
-    // 与上次保存时的快照一致 → 无需保存
-    if (
-      currentBoardsJSON === boardsSnapshotRef.current && 
-      currentUsersJSON === usersSnapshotRef.current &&
-      currentSettingsJSON === settingsSnapshotRef.current
-    ) return;
+    // 3. 串行保存到 Supabase
+    enqueueSave(data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    state.boards,
+    state.users,
+    state.workspaceBackground,
+    state.loginBackground,
+    state.portalBackground,
+    state.crmBackground,
+    state.portalImageOpacity,
+    state.crmImageOpacity,
+    state.logo,
+    state._loaded,
+    broadcastSnapshot,
+    enqueueSave,
+  ]);
 
-    const version = ++saveVersionRef.current;
-
-    const saveData = async () => {
-      try {
-        // 1. 找出被删除的看板并从数据库中删除
-        const prevBoards = boardsSnapshotRef.current ? JSON.parse(boardsSnapshotRef.current) : [];
-        const currentBoardIds = new Set(state.boards.map(b => b.id));
-        const deletedBoardIds = prevBoards
-          .filter((b: any) => !currentBoardIds.has(b.id))
-          .map((b: any) => b.id);
-
-        if (deletedBoardIds.length > 0) {
-          const { error: deleteError } = await supabase
-            .from('boards')
-            .delete()
-            .in('id', deletedBoardIds);
-          
-          if (deleteError) throw deleteError;
-        }
-
-        // 2. 找出被删除的用户并从数据库中删除
-        const prevUsers = usersSnapshotRef.current ? JSON.parse(usersSnapshotRef.current) : [];
-        const currentUserIds = new Set(state.users.map(u => u.id));
-        const deletedUserIds = prevUsers
-          .filter((u: any) => !currentUserIds.has(u.id))
-          .map((u: any) => u.id);
-
-        if (deletedUserIds.length > 0) {
-          const { error: deleteUserError } = await supabase
-            .from('users')
-            .delete()
-            .in('id', deletedUserIds);
-          
-          if (deleteUserError) throw deleteUserError;
-        }
-
-        // 3. 保存/更新现有的看板数据
-        const boardsToSave = state.boards.map(b => ({
-          id: b.id,
-          title: b.title,
-          background: b.background,
-          labels: b.labels,
-          data: {
-            columns: b.columns,
-            mindmap: b.mindmap
-          },
-          emoji: b.emoji || null,
-          iconBg: b.iconBg || null,
-          iconImage: b.iconImage || null,
-          visibleTo: b.visibleTo || [],
-          order: b.order ?? 0,
-          updated_at: new Date().toISOString()
-        }));
-
-        const { error: boardsError } = await supabase
-          .from('boards')
-          .upsert(boardsToSave);
-
-        if (boardsError) throw boardsError;
-
-        // 4. 保存/更新现有的用户数据
-        const usersToSave = state.users.map(u => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar,
-          color: u.color,
-          role: u.role,
-          password: u.password,
-          lang: u.lang
-        }));
-
-        const { error: usersError } = await supabase
-          .from('users')
-          .upsert(usersToSave);
-
-        if (usersError) throw usersError;
-
-        // 5. 保存工作区设置
-        const { error: settingsError } = await supabase
-          .from('workspace_settings')
-          .upsert({
-            id: '00000000-0000-0000-0000-000000000001',
-            workspace_background: state.workspaceBackground,
-            login_background: state.loginBackground,
-            portal_background: state.portalBackground,
-            crm_background: state.crmBackground,
-            portal_image_opacity: state.portalImageOpacity,
-            crm_image_opacity: state.crmImageOpacity,
-            logo: state.logo,
-            updated_at: new Date().toISOString()
-          });
-
-        if (settingsError) throw settingsError;
-
-        // 保存成功且期间无新变更，更新快照
-        if (saveVersionRef.current === version) {
-          boardsSnapshotRef.current = currentBoardsJSON;
-          usersSnapshotRef.current = currentUsersJSON;
-          settingsSnapshotRef.current = currentSettingsJSON;
-        }
-
-        setSaveError(null);
-      } catch (err) {
-        console.error('[Persistence] 数据保存失败:', err);
-        setSaveError('数据保存失败，已暂存在本地备份。请检查网络后重试。');
-      }
+  // ===== 关页面/切后台时强制 flush，防止数据滞留内存 =====
+  useEffect(() => {
+    const flush = () => {
+      const data = latestSnapshotRef.current;
+      if (data) enqueueSave(data);
     };
-
-    // 500ms 防抖避免频繁请求
-    const timer = setTimeout(saveData, 500);
-    return () => clearTimeout(timer);
-  }, [state.boards, state.users, state.workspaceBackground, state.loginBackground, state.portalBackground, state.crmBackground, state.portalImageOpacity, state.crmImageOpacity, state.logo, state._loaded]);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush();
+    });
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', flush);
+    };
+  }, [enqueueSave]);
 
   const broadcastChange = useCallback((action: Action) => {
     dispatch(action);
-    if (channelRef.current) {
-      channelRef.current
-        .send({ type: 'broadcast', event: 'action', payload: action })
-        .then(() => {})
-        .catch((err) => {
-          console.warn('[Realtime] 广播失败:', err);
-        });
-    }
-  }, []);
+  }, [dispatch]);
 
   // 优化：useMemo 包裹 context value，避免不必要的重渲染
   const contextValue = React.useMemo(() => ({

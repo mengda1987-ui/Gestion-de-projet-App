@@ -64,4 +64,5 @@ export type Action =
   | { type: 'UPDATE_PORTAL_IMAGE_OPACITY'; payload: number }
   | { type: 'UPDATE_CRM_IMAGE_OPACITY'; payload: number }
   | { type: 'UPDATE_LOGO'; payload: string }
-  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string; portalBackground: string; crmBackground: string; portalImageOpacity: number; crmImageOpacity: number; logo: string } };
+  | { type: 'LOAD_ALL_DATA'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string; portalBackground: string; crmBackground: string; portalImageOpacity: number; crmImageOpacity: number; logo: string } }
+  | { type: 'APPLY_EXTERNAL_STATE'; payload: { users: User[]; boards: Board[]; workspaceBackground: string; loginBackground: string; portalBackground: string; crmBackground: string; portalImageOpacity: number; crmImageOpacity: number; logo: string } };
