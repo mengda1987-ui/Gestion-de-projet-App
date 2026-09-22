@@ -32,6 +32,7 @@ interface BackupData {
 
 interface LocalBackup extends BackupData {
   savedAt: string;
+  pending?: boolean; // 是否有尚未同步到服务器的本地改动
 }
 
 function readLocalBackup(): LocalBackup | null {
@@ -194,6 +195,14 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       // 保存成功后更新快照
       boardsSnapshotRef.current = JSON.stringify(data.boards);
       usersSnapshotRef.current = JSON.stringify(data.users);
+
+      // 本次数据已成功同步到服务器，清除 pending 标记（仅当没有更新的改动排队时）
+      if (JSON.stringify(data) === lastLocalContentRef.current) {
+        try {
+          window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt: new Date().toISOString(), pending: false }));
+        } catch {}
+      }
+
       setSaveError(null);
     } catch (err) {
       console.error('[Persistence] 数据保存失败:', err);
@@ -297,21 +306,16 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         const wsSettings = settingsData || {};
 
-        // 计算服务器最新更新时间
-        let serverLatest: string | null = null;
-        const serverTimes: string[] = [];
-        (boardsData || []).forEach((b: any) => { if (b.updated_at) serverTimes.push(b.updated_at); });
-        if (wsSettings?.updated_at) serverTimes.push(wsSettings.updated_at);
-        if (serverTimes.length > 0) {
-          serverLatest = serverTimes.reduce((a, b) => (a > b ? a : b));
-        }
-
-        // 本地备份比服务器新，则采用本地（防止旧数据覆盖刚写入的内容）
-        const backupNewer = !!backup?.savedAt && (!serverLatest || backup.savedAt > serverLatest);
+        // 服务器是否已有数据（有看板或用户，说明不是首次运行/空库）
+        const serverHasData = (boards?.length > 0) || (users?.length > 0);
+        // 本地备份是否存在尚未同步到服务器的改动
+        const hasPendingLocal = !!backup && backup.pending === true;
+        // 采用本地备份的条件：有未同步改动；或服务器为空但本地有历史数据（恢复）
+        const useLocal = hasPendingLocal || (!serverHasData && !!backup && (backup.boards?.length > 0));
 
         let dataToUse: BackupData;
         let savedAt: string;
-        if (backupNewer && backup) {
+        if (useLocal && backup) {
           dataToUse = {
             boards: backup.boards,
             users: backup.users || [],
@@ -350,11 +354,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         lastLocalContentRef.current = JSON.stringify(dataToUse);
         latestSnapshotRef.current = dataToUse;
 
-        if (backupNewer && backup) {
-          // 本地更新：写回本地并补保存到服务器
-          try {
-            window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt }));
-          } catch {}
+        // 始终将当前加载结果落本地，作为离线兜底镜像（pending 状态保持正确）
+        try {
+          window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt, pending: hasPendingLocal }));
+        } catch {}
+
+        if (useLocal && backup) {
+          // 本地有未同步改动，或服务器为空需要恢复：补保存到服务器
           enqueueSave(dataToUse);
         }
       } catch (err) {
@@ -410,9 +416,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     latestSnapshotRef.current = data;
     const savedAt = new Date().toISOString();
 
-    // 1. 本地兜底
+    // 1. 本地兜底（标记为未同步，保存成功后再清除）
     try {
-      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt }));
+      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt, pending: true }));
     } catch {}
 
     // 2. 广播给其他标签页
