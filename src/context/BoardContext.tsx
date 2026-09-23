@@ -106,14 +106,67 @@ function buildBackup(state: BoardState): BackupData {
   };
 }
 
+// 将数据库行映射为 BackupData（与 loadData 中的映射保持一致）
+function rowsToBackupData(usersData: any[], boardsData: any[], settingsData: any): BackupData {
+  const users: User[] = (usersData || []).map((u: any) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email || '',
+    avatar: u.avatar || '',
+    color: u.color || '#3B82F6',
+    role: u.role || 'member',
+    password: u.password || '',
+    lang: u.lang || 'zh',
+  }));
+
+  const boards: Board[] = (boardsData || []).map((b: any) => ({
+    id: b.id,
+    title: b.title,
+    background: b.background || '#f5f5f7',
+    labels: b.labels || [],
+    columns: b.data?.columns || [],
+    mindmap: b.data?.mindmap || [],
+    emoji: b.emoji || undefined,
+    iconBg: b.iconBg || undefined,
+    iconImage: b.iconImage || undefined,
+    visibleTo: b.visibleTo || [],
+    order: b.order ?? 0,
+    createdAt: b.created_at || new Date().toISOString(),
+    updatedAt: b.updated_at || new Date().toISOString(),
+  }));
+
+  const wsSettings = settingsData || {};
+
+  return {
+    boards,
+    users,
+    workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
+    loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+    portalBackground: wsSettings.portal_background || '#f5f5f7',
+    crmBackground: wsSettings.crm_background || '#f5f5f7',
+    portalImageOpacity: typeof wsSettings.portal_image_opacity === 'number' ? wsSettings.portal_image_opacity : 1,
+    crmImageOpacity: typeof wsSettings.crm_image_opacity === 'number' ? wsSettings.crm_image_opacity : 1,
+    logo: wsSettings.logo || '',
+  };
+}
+
+// 用于实时同步比对的“稳定键”：剔除所有时间戳字段，避免保存时产生的微小时间差造成误判/回环
+function stableKey(data: BackupData): string {
+  return JSON.stringify(data, (key, value) =>
+    (key === 'createdAt' || key === 'updatedAt') ? undefined : value
+  );
+}
+
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
   const loadedRef = useRef(false);
   const boardsSnapshotRef = useRef<string>('');
   const usersSnapshotRef = useRef<string>('');
   const lastLocalContentRef = useRef<string>('');
+  const stableContentRef = useRef<string>('');
   const latestSnapshotRef = useRef<BackupData | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -198,6 +251,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
       // 本次数据已成功同步到服务器，清除 pending 标记（仅当没有更新的改动排队时）
       if (JSON.stringify(data) === lastLocalContentRef.current) {
+        pendingSaveRef.current = false;
         try {
           window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt: new Date().toISOString(), pending: false }));
         } catch {}
@@ -221,6 +275,53 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  // ===== 从服务器重新拉取，并在内容变化时应用到 state（跨用户实时同步）=====
+  const refetchFromServer = useCallback(async () => {
+    if (!loadedRef.current) return;
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!url) return;
+
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
+      );
+
+      const [{ data: usersData }, { data: boardsData }] = await Promise.race([
+        Promise.all([
+          supabase.from('users').select('*'),
+          supabase.from('boards').select('*'),
+        ]),
+        timeout.then(() => { throw new Error('timeout'); }),
+      ]) as any;
+
+      let settingsData: any = null;
+      try {
+        const { data } = await Promise.race([
+          supabase.from('workspace_settings').select('*').limit(1).maybeSingle(),
+          timeout.then(() => { throw new Error('timeout'); }),
+        ]) as any;
+        settingsData = data;
+      } catch {}
+
+      const data = rowsToBackupData(usersData, boardsData, settingsData);
+      const stable = stableKey(data);
+      if (stable === stableContentRef.current) return;
+      // 本地还有尚未同步到服务器的改动时，暂不应用远端数据，避免覆盖本地刚改的内容
+      if (pendingSaveRef.current) return;
+
+      stableContentRef.current = stable;
+      lastLocalContentRef.current = JSON.stringify(data);
+      boardsSnapshotRef.current = JSON.stringify(data.boards);
+      usersSnapshotRef.current = JSON.stringify(data.users);
+      try {
+        window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt: new Date().toISOString(), pending: false }));
+      } catch {}
+      dispatch({ type: 'APPLY_EXTERNAL_STATE', payload: data });
+    } catch (err) {
+      console.warn('[Realtime] 重新拉取失败:', err);
+    }
+  }, [dispatch]);
+
   // ===== 初始化 BroadcastChannel（跨标签页实时同步）=====
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -236,6 +337,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       if (content === lastLocalContentRef.current) return;
       // 先落本地，再应用到 state（防止回环）
       lastLocalContentRef.current = content;
+      stableContentRef.current = stableKey(msg.data);
       try {
         window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...msg.data, savedAt: msg.savedAt }));
       } catch {}
@@ -247,6 +349,31 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       bcRef.current = null;
     };
   }, []);
+
+  // ===== 订阅 Supabase Realtime：他人保存后实时同步到本端 =====
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!url) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefetch = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => refetchFromServer(), 800);
+    };
+
+    const channel = supabase
+      .channel('board-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, scheduleRefetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, scheduleRefetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workspace_settings' }, scheduleRefetch)
+      .subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [refetchFromServer]);
 
   // ===== 加载数据：本地备份与 Supabase 比较，取较新者，防止旧数据覆盖 =====
   useEffect(() => {
@@ -352,6 +479,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         // 避免首次持久化 effect 重复写回 / 广播
         lastLocalContentRef.current = JSON.stringify(dataToUse);
+        stableContentRef.current = stableKey(dataToUse);
         latestSnapshotRef.current = dataToUse;
 
         // 始终将当前加载结果落本地，作为离线兜底镜像（pending 状态保持正确）
@@ -361,6 +489,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         if (useLocal && backup) {
           // 本地有未同步改动，或服务器为空需要恢复：补保存到服务器
+          pendingSaveRef.current = true;
           enqueueSave(dataToUse);
         }
       } catch (err) {
@@ -398,6 +527,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         boardsSnapshotRef.current = JSON.stringify(dataToUse.boards);
         usersSnapshotRef.current = JSON.stringify(dataToUse.users);
         lastLocalContentRef.current = JSON.stringify(dataToUse);
+        stableContentRef.current = stableKey(dataToUse);
         latestSnapshotRef.current = dataToUse;
       }
     }
@@ -413,10 +543,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     if (content === lastLocalContentRef.current) return;
 
     lastLocalContentRef.current = content;
+    stableContentRef.current = stableKey(data);
     latestSnapshotRef.current = data;
     const savedAt = new Date().toISOString();
 
     // 1. 本地兜底（标记为未同步，保存成功后再清除）
+    pendingSaveRef.current = true;
     try {
       window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt, pending: true }));
     } catch {}
