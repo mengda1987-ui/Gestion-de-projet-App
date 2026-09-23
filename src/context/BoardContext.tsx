@@ -157,6 +157,14 @@ function stableKey(data: BackupData): string {
   );
 }
 
+// 单个看板的内容键（剔除时间戳），用于判断某个看板是否真的发生了变化
+function boardContentKey(board: any): string {
+  return JSON.stringify(board, (key, value) =>
+    (key === 'createdAt' || key === 'updatedAt') ? undefined : value
+  );
+}
+
+
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
   const loadedRef = useRef(false);
@@ -168,69 +176,88 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingSaveRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
+  // 显式删除追踪：只有用户主动删除的看板/用户才会从服务器删除，
+  // 避免“快照对比自动删除”误删他人数据。
+  const deletedBoardIdsRef = useRef<Set<string>>(new Set());
+  const deletedUserIdsRef = useRef<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // ===== 保存到 Supabase（串行队列，避免并发覆盖）=====
+
+  // ===== 保存到 Supabase（增量保存：只写真正变化的看板，避免整表覆盖）=====
+  // 关键修复：不再整表 upsert，也不再靠快照对比自动删除。
+  // 只保存 updatedAt 比服务器快照更新的看板，从根本上避免“用旧数据覆盖别人新数据”。
   const doSave = useCallback(async (data: BackupData) => {
     try {
-      // 1. 删除已从本地移除的看板
-      const prevBoards = boardsSnapshotRef.current ? JSON.parse(boardsSnapshotRef.current) : [];
-      const currentBoardIds = new Set(data.boards.map(b => b.id));
-      const deletedBoardIds = prevBoards
-        .filter((b: any) => !currentBoardIds.has(b.id))
-        .map((b: any) => b.id);
-
-      if (deletedBoardIds.length > 0) {
-        const { error } = await supabase.from('boards').delete().in('id', deletedBoardIds);
+      // 0. 显式删除：只删除用户主动删除的看板/用户（不再靠快照对比自动删）
+      if (deletedBoardIdsRef.current.size > 0) {
+        const ids = Array.from(deletedBoardIdsRef.current);
+        const { error } = await supabase.from('boards').delete().in('id', ids);
         if (error) throw error;
+        deletedBoardIdsRef.current.clear();
+      }
+      if (deletedUserIdsRef.current.size > 0) {
+        const ids = Array.from(deletedUserIdsRef.current);
+        const { error } = await supabase.from('users').delete().in('id', ids);
+        if (error) throw error;
+        deletedUserIdsRef.current.clear();
       }
 
-      // 2. 删除已从本地移除的用户
-      const prevUsers = usersSnapshotRef.current ? JSON.parse(usersSnapshotRef.current) : [];
-      const currentUserIds = new Set(data.users.map(u => u.id));
-      const deletedUserIds = prevUsers
-        .filter((u: any) => !currentUserIds.has(u.id))
-        .map((u: any) => u.id);
+      // 1. 计算需要保存的看板：与上次成功保存的快照逐板比较
+      const prevBoards: any[] = boardsSnapshotRef.current ? JSON.parse(boardsSnapshotRef.current) : [];
 
-      if (deletedUserIds.length > 0) {
-        const { error } = await supabase.from('users').delete().in('id', deletedUserIds);
-        if (error) throw error;
+      const prevBoardMap = new Map<string, any>(prevBoards.map((b: any) => [b.id, b]));
+
+      const boardsToSave = data.boards.filter(b => {
+        const prev = prevBoardMap.get(b.id);
+        if (!prev) return true; // 新看板
+        // 内容（剔除时间戳）有变化才保存
+        return boardContentKey(b) !== boardContentKey(prev);
+      });
+
+
+      if (boardsToSave.length > 0) {
+        const rows = boardsToSave.map(b => ({
+          id: b.id,
+          title: b.title,
+          background: b.background,
+          labels: b.labels,
+          data: { columns: b.columns, mindmap: b.mindmap },
+          emoji: b.emoji || null,
+          iconBg: b.iconBg || null,
+          iconImage: b.iconImage || null,
+          visibleTo: b.visibleTo || [],
+          order: b.order ?? 0,
+          updated_at: new Date().toISOString(),
+        }));
+        const { error: boardsError } = await supabase.from('boards').upsert(rows);
+        if (boardsError) throw boardsError;
       }
 
-      // 3. 保存/更新看板
-      const boardsToSave = data.boards.map(b => ({
-        id: b.id,
-        title: b.title,
-        background: b.background,
-        labels: b.labels,
-        data: { columns: b.columns, mindmap: b.mindmap },
-        emoji: b.emoji || null,
-        iconBg: b.iconBg || null,
-        iconImage: b.iconImage || null,
-        visibleTo: b.visibleTo || [],
-        order: b.order ?? 0,
-        updated_at: new Date().toISOString(),
-      }));
+      // 2. 用户：同样只保存有变化的
+      const prevUsers: any[] = usersSnapshotRef.current ? JSON.parse(usersSnapshotRef.current) : [];
+      const prevUserMap = new Map<string, any>(prevUsers.map((u: any) => [u.id, u]));
+      const usersToSave = data.users.filter(u => {
+        const prev = prevUserMap.get(u.id);
+        if (!prev) return true;
+        return JSON.stringify(prev) !== JSON.stringify(u);
+      });
 
-      const { error: boardsError } = await supabase.from('boards').upsert(boardsToSave);
-      if (boardsError) throw boardsError;
+      if (usersToSave.length > 0) {
+        const rows = usersToSave.map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatar: u.avatar,
+          color: u.color,
+          role: u.role,
+          password: u.password,
+          lang: u.lang,
+        }));
+        const { error: usersError } = await supabase.from('users').upsert(rows);
+        if (usersError) throw usersError;
+      }
 
-      // 4. 保存/更新用户
-      const usersToSave = data.users.map(u => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        avatar: u.avatar,
-        color: u.color,
-        role: u.role,
-        password: u.password,
-        lang: u.lang,
-      }));
-
-      const { error: usersError } = await supabase.from('users').upsert(usersToSave);
-      if (usersError) throw usersError;
-
-      // 5. 保存工作区设置
+      // 3. 工作区设置（单行，直接 upsert）
       const { error: settingsError } = await supabase.from('workspace_settings').upsert({
         id: '00000000-0000-0000-0000-000000000001',
         workspace_background: data.workspaceBackground,
@@ -245,7 +272,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
       if (settingsError) throw settingsError;
 
-      // 保存成功后更新快照
+      // 保存成功后更新快照（记录服务器当前值）
       boardsSnapshotRef.current = JSON.stringify(data.boards);
       usersSnapshotRef.current = JSON.stringify(data.users);
 
@@ -263,6 +290,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       setSaveError('数据保存失败，已暂存在本地备份。请检查网络后重试。');
     }
   }, []);
+
 
   const enqueueSave = useCallback((data: BackupData) => {
     saveQueueRef.current = saveQueueRef.current.then(() => doSave(data)).catch(() => {});
@@ -303,24 +331,72 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         settingsData = data;
       } catch {}
 
-      const data = rowsToBackupData(usersData, boardsData, settingsData);
-      const stable = stableKey(data);
+      const remote = rowsToBackupData(usersData, boardsData, settingsData);
+
+      // ===== 逐看板合并：以 updatedAt 为准，谁新用谁 =====
+      // 这样即使本地有未同步改动，也只会保留本地更新的看板，
+      // 而远端更新的看板会被应用进来，彻底解决“B 看不到 A 的改动”。
+      const localBoards: Board[] = latestSnapshotRef.current?.boards || [];
+      const localBoardMap = new Map<string, Board>(localBoards.map(b => [b.id, b]));
+
+      const mergedBoards: Board[] = [];
+      const remoteBoardIds = new Set<string>();
+
+      for (const rb of remote.boards) {
+        remoteBoardIds.add(rb.id);
+        const lb = localBoardMap.get(rb.id);
+        if (!lb) {
+          mergedBoards.push(rb); // 远端新增的看板
+          continue;
+        }
+        const remoteTime = new Date(rb.updatedAt || 0).getTime();
+        const localTime = new Date(lb.updatedAt || 0).getTime();
+        // 远端更新（或时间相同但内容不同）则采用远端，否则保留本地
+        if (remoteTime > localTime) {
+          mergedBoards.push(rb);
+        } else if (remoteTime === localTime && boardContentKey(rb) !== boardContentKey(lb)) {
+          mergedBoards.push(rb);
+        } else {
+          mergedBoards.push(lb);
+        }
+      }
+
+      // 本地有、远端没有的看板：保留（可能是本地刚创建还没保存成功）
+      for (const lb of localBoards) {
+        if (!remoteBoardIds.has(lb.id)) mergedBoards.push(lb);
+      }
+
+      // 用户：远端为准（用户信息冲突概率低），但保留本地新增的
+      const remoteUserIds = new Set(remote.users.map(u => u.id));
+      const mergedUsers: User[] = [
+        ...remote.users,
+        ...(latestSnapshotRef.current?.users || []).filter(u => !remoteUserIds.has(u.id)),
+      ];
+
+      const merged: BackupData = {
+        ...remote,
+        boards: mergedBoards,
+        users: mergedUsers,
+      };
+
+      const stable = stableKey(merged);
       if (stable === stableContentRef.current) return;
-      // 本地还有尚未同步到服务器的改动时，暂不应用远端数据，避免覆盖本地刚改的内容
-      if (pendingSaveRef.current) return;
 
       stableContentRef.current = stable;
-      lastLocalContentRef.current = JSON.stringify(data);
-      boardsSnapshotRef.current = JSON.stringify(data.boards);
-      usersSnapshotRef.current = JSON.stringify(data.users);
+      lastLocalContentRef.current = JSON.stringify(merged);
+      latestSnapshotRef.current = merged;
+      // 快照记录服务器当前值（用于增量保存判断）
+      boardsSnapshotRef.current = JSON.stringify(remote.boards);
+      usersSnapshotRef.current = JSON.stringify(remote.users);
       try {
-        window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt: new Date().toISOString(), pending: false }));
+        window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...merged, savedAt: new Date().toISOString(), pending: pendingSaveRef.current }));
       } catch {}
-      dispatch({ type: 'APPLY_EXTERNAL_STATE', payload: data });
+      dispatch({ type: 'APPLY_EXTERNAL_STATE', payload: merged });
     } catch (err) {
       console.warn('[Realtime] 重新拉取失败:', err);
     }
   }, [dispatch]);
+
 
   // ===== 初始化 BroadcastChannel（跨标签页实时同步）=====
   useEffect(() => {
@@ -369,11 +445,18 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'workspace_settings' }, scheduleRefetch)
       .subscribe();
 
+    // 兜底轮询：即使 Realtime 未在 Supabase 后台开启，也能保证多用户最终一致
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') refetchFromServer();
+    }, 15000);
+
     return () => {
       if (timer) clearTimeout(timer);
+      clearInterval(poll);
       supabase.removeChannel(channel);
     };
   }, [refetchFromServer]);
+
 
   // ===== 加载数据：本地备份与 Supabase 比较，取较新者，防止旧数据覆盖 =====
   useEffect(() => {
@@ -590,17 +673,30 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     };
   }, [enqueueSave]);
 
-  const broadcastChange = useCallback((action: Action) => {
+  // ===== 包装 dispatch：拦截删除动作，记录被显式删除的 ID =====
+  const trackedDispatch = useCallback((action: Action) => {
+    if (action.type === 'DELETE_BOARD') {
+      deletedBoardIdsRef.current.add(action.payload);
+    } else if (action.type === 'DELETE_USER') {
+      deletedUserIdsRef.current.add(action.payload.userId);
+    }
     dispatch(action);
   }, [dispatch]);
 
+  const broadcastChange = useCallback((action: Action) => {
+    trackedDispatch(action);
+  }, [trackedDispatch]);
+
+
   // 优化：useMemo 包裹 context value，避免不必要的重渲染
+  // 注意：对外暴露 trackedDispatch，确保删除动作能被追踪
   const contextValue = React.useMemo(() => ({
     state,
-    dispatch,
+    dispatch: trackedDispatch,
     broadcastChange,
     saveError
-  }), [state, broadcastChange, saveError]);
+  }), [state, trackedDispatch, broadcastChange, saveError]);
+
 
   // 保存失败提示自动消失
   useEffect(() => {
