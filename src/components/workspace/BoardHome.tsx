@@ -27,14 +27,14 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
-  BarChart3,
   Home,
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
-import WorkspaceGanttView from './WorkspaceGanttView';
 import { parseISO, isToday } from 'date-fns';
+
 
 const BOARD_BG_GRADIENTS = [
   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -105,7 +105,7 @@ export default function BoardHome() {
   const [uploadingIconBoard, setUploadingIconBoard] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const [showAllGantt, setShowAllGantt] = useState(false);
+
 
   // 优化：useMemo 缓存 visibleBoards 过滤和排序，避免每次渲染重新计算
   const visibleBoards = useMemo(() => 
@@ -341,25 +341,8 @@ export default function BoardHome() {
     setRenameText('');
   };
 
-  if (showAllGantt) {
-    return (
-      <>
-        <WorkspaceGanttView onBack={() => setShowAllGantt(false)} />
-        <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">v2.1.8</div>
-
-
-
-
-
-
-
-
-
-      </>
-    );
-  }
-
   return (
+
     <div className="min-h-dvh flex flex-col" style={getBgStyle(workspaceBackground)}>
       <div className="flex-1 backdrop-blur-sm bg-white/50 dark:bg-slate-900/50 overflow-y-auto">
       <div className="max-w-6xl mx-auto px-6 sm:px-8 py-10 sm:py-14">
@@ -385,14 +368,8 @@ export default function BoardHome() {
               <Home size={14} />
               <span>{lang === 'zh' ? '首页' : 'Home'}</span>
             </button>
-            <button
-              onClick={() => setShowAllGantt(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-600 hover:text-[#007AFF] hover:bg-white hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
-            >
-              <BarChart3 size={14} />
-              <span>{lang === 'zh' ? '全局甘特图' : 'All Boards Gantt'}</span>
-            </button>
           </div>
+
           <button
             onClick={() => dispatch({ type: 'SET_CURRENT_USER', payload: null })}
             className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-500 hover:text-red-500 hover:bg-white hover:border-red-200 hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
@@ -917,8 +894,9 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.1.8
+        v2.1.9
       </div>
+
 
 
 
