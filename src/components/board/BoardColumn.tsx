@@ -52,9 +52,8 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
     });
     setNewCardTitle('');
     setAddingCard(false);
-    // 创建后立即打开卡片详情，方便马上填写内容
-    onCardClick(newCardId);
   };
+
 
 
   const handleSaveTitle = () => {
