@@ -432,14 +432,14 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
             )}
           </div>
           
-          {/* Urgent toggle + Member avatars - shown on hover */}
-          <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {/* Urgent toggle (hover) + Member avatars (always visible) */}
+          <div className="flex items-center gap-1.5 shrink-0">
 
-            {/* Urgent quick toggle */}
+            {/* Urgent quick toggle - shown on hover */}
             <button
               onClick={toggleUrgent}
               className={cn(
-                'flex items-center justify-center w-6 h-6 rounded-full border transition-all duration-200 active:scale-90',
+                'flex items-center justify-center w-6 h-6 rounded-full border transition-all duration-200 active:scale-90 opacity-0 group-hover:opacity-100',
                 isUrgent
                   ? 'bg-red-500 border-red-500 text-white shadow-sm'
                   : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:border-red-300'
@@ -451,8 +451,9 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
               <AlertTriangle size={12} />
             </button>
 
-            {/* Member avatars - clickable to assign members */}
+            {/* Member avatars - always visible, clickable to assign members */}
             <div ref={memberBtnRef} className="relative">
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
