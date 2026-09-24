@@ -194,31 +194,7 @@ export default function BoardView() {
               )}
               style={{ scrollBehavior: 'smooth' }}
             >
-              {visibleColumns.map((column: Column, idx: number) => (
-                <Draggable key={column.id} draggableId={column.id} index={idx}>
-                  {(colProvided, colSnapshot) => (
-                    <div
-                      ref={colProvided.innerRef}
-                      {...colProvided.draggableProps}
-                      className={cn(
-                        'shrink-0 w-72 md:w-80',
-                        colSnapshot.isDragging && 'opacity-80 rotate-1 shadow-2xl z-50'
-                      )}
-                      style={{ ...colProvided.draggableProps.style }}
-                    >
-                      <BoardColumn
-                        column={column}
-                        isDragging={draggingListId === column.id}
-                        dragHandleProps={colProvided.dragHandleProps || undefined}
-                        onCardClick={(cardId) => setSelectedCardId(cardId)}
-                      />
-                    </div>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-
-              {/* Add Column */}
+              {/* Add Column — placed first so new lists appear at the front */}
               <div className="shrink-0 w-72 md:w-80">
                 {addingColumn ? (
                   <div className="glass rounded-xl p-2 animate-slide-up">
@@ -262,7 +238,33 @@ export default function BoardView() {
                 )}
               </div>
 
+              {visibleColumns.map((column: Column, idx: number) => (
+
+                <Draggable key={column.id} draggableId={column.id} index={idx}>
+                  {(colProvided, colSnapshot) => (
+                    <div
+                      ref={colProvided.innerRef}
+                      {...colProvided.draggableProps}
+                      className={cn(
+                        'shrink-0 w-72 md:w-80',
+                        colSnapshot.isDragging && 'opacity-80 rotate-1 shadow-2xl z-50'
+                      )}
+                      style={{ ...colProvided.draggableProps.style }}
+                    >
+                      <BoardColumn
+                        column={column}
+                        isDragging={draggingListId === column.id}
+                        dragHandleProps={colProvided.dragHandleProps || undefined}
+                        onCardClick={(cardId) => setSelectedCardId(cardId)}
+                      />
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
+
               {/* Extra space for horizontal scroll */}
+
               <div className="w-4 shrink-0" />
             </div>
           )}

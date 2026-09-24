@@ -19,7 +19,8 @@ import {
   Eye,
   ArrowLeft,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, generateId } from '@/lib/utils';
+
 
 interface BoardColumnProps {
   column: Column;
@@ -44,12 +45,17 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
       setAddingCard(false);
       return;
     }
+    const newCardId = generateId();
     broadcastChange({
       type: 'ADD_CARD',
-      payload: { columnId: column.id, card: { title: newCardTitle.trim() } },
+      payload: { columnId: column.id, card: { id: newCardId, title: newCardTitle.trim() } },
     });
     setNewCardTitle('');
+    setAddingCard(false);
+    // 创建后立即打开卡片详情，方便马上填写内容
+    onCardClick(newCardId);
   };
+
 
   const handleSaveTitle = () => {
     if (titleValue.trim() && titleValue !== column.title) {
@@ -295,38 +301,13 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
             )}
             onClick={() => { setShowMenu(false); }}
           >
-            {column.cards.map((card: CardType, index: number) => (
-              <Draggable key={card.id} draggableId={card.id} index={index}>
-                {(cardProvided, cardSnapshot) => (
-                  <div
-                    ref={cardProvided.innerRef}
-                    {...cardProvided.draggableProps}
-                    {...cardProvided.dragHandleProps}
-                    className={cn(
-                      'mb-2 last:mb-0',
-                      cardSnapshot.isDragging && 'shadow-2xl z-50 rotate-1 opacity-90'
-                    )}
-                    style={{ ...cardProvided.draggableProps.style }}
-                  >
-                    <CardItem
-                      card={card}
-                      onClick={() => onCardClick(card.id)}
-                      isDragging={cardSnapshot.isDragging}
-                    />
-                  </div>
-                )}
-              </Draggable>
-            ))}
-            {provided.placeholder}
-
-            {/* Add Card */}
+            {/* Add Card — placed first so new cards appear at the top */}
             {addingCard ? (
-              <div className="mt-2 animate-slide-up">
+              <div className="mb-2 animate-slide-up">
                 <textarea
                   autoFocus
                   value={newCardTitle}
                   onChange={(e) => setNewCardTitle(e.target.value)}
-                  onBlur={handleAddCard}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -358,15 +339,41 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
             ) : (
               <button
                 onClick={() => setAddingCard(true)}
-                className="w-full mt-1 flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors group"
+                className="w-full mb-2 flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-700 dark:hover:text-slate-200 transition-colors group"
               >
                 <Plus size={14} className="group-hover:scale-110 transition-transform" />
                 {t('board.addCard')}
               </button>
             )}
+
+            {column.cards.map((card: CardType, index: number) => (
+
+              <Draggable key={card.id} draggableId={card.id} index={index}>
+                {(cardProvided, cardSnapshot) => (
+                  <div
+                    ref={cardProvided.innerRef}
+                    {...cardProvided.draggableProps}
+                    {...cardProvided.dragHandleProps}
+                    className={cn(
+                      'mb-2 last:mb-0',
+                      cardSnapshot.isDragging && 'shadow-2xl z-50 rotate-1 opacity-90'
+                    )}
+                    style={{ ...cardProvided.draggableProps.style }}
+                  >
+                    <CardItem
+                      card={card}
+                      onClick={() => onCardClick(card.id)}
+                      isDragging={cardSnapshot.isDragging}
+                    />
+                  </div>
+                )}
+              </Draggable>
+            ))}
+            {provided.placeholder}
           </div>
         )}
       </Droppable>
+
     </div>
   );
 }

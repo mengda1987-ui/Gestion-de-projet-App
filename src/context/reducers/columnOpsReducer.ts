@@ -20,14 +20,17 @@ export function columnOpsReducer(state: BoardState, action: Action): BoardState 
         id: action.payload.id || generateId(),
         title: action.payload.title,
         cards: [],
-        order: state.board.columns.length,
+        order: 0,
         archived: false,
       };
+      // 新列表插入到最前面，并重新编号 order
+      const columns = [newColumn, ...state.board.columns].map((c, i) => ({ ...c, order: i }));
       return {
         ...state,
-        board: { ...state.board, columns: [...state.board.columns, newColumn], updatedAt: new Date().toISOString() },
+        board: { ...state.board, columns, updatedAt: new Date().toISOString() },
       };
     }
+
 
     case 'UPDATE_COLUMN': {
       const columns = state.board.columns.map(c =>

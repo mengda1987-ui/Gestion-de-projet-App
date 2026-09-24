@@ -58,8 +58,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
       };
       const columns = state.board.columns.map(col => {
         if (col.id !== action.payload.columnId) return col;
-        return { ...col, cards: [...col.cards, { ...newCard, order: col.cards.length }] };
+        // 新卡片插入到最前面，并重新编号 order
+        const cards = [{ ...newCard, order: 0 }, ...col.cards].map((c, i) => ({ ...c, order: i }));
+        return { ...col, cards };
       });
+
       return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
