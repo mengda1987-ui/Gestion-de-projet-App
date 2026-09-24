@@ -185,9 +185,9 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
           }
           setShowCardMenu(!showCardMenu);
         }}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-200 shadow-sm"
-
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm"
         title={lang === 'zh' ? '更多操作' : 'More actions'}
+
       >
         <MoreHorizontal size={14} />
       </button>
@@ -239,9 +239,9 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
       )}
 
       {/* Status Dropdown - compact, in top-right */}
-      <div className="absolute top-2 right-10 z-10 transition-all duration-200">
-
+      <div className="absolute top-2 right-10 z-10 opacity-0 group-hover:opacity-100 transition-all duration-200">
         <button
+
           ref={statusBtnRef}
           onClick={(e) => {
             e.stopPropagation();
@@ -432,8 +432,9 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
             )}
           </div>
           
-          {/* Urgent toggle + Member avatars - both directly clickable on the card */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Urgent toggle + Member avatars - shown on hover */}
+          <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+
             {/* Urgent quick toggle */}
             <button
               onClick={toggleUrgent}
