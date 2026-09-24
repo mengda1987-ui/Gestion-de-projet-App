@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+
 import {
   DragDropContext,
   Droppable,
@@ -68,11 +69,19 @@ export default function BoardView() {
     return cols;
   }, [board.columns, filters, currentUser?.id, currentUser?.role]);
 
+  // Allow the header shortcut to trigger "Add list"
+  useEffect(() => {
+    const handler = () => setAddingColumn(true);
+    window.addEventListener('board:add-list', handler);
+    return () => window.removeEventListener('board:add-list', handler);
+  }, []);
+
   const handleDragStart = (start: DragStart) => {
     if (start.type === 'COLUMN') {
       setDraggingListId(start.draggableId);
     }
   };
+
 
   const handleDragEnd = (result: DropResult) => {
     const { source, destination, draggableId, type } = result;
@@ -194,10 +203,36 @@ export default function BoardView() {
               )}
               style={{ scrollBehavior: 'smooth' }}
             >
-              {/* Add Column — compact button placed first so new lists appear at the front */}
-              <div className="shrink-0">
+              {visibleColumns.map((column: Column, idx: number) => (
+
+
+                <Draggable key={column.id} draggableId={column.id} index={idx}>
+                  {(colProvided, colSnapshot) => (
+                    <div
+                      ref={colProvided.innerRef}
+                      {...colProvided.draggableProps}
+                      className={cn(
+                        'shrink-0 w-72 md:w-80',
+                        colSnapshot.isDragging && 'opacity-80 rotate-1 shadow-2xl z-50'
+                      )}
+                      style={{ ...colProvided.draggableProps.style }}
+                    >
+                      <BoardColumn
+                        column={column}
+                        isDragging={draggingListId === column.id}
+                        dragHandleProps={colProvided.dragHandleProps || undefined}
+                        onCardClick={(cardId) => setSelectedCardId(cardId)}
+                      />
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
+
+              {/* Add Column — placed at the end so it doesn't block the first list */}
+              <div className="shrink-0 w-72 md:w-80">
                 {addingColumn ? (
-                  <div className="glass rounded-xl p-2 animate-slide-up w-72 md:w-80">
+                  <div className="glass rounded-xl p-2 animate-slide-up">
                     <input
                       autoFocus
                       value={newColumnTitle}
@@ -230,44 +265,18 @@ export default function BoardView() {
                 ) : (
                   <button
                     onClick={() => setAddingColumn(true)}
-                    title={t('board.addColumn')}
-                    className="flex flex-col items-center justify-center gap-1.5 w-14 py-4 rounded-xl bg-white/20 dark:bg-black/20 backdrop-blur-sm text-white/90 hover:bg-white/30 dark:hover:bg-black/30 transition-all group"
+                    className="w-full flex items-center gap-2 p-3 rounded-xl bg-white/20 dark:bg-black/20 backdrop-blur-sm text-white/90 hover:bg-white/30 dark:hover:bg-black/30 transition-all group"
                   >
-                    <Plus size={20} className="group-hover:scale-110 transition-transform" />
-                    <span className="text-[10px] font-medium leading-tight text-center px-1">{t('board.addColumn')}</span>
+                    <Plus size={18} className="group-hover:scale-110 transition-transform" />
+                    <span className="font-medium text-sm">{t('board.addColumn')}</span>
                   </button>
                 )}
               </div>
 
-
-              {visibleColumns.map((column: Column, idx: number) => (
-
-                <Draggable key={column.id} draggableId={column.id} index={idx}>
-                  {(colProvided, colSnapshot) => (
-                    <div
-                      ref={colProvided.innerRef}
-                      {...colProvided.draggableProps}
-                      className={cn(
-                        'shrink-0 w-72 md:w-80',
-                        colSnapshot.isDragging && 'opacity-80 rotate-1 shadow-2xl z-50'
-                      )}
-                      style={{ ...colProvided.draggableProps.style }}
-                    >
-                      <BoardColumn
-                        column={column}
-                        isDragging={draggingListId === column.id}
-                        dragHandleProps={colProvided.dragHandleProps || undefined}
-                        onCardClick={(cardId) => setSelectedCardId(cardId)}
-                      />
-                    </div>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-
               {/* Extra space for horizontal scroll */}
 
               <div className="w-4 shrink-0" />
+
             </div>
           )}
         </Droppable>

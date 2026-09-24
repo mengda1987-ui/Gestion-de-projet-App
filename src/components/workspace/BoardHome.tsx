@@ -345,7 +345,8 @@ export default function BoardHome() {
     return (
       <>
         <WorkspaceGanttView onBack={() => setShowAllGantt(false)} />
-        <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">v2.1.7</div>
+        <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">v2.1.8</div>
+
 
 
 
@@ -916,8 +917,9 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.1.7
+        v2.1.8
       </div>
+
 
 
 

@@ -30,7 +30,10 @@ import {
   Archive,
   Image,
   Undo2,
+  Plus,
+  Contact,
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import { ViewMode, Label, User } from '@/types';
 import BoardView from './BoardView';
@@ -236,8 +239,29 @@ export default function MainBoard() {
             )}
           </button>
 
+          {/* Add List shortcut */}
+          <button
+            onClick={() => window.dispatchEvent(new Event('board:add-list'))}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur ring-1 ring-slate-200/50 dark:ring-slate-700/50 text-slate-600 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 text-xs font-medium shrink-0 transition-all"
+            title={t('board.addColumn')}
+          >
+            <Plus size={14} />
+            <span className="hidden sm:inline">{t('board.addColumn')}</span>
+          </button>
+
+          {/* CRM shortcut */}
+          <button
+            onClick={() => dispatch({ type: 'SET_APP_SECTION', payload: 'crm' })}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur ring-1 ring-slate-200/50 dark:ring-slate-700/50 text-slate-600 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 text-xs font-medium shrink-0 transition-all"
+            title="CRM"
+          >
+            <Contact size={14} />
+            <span className="hidden sm:inline">CRM</span>
+          </button>
+
           {/* Spacer — pushes everything after to the right */}
           <div className="flex-1" />
+
 
           {/* Search */}
           <div className="relative flex items-center">
@@ -674,7 +698,8 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.1.7</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.1.8</span>
+
 
 
 
