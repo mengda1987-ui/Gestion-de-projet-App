@@ -1,5 +1,6 @@
 'use client';
 
+
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
@@ -673,7 +674,8 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.1.6</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.1.7</span>
+
 
 
 

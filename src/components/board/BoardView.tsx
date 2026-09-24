@@ -194,10 +194,10 @@ export default function BoardView() {
               )}
               style={{ scrollBehavior: 'smooth' }}
             >
-              {/* Add Column — placed first so new lists appear at the front */}
-              <div className="shrink-0 w-72 md:w-80">
+              {/* Add Column — compact button placed first so new lists appear at the front */}
+              <div className="shrink-0">
                 {addingColumn ? (
-                  <div className="glass rounded-xl p-2 animate-slide-up">
+                  <div className="glass rounded-xl p-2 animate-slide-up w-72 md:w-80">
                     <input
                       autoFocus
                       value={newColumnTitle}
@@ -230,13 +230,15 @@ export default function BoardView() {
                 ) : (
                   <button
                     onClick={() => setAddingColumn(true)}
-                    className="w-full flex items-center gap-2 p-3 rounded-xl bg-white/20 dark:bg-black/20 backdrop-blur-sm text-white/90 hover:bg-white/30 dark:hover:bg-black/30 transition-all group"
+                    title={t('board.addColumn')}
+                    className="flex flex-col items-center justify-center gap-1.5 w-14 py-4 rounded-xl bg-white/20 dark:bg-black/20 backdrop-blur-sm text-white/90 hover:bg-white/30 dark:hover:bg-black/30 transition-all group"
                   >
-                    <Plus size={18} className="group-hover:scale-110 transition-transform" />
-                    <span className="font-medium text-sm">{t('board.addColumn')}</span>
+                    <Plus size={20} className="group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] font-medium leading-tight text-center px-1">{t('board.addColumn')}</span>
                   </button>
                 )}
               </div>
+
 
               {visibleColumns.map((column: Column, idx: number) => (
 
