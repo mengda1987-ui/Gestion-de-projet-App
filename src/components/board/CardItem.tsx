@@ -94,6 +94,41 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
     [card.assignees, users]
   );
 
+  // 查找看板中的“紧急”标签（兼容中英文命名）
+  const urgentLabel = useMemo(() =>
+    board.labels.find((l: Label) =>
+      l.name.toLowerCase() === 'urgent' ||
+      l.name === '紧急' ||
+      l.name.toLowerCase() === 'urgente'
+    ),
+    [board.labels]
+  );
+
+  // 当前卡片是否已标记为紧急
+  const isUrgent = useMemo(() =>
+    !!urgentLabel && card.labels.includes(urgentLabel.id),
+    [urgentLabel, card.labels]
+  );
+
+  // 在卡片上直接切换“紧急”标签（无需打开卡片详情）
+  const toggleUrgent = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    let labelId = urgentLabel?.id;
+    // 若看板尚无“紧急”标签，则自动创建一个
+    if (!labelId) {
+      labelId = `label-urgent-${Date.now()}`;
+      broadcastChange({
+        type: 'ADD_LABEL',
+        payload: { label: { id: labelId, name: lang === 'zh' ? '紧急' : 'Urgent', color: '#DC2626' } },
+      });
+    }
+    const next = isUrgent
+      ? card.labels.filter((id: string) => id !== labelId)
+      : [...card.labels, labelId];
+    broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { labels: next } } });
+  };
+
+
   const checklistDueAlerts = useMemo(() => 
     allChecklistItems
       .filter(item => !item.completed && item.dueDate)
@@ -395,66 +430,85 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
             )}
           </div>
           
-          {/* Member avatars - clickable to assign members */}
-          <div ref={memberBtnRef} className="relative">
+          {/* Urgent toggle + Member avatars - both directly clickable on the card */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Urgent quick toggle */}
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const rect = (e.target as HTMLElement).closest('button')?.getBoundingClientRect();
-                if (rect) {
-                  setMemberPickerPos({ top: rect.bottom + 4, left: rect.right - 200 });
-                }
-                setShowMemberPicker(!showMemberPicker);
-              }}
-              className="flex items-center gap-1 group/members"
-            >
-              {assignees.length > 0 ? (
-                <AvatarStack users={assignees} max={3} size="sm" />
-              ) : (
-                <div className="flex -space-x-1.5">
-                  <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 border-2 border-white dark:border-slate-800 flex items-center justify-center opacity-0 group-hover/members:opacity-100 transition-opacity">
-                    <span className="text-[10px] text-slate-400 font-bold">+</span>
-                  </div>
-                </div>
+              onClick={toggleUrgent}
+              className={cn(
+                'flex items-center justify-center w-6 h-6 rounded-full border transition-all duration-200 active:scale-90',
+                isUrgent
+                  ? 'bg-red-500 border-red-500 text-white shadow-sm'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-300 dark:text-slate-500 hover:text-red-500 hover:border-red-300'
               )}
+              title={isUrgent
+                ? (lang === 'zh' ? '取消紧急' : 'Remove urgent')
+                : (lang === 'zh' ? '标记为紧急' : 'Mark as urgent')}
+            >
+              <AlertTriangle size={12} />
             </button>
-            {showMemberPicker && memberPickerPos && createPortal(
-              <div
-                className="fixed z-[99999] w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 animate-slide-up overflow-hidden max-h-56 overflow-y-auto"
-                style={{ top: memberPickerPos.top, left: memberPickerPos.left }}
-                onClick={(e) => e.stopPropagation()}
+
+            {/* Member avatars - clickable to assign members */}
+            <div ref={memberBtnRef} className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = (e.target as HTMLElement).closest('button')?.getBoundingClientRect();
+                  if (rect) {
+                    setMemberPickerPos({ top: rect.bottom + 4, left: rect.right - 200 });
+                  }
+                  setShowMemberPicker(!showMemberPicker);
+                }}
+                className="flex items-center gap-1"
               >
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                  {lang === 'zh' ? '分配成员' : 'Assign members'}
-                </div>
-                {users.map((u: User) => {
-                  const isAssigned = card.assignees.includes(u.id);
-                  return (
-                    <button
-                      key={u.id}
-                      onClick={() => {
-                        const next = isAssigned
-                          ? card.assignees.filter((id: string) => id !== u.id)
-                          : [...card.assignees, u.id];
-                        broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { assignees: next } } });
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-xs transition-colors"
-                    >
-                      <Avatar user={u} size="sm" />
-                      <span className="flex-1 text-left text-slate-700 dark:text-slate-200">{u.name}</span>
-                      {isAssigned && <Check size={12} className="text-[#007AFF]" />}
-                    </button>
-                  );
-                })}
-              </div>,
-              document.body
-            )}
+                {assignees.length > 0 ? (
+                  <AvatarStack users={assignees} max={3} size="sm" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 border-2 border-white dark:border-slate-800 flex items-center justify-center text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-600 transition-colors">
+                    <span className="text-[11px] font-bold">+</span>
+                  </div>
+                )}
+              </button>
+
+              {showMemberPicker && memberPickerPos && createPortal(
+                <div
+                  className="fixed z-[99999] w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1 animate-slide-up overflow-hidden max-h-56 overflow-y-auto"
+                  style={{ top: memberPickerPos.top, left: memberPickerPos.left }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                    {lang === 'zh' ? '分配成员' : 'Assign members'}
+                  </div>
+                  {users.map((u: User) => {
+                    const isAssigned = card.assignees.includes(u.id);
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => {
+                          const next = isAssigned
+                            ? card.assignees.filter((id: string) => id !== u.id)
+                            : [...card.assignees, u.id];
+                          broadcastChange({ type: 'UPDATE_CARD', payload: { cardId: card.id, updates: { assignees: next } } });
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-xs transition-colors"
+                      >
+                        <Avatar user={u} size="sm" />
+                        <span className="flex-1 text-left text-slate-700 dark:text-slate-200">{u.name}</span>
+                        {isAssigned && <Check size={12} className="text-[#007AFF]" />}
+                      </button>
+                    );
+                  })}
+                </div>,
+                document.body
+              )}
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 // 优化：使用 React.memo 避免无效重渲染
 // 只有当 card.id、card.updatedAt、isDragging 变化时才重新渲染

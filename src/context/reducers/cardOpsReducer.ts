@@ -144,7 +144,8 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
     }
 
     case 'ADD_LABEL': {
-      const newLabel: Label = { id: generateId(), ...action.payload.label };
+      const newLabel: Label = { id: action.payload.label.id || generateId(), ...action.payload.label };
+
       const boardLabels = [...state.boardLabels, newLabel];
       const boards = state.boards.map(b => ({ ...b, labels: boardLabels }));
       return {

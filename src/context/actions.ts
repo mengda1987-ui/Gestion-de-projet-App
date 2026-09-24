@@ -31,7 +31,8 @@ export type Action =
   | { type: 'ARCHIVE_CARD'; payload: { cardId: string } }
   | { type: 'DUPLICATE_CARD'; payload: { cardId: string } }
   | { type: 'CYCLE_CARD_STATUS'; payload: { cardId: string } }
-  | { type: 'ADD_LABEL'; payload: { label: Omit<Label, 'id'> } }
+  | { type: 'ADD_LABEL'; payload: { label: Omit<Label, 'id'> & { id?: string } } }
+
   | { type: 'UPDATE_LABEL'; payload: { labelId: string; updates: Partial<Label> } }
   | { type: 'DELETE_LABEL'; payload: { labelId: string } }
   | { type: 'TOGGLE_CARD_LABEL'; payload: { cardId: string; labelId: string } }
