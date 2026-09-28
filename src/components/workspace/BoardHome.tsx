@@ -16,7 +16,6 @@ import {
   CheckSquare,
   Clock,
   Users,
-
   Image,
   LogOut,
   Menu,
@@ -34,7 +33,6 @@ import { cn } from '@/lib/utils';
 import MemberManageModal from '@/components/ui/MemberManageModal';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 import { parseISO, isToday } from 'date-fns';
-
 
 const BOARD_BG_GRADIENTS = [
   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -105,7 +103,6 @@ export default function BoardHome() {
   const [uploadingIconBoard, setUploadingIconBoard] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
-
 
   // 优化：useMemo 缓存 visibleBoards 过滤和排序，避免每次渲染重新计算
   const visibleBoards = useMemo(() => 
@@ -834,7 +831,6 @@ export default function BoardHome() {
         </div>,
         document.body
       )}
-      </div>
 
       {/* Header dropdown menu - Apple style */}
       {headerMenuOpen && headerMenuPos && createPortal(
@@ -896,16 +892,7 @@ export default function BoardHome() {
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
         v2.1.9
       </div>
-
-
-
-
-
-
-
-
-
-
+      </div>
     </div>
   );
 }
