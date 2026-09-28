@@ -1,11 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CrmModules, CrmModule, CrmStage, CrmField, CrmContact, CrmFieldType } from '@/types';
 import { generateId } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 const BACKUP_KEY = 'trello_crm_backup_v2';
+const SYNC_CHANNEL = 'trello-crm-sync-channel';
 
 export type CrmView = 'contacts' | 'pipeline';
 
@@ -487,34 +489,253 @@ function readBackup(): CrmModules | null {
   }
 }
 
+// ===== Supabase 行 <-> 模块 映射（与 boards 表同构）=====
+interface CrmModuleRow {
+  id: string;
+  name: string;
+  name_en: string;
+  emoji: string;
+  color: string;
+  data: { stages?: CrmStage[]; fields?: CrmField[]; contacts?: CrmContact[] };
+  order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToModule(r: any): CrmModule {
+  return {
+    id: r.id,
+    name: r.name || '',
+    nameEn: r.name_en || '',
+    emoji: r.emoji || '📋',
+    color: r.color || '#007AFF',
+    stages: r.data?.stages || [],
+    fields: r.data?.fields || [],
+    contacts: r.data?.contacts || [],
+    createdAt: r.created_at || new Date().toISOString(),
+    updatedAt: r.updated_at || new Date().toISOString(),
+  };
+}
+
+function moduleToRow(m: CrmModule, order: number): CrmModuleRow {
+  return {
+    id: m.id,
+    name: m.name,
+    name_en: m.nameEn,
+    emoji: m.emoji,
+    color: m.color,
+    data: { stages: m.stages, fields: m.fields, contacts: m.contacts },
+    order,
+    created_at: m.createdAt,
+    updated_at: m.updatedAt,
+  };
+}
+
+// 剔除时间戳的稳定键：用于判断模块内容是否真的变化，避免时间差造成回环
+function moduleContentKey(m: any): string {
+  return JSON.stringify(m, (key, value) =>
+    (key === 'createdAt' || key === 'updatedAt') ? undefined : value
+  );
+}
+
+function modulesStableKey(modules: CrmModules): string {
+  return JSON.stringify(
+    modules.map(m => JSON.parse(moduleContentKey(m))),
+  );
+}
+
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(crmReducer, null, createInitialCrmState);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const snapshotRef = useRef<string>('');
+  const snapshotRef = useRef<string>('');          // 上次成功保存到服务器的模块快照
   const lastLocalContentRef = useRef<string>('');
+  const stableContentRef = useRef<string>('');
+  const latestModulesRef = useRef<CrmModules>([]);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
+  const loadedRef = useRef(false);
+  // 显式删除追踪：只有用户主动删除的模块才会从服务器删除，避免误删他人数据
+  const deletedModuleIdsRef = useRef<Set<string>>(new Set());
 
-  // 首次加载：优先读取本地备份，否则使用默认模块（含示例数据）
-  useEffect(() => {
-    const backup = readBackup();
-    if (backup && backup.length > 0) {
-      dispatch({ type: 'CRM_LOAD', payload: backup });
-      snapshotRef.current = JSON.stringify(backup);
-      lastLocalContentRef.current = JSON.stringify(backup);
-    } else {
-      const def = createDefaultCrmModules();
-      dispatch({ type: 'CRM_LOAD', payload: def });
-      snapshotRef.current = JSON.stringify(def);
-      lastLocalContentRef.current = JSON.stringify(def);
+  // ===== 保存到 Supabase（增量：只 upsert 真正有变化的模块）=====
+  const doSave = useCallback(async (modules: CrmModules) => {
+    try {
+      // 0. 显式删除
+      if (deletedModuleIdsRef.current.size > 0) {
+        const ids = Array.from(deletedModuleIdsRef.current);
+        const { error } = await supabase.from('crm_modules').delete().in('id', ids);
+        if (error) throw error;
+        deletedModuleIdsRef.current.clear();
+      }
+
+      // 1. 与上次成功保存的快照比对，只写变化的模块
+      const prevModules: CrmModule[] = snapshotRef.current ? JSON.parse(snapshotRef.current) : [];
+      const prevMap = new Map<string, CrmModule>(prevModules.map(m => [m.id, m]));
+
+      const toSave = modules.filter(m => {
+        const prev = prevMap.get(m.id);
+        if (!prev) return true;
+        return moduleContentKey(prev) !== moduleContentKey(m);
+      });
+
+      if (toSave.length > 0) {
+        const rows = toSave.map(m => moduleToRow(m, modules.findIndex(x => x.id === m.id)));
+        const { error } = await supabase.from('crm_modules').upsert(rows);
+        if (error) throw error;
+      }
+
+      // 保存成功：更新快照
+      snapshotRef.current = JSON.stringify(modules);
+
+      if (JSON.stringify(modules) === lastLocalContentRef.current) {
+        pendingSaveRef.current = false;
+      }
+      setSaveError(null);
+    } catch (err) {
+      console.error('[CRM] 保存到服务器失败:', err);
+      setSaveError('CRM 数据保存失败，已暂存在本地。请检查网络后重试。');
     }
   }, []);
 
-  // 跨标签页实时同步
+  const enqueueSave = useCallback((modules: CrmModules) => {
+    saveQueueRef.current = saveQueueRef.current.then(() => doSave(modules)).catch(() => {});
+  }, [doSave]);
+
+  // ===== 从服务器重新拉取，内容变化时应用到 state（跨用户实时同步）=====
+  const refetchFromServer = useCallback(async () => {
+    if (!loadedRef.current) return;
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!url) return;
+
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
+      );
+
+      const { data: rows } = await Promise.race([
+        supabase.from('crm_modules').select('*').order('order', { ascending: true }),
+        timeout.then(() => { throw new Error('timeout'); }),
+      ]) as any;
+
+      const remote: CrmModules = (rows || []).map(rowToModule);
+
+      // 逐模块合并：以 updatedAt 为准，谁新用谁（与看板策略一致）
+      const localModules = latestModulesRef.current;
+      const localMap = new Map<string, CrmModule>(localModules.map(m => [m.id, m]));
+
+      const merged: CrmModule[] = [];
+      const remoteIds = new Set<string>();
+
+      for (const rm of remote) {
+        remoteIds.add(rm.id);
+        const lm = localMap.get(rm.id);
+        if (!lm) { merged.push(rm); continue; }
+        const remoteTime = new Date(rm.updatedAt || 0).getTime();
+        const localTime = new Date(lm.updatedAt || 0).getTime();
+        if (remoteTime > localTime) {
+          merged.push(rm);
+        } else if (remoteTime === localTime && moduleContentKey(rm) !== moduleContentKey(lm)) {
+          merged.push(rm);
+        } else {
+          merged.push(lm);
+        }
+      }
+
+      // 本地有、远端没有的模块：保留（可能是刚创建还没保存成功）
+      for (const lm of localModules) {
+        if (!remoteIds.has(lm.id)) merged.push(lm);
+      }
+
+      const stable = modulesStableKey(merged);
+      if (stable === stableContentRef.current) return;
+
+      stableContentRef.current = stable;
+      lastLocalContentRef.current = JSON.stringify(merged);
+      latestModulesRef.current = merged;
+      snapshotRef.current = JSON.stringify(remote);
+      try {
+        window.localStorage.setItem(BACKUP_KEY, JSON.stringify(merged));
+      } catch {}
+      dispatch({ type: 'CRM_LOAD', payload: merged });
+    } catch (err) {
+      console.warn('[CRM Realtime] 重新拉取失败:', err);
+    }
+  }, []);
+
+  // ===== 加载数据：本地备份与 Supabase 比较，取较新者 =====
+  useEffect(() => {
+    async function loadData() {
+      const backup = readBackup();
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!url) throw new Error('No Supabase URL configured');
+
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
+        );
+
+        const { data: rows } = await Promise.race([
+          supabase.from('crm_modules').select('*').order('order', { ascending: true }),
+          timeout.then(() => { throw new Error('timeout'); }),
+        ]) as any;
+
+        const remote: CrmModules = (rows || []).map(rowToModule);
+        const serverHasData = remote.length > 0;
+
+        // 服务器为空但本地有数据 -> 用本地并补传（首次迁移，把老数据搬上云）
+        const useLocal = !serverHasData && !!backup && backup.length > 0;
+
+        let dataToUse: CrmModules;
+        if (useLocal && backup) {
+          dataToUse = backup;
+        } else if (serverHasData) {
+          dataToUse = remote;
+        } else {
+          dataToUse = createDefaultCrmModules();
+        }
+
+        dispatch({ type: 'CRM_LOAD', payload: dataToUse });
+        loadedRef.current = true;
+        lastLocalContentRef.current = JSON.stringify(dataToUse);
+        stableContentRef.current = modulesStableKey(dataToUse);
+        latestModulesRef.current = dataToUse;
+        snapshotRef.current = JSON.stringify(serverHasData ? remote : []);
+
+        try {
+          window.localStorage.setItem(BACKUP_KEY, JSON.stringify(dataToUse));
+        } catch {}
+
+        // 本地有历史数据但服务器为空：补传到服务器
+        if (useLocal) {
+          pendingSaveRef.current = true;
+          enqueueSave(dataToUse);
+        }
+      } catch (err) {
+        console.warn('[CRM] 服务器加载失败，使用本地备份:', err);
+        let dataToUse: CrmModules;
+        if (backup && backup.length > 0) {
+          dataToUse = backup;
+          setSaveError('服务器连接失败，已加载本地 CRM 备份数据');
+        } else {
+          dataToUse = createDefaultCrmModules();
+        }
+        dispatch({ type: 'CRM_LOAD', payload: dataToUse });
+        loadedRef.current = true;
+        lastLocalContentRef.current = JSON.stringify(dataToUse);
+        stableContentRef.current = modulesStableKey(dataToUse);
+        latestModulesRef.current = dataToUse;
+      }
+    }
+    loadData();
+  }, [enqueueSave]);
+
+  // ===== 跨标签页实时同步 =====
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (typeof BroadcastChannel === 'undefined') return;
 
-    const bc = new BroadcastChannel('trello-crm-sync-channel');
+    const bc = new BroadcastChannel(SYNC_CHANNEL);
     bcRef.current = bc;
     bc.onmessage = (e: MessageEvent) => {
       const msg = e.data;
@@ -522,6 +743,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       const content = JSON.stringify(msg.modules);
       if (content === lastLocalContentRef.current) return;
       lastLocalContentRef.current = content;
+      stableContentRef.current = modulesStableKey(msg.modules);
+      latestModulesRef.current = msg.modules;
       try {
         window.localStorage.setItem(BACKUP_KEY, content);
       } catch {}
@@ -534,24 +757,88 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // 持久化：数据变化时写入 localStorage，留底防丢失 + 广播给其他标签页
+  // ===== 订阅 Supabase Realtime：他人保存后实时同步到本端 =====
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!url) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefetch = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => refetchFromServer(), 800);
+    };
+
+    const channel = supabase
+      .channel('crm-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_modules' }, scheduleRefetch)
+      .subscribe();
+
+    // 兜底轮询：即使 Realtime 未在 Supabase 后台开启，也能保证多用户最终一致
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') refetchFromServer();
+    }, 15000);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
+  }, [refetchFromServer]);
+
+  // 持久化：内容变化时落本地 + 广播给其他标签页 + 串行保存到服务器
   useEffect(() => {
     if (!state._loaded) return;
-    const current = JSON.stringify(state.modules);
+    const modules = state.modules;
+    const current = JSON.stringify(modules);
     if (current === lastLocalContentRef.current) return;
+
     lastLocalContentRef.current = current;
+    stableContentRef.current = modulesStableKey(modules);
+    latestModulesRef.current = modules;
+
+    // 1. 本地兜底
+    pendingSaveRef.current = true;
     try {
       window.localStorage.setItem(BACKUP_KEY, current);
-      snapshotRef.current = current;
-      setSaveError(null);
     } catch (err) {
-      console.error('[CRM] 保存失败:', err);
+      console.error('[CRM] 本地保存失败:', err);
       setSaveError('CRM 数据保存失败，请检查浏览器存储空间');
     }
+
+    // 2. 广播给其他标签页
     try {
-      bcRef.current?.postMessage({ kind: 'full-snapshot', modules: state.modules });
+      bcRef.current?.postMessage({ kind: 'full-snapshot', modules });
     } catch {}
-  }, [state.modules, state._loaded]);
+
+    // 3. 串行保存到 Supabase
+    enqueueSave(modules);
+  }, [state.modules, state._loaded, enqueueSave]);
+
+  // ===== 关页面/切后台时强制 flush，防止数据滞留内存 =====
+  useEffect(() => {
+    const flush = () => {
+      const modules = latestModulesRef.current;
+      if (modules && modules.length > 0) enqueueSave(modules);
+    };
+    window.addEventListener('pagehide', flush);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [enqueueSave]);
+
+  // ===== 包装 dispatch：拦截删除动作，记录被显式删除的模块 ID =====
+  const trackedDispatch = useCallback((action: CrmAction) => {
+    if (action.type === 'CRM_DELETE_MODULE') {
+      deletedModuleIdsRef.current.add(action.payload);
+    }
+    dispatch(action);
+  }, [dispatch]);
 
   useEffect(() => {
     if (!saveError) return;
@@ -559,7 +846,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [saveError]);
 
-  const value = useMemo(() => ({ state, dispatch, saveError }), [state, saveError]);
+  const value = useMemo(() => ({ state, dispatch: trackedDispatch, saveError }), [state, trackedDispatch, saveError]);
 
   return (
     <CrmContext.Provider value={value}>
