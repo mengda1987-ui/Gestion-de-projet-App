@@ -12,12 +12,17 @@ import { generateId } from '@/lib/utils';
 interface ContactModalProps {
   contact: CrmContact | null;
   onClose: () => void;
+  /** 明确指定联系人归属的板块，避免后台同步把 activeModuleId 改动后联系人存错板块 */
+  moduleId?: string;
 }
 
-export default function ContactModal({ contact, onClose }: ContactModalProps) {
+export default function ContactModal({ contact, onClose, moduleId }: ContactModalProps) {
   const { stages, fields, activeModuleId, dispatch } = useCrm();
   const { users, currentUser } = useBoard();
   const { t } = useLang();
+
+  // 优先用调用方显式传入的板块（用户看得见的那个），否则退回当前激活板块
+  const targetModuleId = moduleId || activeModuleId;
 
   const [name, setName] = useState(contact?.name || '');
   const [email, setEmail] = useState(contact?.email || '');
@@ -38,7 +43,7 @@ export default function ContactModal({ contact, onClose }: ContactModalProps) {
       dispatch({
         type: 'CRM_UPDATE_CONTACT',
         payload: {
-          moduleId: activeModuleId,
+          moduleId: targetModuleId,
           contactId: contact.id,
           updates: { name: trimmed, email, phone, company, tags: tagList, ownerId, stageId, notes, customFields },
         },
@@ -59,7 +64,7 @@ export default function ContactModal({ contact, onClose }: ContactModalProps) {
         createdAt: now,
         updatedAt: now,
       };
-      dispatch({ type: 'CRM_ADD_CONTACT', payload: { moduleId: activeModuleId, contact: newContact } });
+      dispatch({ type: 'CRM_ADD_CONTACT', payload: { moduleId: targetModuleId, contact: newContact } });
     }
     onClose();
   };

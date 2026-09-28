@@ -334,13 +334,17 @@ function updateModule(
 
 function crmReducer(state: CrmState, action: CrmAction): CrmState {
   switch (action.type) {
-    case 'CRM_LOAD':
+    case 'CRM_LOAD': {
+      // 保留用户当前选中的板块，不要因为后台刷新/轮询就把视图弹回第一个模块。
+      // 仅在两种情况下才需要切换：1) 首次加载；2) 当前选中的模块已不存在（被删除）。
+      const stillExists = action.payload.some(m => m.id === state.activeModuleId);
       return {
         ...state,
         modules: action.payload,
-        activeModuleId: action.payload[0]?.id || state.activeModuleId,
+        activeModuleId: stillExists ? state.activeModuleId : (action.payload[0]?.id || ''),
         _loaded: true,
       };
+    }
 
     case 'CRM_SET_MODULE':
       return { ...state, activeModuleId: action.payload };
@@ -555,6 +559,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const pendingSaveRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const loadedRef = useRef(false);
+  // Realtime 是否真的能收到推送（决定轮询兜底的快慢）
+  const realtimeOkRef = useRef(false);
   // 显式删除追踪：只有用户主动删除的模块才会从服务器删除，避免误删他人数据
   const deletedModuleIdsRef = useRef<Set<string>>(new Set());
 
@@ -766,22 +772,48 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const scheduleRefetch = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => refetchFromServer(), 800);
+      // Realtime 已确认可用时，延迟可以更短（推送已到，只需防抖）
+      timer = setTimeout(() => refetchFromServer(), realtimeOkRef.current ? 200 : 800);
     };
 
     const channel = supabase
       .channel('crm-realtime-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_modules' }, scheduleRefetch)
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_modules' }, () => {
+        realtimeOkRef.current = true;
+        scheduleRefetch();
+      })
+      .subscribe((status) => {
+        realtimeOkRef.current = status === 'SUBSCRIBED';
+      });
 
-    // 兜底轮询：即使 Realtime 未在 Supabase 后台开启，也能保证多用户最终一致
-    const poll = setInterval(() => {
+    // 兜底轮询：Realtime 未启用时自动加快到 3 秒（启用时放宽到 15 秒，省流量）
+    const pollMs = () => (realtimeOkRef.current ? 15000 : 3000);
+    let pollId: ReturnType<typeof setInterval>;
+    const startPoll = () => {
+      pollId = setInterval(() => {
+        if (document.visibilityState === 'visible') refetchFromServer();
+      }, pollMs());
+    };
+    startPoll();
+    // 每 20 秒根据 realtime 状态重新校准轮询间隔
+    const recalibrate = setInterval(() => {
+      clearInterval(pollId);
+      startPoll();
+    }, 20000);
+
+    // 切回前台立即同步一次，避免"切走期间别人的改动"要等轮询才出现
+    const onVisible = () => {
       if (document.visibilityState === 'visible') refetchFromServer();
-    }, 15000);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
 
     return () => {
       if (timer) clearTimeout(timer);
-      clearInterval(poll);
+      clearInterval(pollId);
+      clearInterval(recalibrate);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
       supabase.removeChannel(channel);
     };
   }, [refetchFromServer]);
