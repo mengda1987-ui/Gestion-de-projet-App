@@ -12,11 +12,13 @@ import { generateId } from '@/lib/utils';
 interface ContactModalProps {
   contact: CrmContact | null;
   onClose: () => void;
+  /** 删除联系人（上层会做二次确认）。新建未落库时不会调用 */
+  onDelete?: (contactId: string) => void;
   /** 明确指定联系人归属的板块，避免后台同步把 activeModuleId 改动后联系人存错板块 */
   moduleId?: string;
 }
 
-export default function ContactModal({ contact, onClose, moduleId }: ContactModalProps) {
+export default function ContactModal({ contact, onClose, onDelete, moduleId }: ContactModalProps) {
   const { stages, fields, activeModuleId, dispatch } = useCrm();
   const { users, currentUser } = useBoard();
   const { t } = useLang();
@@ -89,6 +91,18 @@ export default function ContactModal({ contact, onClose, moduleId }: ContactModa
     const timer = setTimeout(() => commit(payload), 600);
     return () => clearTimeout(timer);
   }, [buildPayload, commit]);
+
+  // 删除联系人。两条关键保护：
+  // 1) 尚未落库的新建联系人（auto-save 还没触发过）→ 直接关闭即可，无需 dispatch，避免报错
+  // 2) 走 onDelete 让上层做二次确认后再真正删除
+  const handleDelete = useCallback(() => {
+    if (!createdRef.current) {
+      onClose();
+      return;
+    }
+    onDelete?.(contactIdRef.current);
+    onClose();
+  }, [onClose, onDelete]);
 
   // 关闭（点遮罩、点 X、或组件卸载）时立即落库，确保最后输入的内容不丢
   const handleClose = useCallback(() => {
@@ -193,13 +207,21 @@ export default function ContactModal({ contact, onClose, moduleId }: ContactModa
           <textarea value={notes} onChange={e => setNotes(e.target.value)} className="input min-h-[90px] resize-y" placeholder={t('crm.notes')} />
         </div>
 
-        <div className="mt-6 flex items-center gap-2.5">
-          <p className="flex-1 text-xs text-slate-400 dark:text-slate-500">
-            {t('crm.autosaveHint')}
-          </p>
-          <button onClick={handleClose} className="btn-primary px-6">
-            {t('common.confirm')}
+        <div className="mt-6 flex items-center justify-between gap-2.5">
+          <button
+            onClick={handleDelete}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            {t('common.delete')}
           </button>
+          <div className="flex items-center gap-2.5">
+            <p className="text-xs text-slate-400 dark:text-slate-500 hidden sm:block">
+              {t('crm.autosaveHint')}
+            </p>
+            <button onClick={handleClose} className="btn-primary px-6">
+              {t('common.confirm')}
+            </button>
+          </div>
         </div>
       </div>
     </div>,

@@ -346,6 +346,7 @@ export default function CrmApp() {
         <ContactModal
           contact={editingContact}
           moduleId={contactModuleId}
+          onDelete={handleDelete}
           onClose={() => { setShowAdd(false); setEditingContact(null); }}
         />
       )}
@@ -383,7 +384,7 @@ export default function CrmApp() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.8
+        v2.2.9
       </div>
     </div>
   );
