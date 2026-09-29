@@ -319,17 +319,38 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           supabase.from('users').select('*'),
           supabase.from('boards').select('*'),
         ]),
-        timeout.then(() => { throw new Error('timeout'); }),
+        timeout,
       ]) as any;
 
+      // 背景设置单独请求，并使用「独立」的超时 Promise。
+      // 注意：不能复用上面的 timeout —— 它一旦 settle 就无法再次参与 race，
+      // 会导致这里瞬时抛错并被 catch 吞掉，settingsData 退化为 null，
+      // 背景数据整体丢失（表现为所有页面背景变成默认浅灰/空白）。
       let settingsData: any = null;
       try {
-        const { data } = await Promise.race([
+        const settingsTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('settings request timed out')), 8000)
+        );
+        const { data, error } = await Promise.race([
           supabase.from('workspace_settings').select('*').limit(1).maybeSingle(),
-          timeout.then(() => { throw new Error('timeout'); }),
+          settingsTimeout,
         ]) as any;
-        settingsData = data;
-      } catch {}
+        if (!error && data) {
+          settingsData = data;
+        } else if (error) {
+          // 退化方案：maybeSingle 在多行或特定情况下会报错，改用数组查询兜底，
+          // 确保背景设置尽可能取到，而不是静默丢失。
+          try {
+            const { data: rows } = await supabase
+              .from('workspace_settings')
+              .select('*')
+              .limit(1) as any;
+            if (Array.isArray(rows) && rows.length > 0) settingsData = rows[0];
+          } catch {}
+        }
+      } catch (e) {
+        console.warn('[bg] workspace_settings 加载失败，将退回本地/默认背景:', e);
+      }
 
       const remote = rowsToBackupData(usersData, boardsData, settingsData);
 
@@ -475,17 +496,33 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             supabase.from('users').select('*'),
             supabase.from('boards').select('*'),
           ]),
-          timeout.then(() => { throw new Error('timeout'); }),
+          timeout,
         ]) as any;
 
+        // 背景设置使用「独立」超时 Promise（不能复用上面的 timeout，原因见 refetchFromServer）
         let settingsData: any = null;
         try {
-          const { data } = await Promise.race([
+          const settingsTimeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('settings request timed out')), 8000)
+          );
+          const { data, error } = await Promise.race([
             supabase.from('workspace_settings').select('*').limit(1).maybeSingle(),
-            timeout.then(() => { throw new Error('timeout'); }),
+            settingsTimeout,
           ]) as any;
-          settingsData = data;
-        } catch {}
+          if (!error && data) {
+            settingsData = data;
+          } else if (error) {
+            try {
+              const { data: rows } = await supabase
+                .from('workspace_settings')
+                .select('*')
+                .limit(1) as any;
+              if (Array.isArray(rows) && rows.length > 0) settingsData = rows[0];
+            } catch {}
+          }
+        } catch (e) {
+          console.warn('[bg] workspace_settings 加载失败，将退回本地/默认背景:', e);
+        }
 
         const users: User[] = (usersData || []).map((u: any) => ({
           id: u.id,
