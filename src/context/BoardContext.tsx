@@ -12,7 +12,9 @@ import { mindmapOpsReducer } from './reducers/mindmapOpsReducer';
 import { syncMindMapCards } from './middlewares/mindmapSync';
 import { syncBoardInList } from './middlewares/boardListSync';
 import { supabase } from '@/lib/supabase';
-import { MOCK_USERS, MOCK_BOARDS } from '@/data/mockData';
+// 注意：不再导入 MOCK_BOARDS/MOCK_USERS。
+// 历史遗留的 mock 兜底会把示例数据写回生产数据库（曾导致「产品开发项目」污染），
+// 现已改为「服务器不可用 → 空数据 + 禁止写回」。
 import type { User, Board } from '@/types';
 
 const BACKUP_KEY = 'trello_local_backup_v1';
@@ -175,6 +177,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const latestSnapshotRef = useRef<BackupData | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingSaveRef = useRef(false);
+  // 当本轮数据来自「服务器不可用」的降级路径（空数据）时置位，
+  // 用于阻止持久化 effect 把这批降级数据写回云端，避免污染服务器真实数据。
+  const blockSaveRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
   // 显式删除追踪：只有用户主动删除的看板/用户才会从服务器删除，
   // 避免“快照对比自动删除”误删他人数据。
@@ -352,6 +357,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         console.warn('[bg] workspace_settings 加载失败，将退回本地/默认背景:', e);
       }
 
+      // 服务器已成功响应：解除降级保护，允许后续正常写回。
+      const wasBlocked = blockSaveRef.current;
+      blockSaveRef.current = false;
+
       const remote = rowsToBackupData(usersData, boardsData, settingsData);
 
       // ===== 逐看板合并：以 updatedAt 为准，谁新用谁 =====
@@ -401,7 +410,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       };
 
       const stable = stableKey(merged);
-      if (stable === stableContentRef.current) return;
+      // 若刚从「服务器不可用」的降级状态恢复，强制应用远端数据，
+      // 保证屏幕上立刻从空看板切回真实数据。
+      if (!wasBlocked && stable === stableContentRef.current) return;
 
       stableContentRef.current = stable;
       lastLocalContentRef.current = JSON.stringify(merged);
@@ -665,9 +676,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           };
           setSaveError('服务器连接失败，已加载本地备份数据');
         } else {
+          // 服务器连不上且无本地备份：使用「空数据」而不是 mock 示例数据。
+          // 历史遗留问题：这里曾加载 MOCK_BOARDS/MOCK_USERS，而它随后会被持久化
+          // effect 当作真实数据写回 Supabase，导致「产品开发项目」等示例看板
+          // 污染生产数据库。因此必须用空数据，并禁止本轮写回。
           dataToUse = {
-            boards: MOCK_BOARDS,
-            users: MOCK_USERS,
+            boards: [],
+            users: [],
             workspaceBackground: '#f5f5f7',
             loginBackground: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
             portalBackground: '#f5f5f7',
@@ -676,15 +691,18 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             crmImageOpacity: 1,
             logo: '',
           };
+          // 关键保护：本轮数据来自「服务器不可用」的降级路径，绝不允许写回云端，
+          // 否则会用空/示例数据覆盖服务器上的真实数据。
+          blockSaveRef.current = true;
+          setSaveError('服务器连接失败，请检查网络后刷新页面');
         }
 
         dispatch({ type: 'LOAD_ALL_DATA', payload: dataToUse });
         loadedRef.current = true;
         boardsSnapshotRef.current = JSON.stringify(dataToUse.boards);
         usersSnapshotRef.current = JSON.stringify(dataToUse.users);
-        lastLocalContentRef.current = JSON.stringify(dataToUse);
-        stableContentRef.current = stableKey(dataToUse);
-        latestSnapshotRef.current = dataToUse;
+        // 注意：这里不更新 lastLocalContentRef / stableContentRef，
+        // 使得网络恢复后 refetchFromServer 拉取到的真实数据能被正常应用。
       }
     }
     loadData();
@@ -693,6 +711,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // ===== 持久化：内容变化时立即落本地 + 广播 + 串行保存 =====
   useEffect(() => {
     if (!state._loaded) return;
+    // 降级路径（服务器不可用）下禁止写回，避免用空数据覆盖云端真实数据。
+    if (blockSaveRef.current) return;
 
     const data = buildBackup(state);
     const content = JSON.stringify(data);
