@@ -3,8 +3,14 @@
 import { useState, useMemo } from 'react';
 import { CrmContact, CrmStage, CrmField, User } from '@/types';
 import { useLang } from '@/context/LangContext';
-import { Pencil, Trash2, Mail, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Pencil, Trash2, Mail, ArrowUp, ArrowDown, ArrowUpDown, Link2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+
+export interface LinkedTask {
+  boardTitle: string;
+  columnTitle: string;
+  cardTitle: string;
+}
 
 interface ContactsViewProps {
   contacts: CrmContact[];
@@ -13,6 +19,9 @@ interface ContactsViewProps {
   users: User[];
   onEdit: (contact: CrmContact) => void;
   onDelete: (contactId: string) => void;
+  // 反查：某个 CRM 联系人在看板里被哪些卡片关联（跨模块打通）
+  getLinkedTasks?: (contactId: string) => LinkedTask[];
+  onOpenTask?: (contactId: string) => void;
 }
 
 function stageName(stages: CrmStage[], id: string): string {
@@ -23,9 +32,10 @@ function userName(users: User[], id: string): string {
   return users.find(u => u.id === id)?.name || '—';
 }
 
-export default function ContactsView({ contacts, stages, fields, users, onEdit, onDelete }: ContactsViewProps) {
+export default function ContactsView({ contacts, stages, fields, users, onEdit, onDelete, getLinkedTasks, onOpenTask }: ContactsViewProps) {
   const { t, lang } = useLang();
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
 
   const toggleSort = (key: string) => {
     setSort(prev => {
@@ -107,6 +117,14 @@ export default function ContactsView({ contacts, stages, fields, users, onEdit, 
                 {sortIcon('owner')}
               </button>
             </th>
+            {getLinkedTasks && (
+              <th className="px-4 py-3 whitespace-nowrap">
+                <span className="flex items-center gap-1">
+                  <Link2 size={12} />
+                  {t('crm.linkedTasks')}
+                </span>
+              </th>
+            )}
             <th className="px-4 py-3 whitespace-nowrap hidden xl:table-cell">
               <button onClick={() => toggleSort('updated')} className="flex items-center gap-1 hover:text-[#007AFF] transition-colors">
                 {t('crm.updated')}
@@ -164,6 +182,48 @@ export default function ContactsView({ contacts, stages, fields, users, onEdit, 
                 <td className="px-4 py-3 whitespace-nowrap text-slate-400 dark:text-slate-500 hidden xl:table-cell">
                   {formatDate(contact.updatedAt, lang)}
                 </td>
+                {getLinkedTasks && (
+                  <td className="px-4 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                    {(() => {
+                      const tasks = getLinkedTasks(contact.id);
+                      if (tasks.length === 0) {
+                        return <span className="text-xs text-slate-300 dark:text-slate-600">{t('crm.linkedTasks.none')}</span>;
+                      }
+                      const expanded = expandedContactId === contact.id;
+                      return (
+                        <div className="relative">
+                          <button
+                            onClick={() => setExpandedContactId(expanded ? null : contact.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                            title={t('crm.linkedTasks.title')}
+                          >
+                            <Link2 size={11} />
+                            {tasks.length}
+                          </button>
+                          {expanded && (
+                            <div className="absolute left-0 top-full mt-1 z-40 w-72 p-2.5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg animate-slide-up">
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                {t('crm.linkedTasks.title')}
+                              </div>
+                              <div className="space-y-1 max-h-56 overflow-y-auto">
+                                {tasks.map((task, i) => (
+                                  <div key={i} className="px-2 py-1.5 rounded-md bg-slate-50 dark:bg-slate-700/50">
+                                    <div className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
+                                      {task.cardTitle}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                                      {task.boardTitle} › {task.columnTitle}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
+                )}
                 <td className="px-5 py-3 whitespace-nowrap">
                   <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                     <button

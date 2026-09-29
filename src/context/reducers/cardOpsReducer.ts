@@ -234,6 +234,25 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
       return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
     }
 
+    case 'TOGGLE_CARD_CONTACT': {
+      const columns = state.board.columns.map(col => ({
+        ...col,
+        cards: col.cards.map(c => {
+          if (c.id !== action.payload.cardId) return c;
+          const current = c.linkedContacts || [];
+          const has = current.includes(action.payload.contactId);
+          return {
+            ...c,
+            linkedContacts: has
+              ? current.filter(id => id !== action.payload.contactId)
+              : [...current, action.payload.contactId],
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+    }
+
     case 'ADD_ATTACHMENT': {
       const newAttachment: Attachment = {
         id: generateId(),

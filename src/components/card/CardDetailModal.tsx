@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, Label, User, Checklist, ChecklistItem, Attachment, Comment } from '@/types';
 import { useBoard } from '@/context/BoardContext';
+import { useCrm } from '@/context/CrmContext';
 import { useLang } from '@/context/LangContext';
 import { Avatar, AvatarStack } from '@/components/ui/Avatar';
 import { LabelBadge } from '@/components/ui/LabelBadge';
@@ -37,6 +38,7 @@ import {
   Quote,
   List as ListIcon,
   Link,
+  Building2,
 } from 'lucide-react';
 import {
   cn,
@@ -56,7 +58,7 @@ interface CardDetailModalProps {
   onClose: () => void;
 }
 
-type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'duedate';
+type SectionTab = 'activity' | 'checklist' | 'description' | 'attachments' | 'labels' | 'members' | 'contacts' | 'duedate';
 
 const LABEL_COLOR_PALETTE = [
   '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
@@ -237,10 +239,20 @@ export default function CardDetailModal({
   onClose,
 }: CardDetailModalProps) {
   const { board, users, currentUser, broadcastChange, findCard } = useBoard();
+  const { modules: crmModules } = useCrm();
   const { lang, t } = useLang();
 
   const latestCard = findCard(card.id)?.card || card;
   const column = board.columns.find(c => c.id === columnId);
+
+  // ===== 关联 CRM 客户（跨模块打通）=====
+  // 展开所有板块的联系人，并带上所属板块信息，供搜索与展示使用。
+  const allCrmContacts = crmModules.flatMap(m =>
+    (m.contacts || []).map(c => ({ contact: c, module: m }))
+  );
+  const linkedContactEntries = (latestCard.linkedContacts || [])
+    .map(id => allCrmContacts.find(e => e.contact.id === id))
+    .filter((e): e is { contact: typeof allCrmContacts[0]['contact']; module: typeof allCrmContacts[0]['module'] } => e !== undefined);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(latestCard.title);
@@ -248,6 +260,8 @@ export default function CardDetailModal({
   const [descValue, setDescValue] = useState(latestCard.description);
   const [showLabels, setShowLabels] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showContacts, setShowContacts] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
   const [showDueDate, setShowDueDate] = useState(false);
   const [dueDateValue, setDueDateValue] = useState(
     latestCard.dueDate ? format(parseISO(latestCard.dueDate), 'yyyy-MM-dd') : ''
@@ -562,11 +576,16 @@ export default function CardDetailModal({
                 { id: 'description' as SectionTab, label: t('card.description'), icon: AlignLeft },
                 { id: 'labels' as SectionTab, label: t('card.labels'), icon: Tags },
                 { id: 'members' as SectionTab, label: t('card.members'), icon: Users },
+                { id: 'contacts' as SectionTab, label: t('card.contacts'), icon: Building2 },
                 { id: 'duedate' as SectionTab, label: t('card.dueDate'), icon: Calendar },
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
-                  onClick={() => setActiveTab(id)}
+                  onClick={() => {
+                    setActiveTab(id);
+                    // 移动端侧栏被隐藏，切到本 Tab 时同步展开对应面板
+                    if (id === 'contacts') setShowContacts(true);
+                  }}
                   className={cn(
                     'flex items-center gap-1 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
                     activeTab === id
@@ -1272,6 +1291,121 @@ export default function CardDetailModal({
                           );
                         })}
                       </div>
+                    </div>
+                  )}
+
+                  <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:border-[#007AFF]/40 hover:shadow-sm transition-all group"
+                    onClick={() => { setShowContacts(!showContacts); setContactSearch(''); }}
+                  >
+                    <Building2 size={15} className="text-slate-500 group-hover:text-[#007AFF]" />
+                    <span className="flex-1 text-left">{t('card.contacts')}</span>
+                    {linkedContactEntries.length > 0 && (
+                      <span className="text-[10px] font-semibold bg-[#007AFF]/10 text-[#007AFF] rounded-full px-1.5 py-0.5">
+                        {linkedContactEntries.length}
+                      </span>
+                    )}
+                    <ChevronDown size={14} className={cn('text-slate-400 transition-transform', showContacts && 'rotate-180')} />
+                  </button>
+
+                  {showContacts && (
+                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2 animate-slide-up">
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        {t('card.contacts.hint')}
+                      </div>
+
+                      {linkedContactEntries.length === 0 ? (
+                        <div className="text-xs text-slate-400 dark:text-slate-500 py-1.5">
+                          {t('card.contacts.empty')}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {linkedContactEntries.map(({ contact, module: mod }) => (
+                            <div
+                              key={contact.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-slate-100 dark:bg-slate-700"
+                            >
+                              <span className="text-sm shrink-0">{mod.emoji}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
+                                  {contact.name || '—'}
+                                </div>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                                  {lang === 'en' ? (mod.nameEn || mod.name) : mod.name}
+                                  {contact.company ? ` · ${contact.company}` : ''}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => broadcastChange({
+                                  type: 'TOGGLE_CARD_CONTACT',
+                                  payload: { cardId: latestCard.id, contactId: contact.id },
+                                })}
+                                title={t('card.contacts.remove')}
+                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <input
+                        value={contactSearch}
+                        onChange={(e) => setContactSearch(e.target.value)}
+                        placeholder={t('card.contacts.search')}
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400/50"
+                      />
+
+                      {(() => {
+                        const q = contactSearch.trim().toLowerCase();
+                        const candidates = allCrmContacts
+                          .filter(({ contact }) => !(latestCard.linkedContacts || []).includes(contact.id))
+                          .filter(({ contact, module: mod }) => {
+                            if (!q) return true;
+                            return (
+                              (contact.name || '').toLowerCase().includes(q) ||
+                              (contact.company || '').toLowerCase().includes(q) ||
+                              (contact.email || '').toLowerCase().includes(q) ||
+                              (mod.name || '').toLowerCase().includes(q) ||
+                              (mod.nameEn || '').toLowerCase().includes(q)
+                            );
+                          })
+                          .slice(0, 50);
+
+                        if (candidates.length === 0) {
+                          return (
+                            <div className="text-xs text-slate-400 dark:text-slate-500 py-1.5 text-center">
+                              {t('card.contacts.none')}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                            {candidates.map(({ contact, module: mod }) => (
+                              <button
+                                key={contact.id}
+                                onClick={() => broadcastChange({
+                                  type: 'TOGGLE_CARD_CONTACT',
+                                  payload: { cardId: latestCard.id, contactId: contact.id },
+                                })}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all"
+                              >
+                                <span className="text-sm shrink-0">{mod.emoji}</span>
+                                <div className="flex-1 min-w-0 text-left">
+                                  <div className="text-xs text-slate-700 dark:text-slate-200 truncate">
+                                    {contact.name || '—'}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                                    {lang === 'en' ? (mod.nameEn || mod.name) : mod.name}
+                                    {contact.company ? ` · ${contact.company}` : ''}
+                                  </div>
+                                </div>
+                                <Plus size={13} className="text-slate-400 shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 

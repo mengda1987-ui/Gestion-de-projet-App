@@ -115,6 +115,7 @@ export interface Card {
   mmNodeId?: string;
   mmPosition?: { x: number; y: number };
   visibleTo?: string[]; // Admin: user IDs who can see this card
+  linkedContacts?: string[]; // 关联的 CRM 联系人 ID（跨模块打通）
 }
 
 export interface Column {

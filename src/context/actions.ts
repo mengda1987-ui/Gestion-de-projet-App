@@ -37,6 +37,7 @@ export type Action =
   | { type: 'DELETE_LABEL'; payload: { labelId: string } }
   | { type: 'TOGGLE_CARD_LABEL'; payload: { cardId: string; labelId: string } }
   | { type: 'TOGGLE_CARD_ASSIGNEE'; payload: { cardId: string; userId: string } }
+  | { type: 'TOGGLE_CARD_CONTACT'; payload: { cardId: string; contactId: string } }
   | { type: 'TOGGLE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string } }
   | { type: 'UPDATE_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; itemId: string; updates: Partial<import('@/types').ChecklistItem> } }
   | { type: 'ADD_CHECKLIST_ITEM'; payload: { cardId: string; checklistId: string; text: string; itemId?: string } }

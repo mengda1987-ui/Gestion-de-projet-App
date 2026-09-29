@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useCrm } from '@/context/CrmContext';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
-import ContactsView from './ContactsView';
+import ContactsView, { LinkedTask } from './ContactsView';
 import PipelineView from './PipelineView';
 import ContactModal from './ContactModal';
 import FieldManagerModal from './FieldManagerModal';
@@ -31,7 +31,7 @@ import type { CrmContact, CrmModule } from '@/types';
 
 export default function CrmApp() {
   const { dispatch, modules, module, activeModuleId, view, contacts, stages, fields } = useCrm();
-  const { users, currentUser, darkMode, crmBackground, crmImageOpacity, dispatch: boardDispatch } = useBoard();
+  const { users, currentUser, darkMode, crmBackground, crmImageOpacity, boards, dispatch: boardDispatch } = useBoard();
   const { t, lang, toggleLang } = useLang();
 
   const [search, setSearch] = useState('');
@@ -44,6 +44,21 @@ export default function CrmApp() {
   // 锁定当前展示联系人的板块：联系人列表来自 module，操作也应作用于同一个板块。
   // 直接读 activeModuleId 会在后台同步改动它时导致"在不属于当前板块的地方增删联系人"。
   const contactModuleId = module?.id || activeModuleId;
+
+  // ===== 反查：某个 CRM 联系人被哪些看板卡片关联（跨模块打通）=====
+  const getLinkedTasks = (contactId: string): LinkedTask[] => {
+    const result: LinkedTask[] = [];
+    for (const b of boards || []) {
+      for (const col of b.columns || []) {
+        for (const card of col.cards || []) {
+          if ((card.linkedContacts || []).includes(contactId)) {
+            result.push({ boardTitle: b.title, columnTitle: col.title, cardTitle: card.title });
+          }
+        }
+      }
+    }
+    return result;
+  };
 
   const isImageBg = isImageBackground(crmBackground);
 
@@ -312,6 +327,7 @@ export default function CrmApp() {
               users={users}
               onEdit={setEditingContact}
               onDelete={handleDelete}
+              getLinkedTasks={getLinkedTasks}
             />
           ) : (
             <PipelineView
@@ -367,7 +383,7 @@ export default function CrmApp() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.7
+        v2.2.8
       </div>
     </div>
   );
