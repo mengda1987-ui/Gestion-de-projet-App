@@ -16,7 +16,7 @@ export default function Portal() {
   const isImageBg = isImageBackground(portalBackground);
 
   return (
-    <div className="relative min-h-dvh" data-bg-root="portal" style={isImageBg ? { backgroundColor: '#f5f5f7' } : getBgStyle(portalBackground)}>
+    <div className="relative min-h-dvh" style={isImageBg ? { backgroundColor: '#f5f5f7' } : getBgStyle(portalBackground)}>
       {isImageBg && (
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -131,7 +131,7 @@ export default function Portal() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.5
+        v2.2.6
       </div>
     </div>
   );

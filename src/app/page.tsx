@@ -3,7 +3,6 @@
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import dynamic from 'next/dynamic';
-import BgDiagnostics from '@/components/ui/BgDiagnostics';
 
 const LoginPageDynamic = dynamic(() => import('./login/page'), { ssr: false });
 const MainBoardDynamic = dynamic(() => import('@/components/board/MainBoard'), { ssr: false });
@@ -12,18 +11,8 @@ const PortalDynamic = dynamic(() => import('@/components/portal/Portal'), { ssr:
 const CrmAppDynamic = dynamic(() => import('@/components/crm/CrmApp'), { ssr: false });
 
 export default function Home() {
-  const { currentUser, boards, currentBoardId, appSection, _loaded, portalBackground, loginBackground, workspaceBackground, crmBackground } = useBoard();
+  const { currentUser, boards, currentBoardId, appSection, _loaded } = useBoard();
   const { lang } = useLang();
-
-  // 临时诊断面板：仅在有用户登录后显示，便于在 Portal/看板页面直接查看背景值
-  const diag = currentUser ? (
-    <BgDiagnostics
-      portalBackground={portalBackground}
-      loginBackground={loginBackground}
-      workspaceBackground={workspaceBackground}
-      crmBackground={crmBackground}
-    />
-  ) : null;
 
   if (!_loaded) {
     return (
@@ -47,16 +36,16 @@ export default function Home() {
   }
 
   if (appSection === 'crm') {
-    return <>{diag}<CrmAppDynamic /></>;
+    return <CrmAppDynamic />;
   }
 
   if (appSection === 'board') {
     if (currentBoardId && boards.some(b => b.id === currentBoardId)) {
-      return <>{diag}<MainBoardDynamic /></>;
+      return <MainBoardDynamic />;
     }
-    return <>{diag}<BoardHomeDynamic /></>;
+    return <BoardHomeDynamic />;
   }
 
   // Portal: choose between Board and CRM
-  return <>{diag}<PortalDynamic /></>;
+  return <PortalDynamic />;
 }
