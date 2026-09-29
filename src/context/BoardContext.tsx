@@ -520,19 +520,44 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         const serverHasData = (boards?.length > 0) || (users?.length > 0);
         // 本地备份是否存在尚未同步到服务器的改动
         const hasPendingLocal = !!backup && backup.pending === true;
-        // 采用本地备份的条件：有未同步改动；或服务器为空但本地有历史数据（恢复）
-        const useLocal = hasPendingLocal || (!serverHasData && !!backup && (backup.boards?.length > 0));
+        // 服务器是否已有有效的背景设置（有值才算有效）
+        const serverHasAppearance = (v: unknown) => typeof v === 'string' && v.length > 0;
+        const serverHasBackgrounds =
+          serverHasAppearance(wsSettings.workspace_background) ||
+          serverHasAppearance(wsSettings.login_background) ||
+          serverHasAppearance(wsSettings.portal_background) ||
+          serverHasAppearance(wsSettings.crm_background);
+        // 本地备份里的背景是否残缺（旧版本写入的备份可能缺少这些字段）
+        const localBackupMissingBg = !!backup && !(
+          serverHasAppearance(backup.workspaceBackground) ||
+          serverHasAppearance(backup.loginBackground) ||
+          serverHasAppearance(backup.portalBackground) ||
+          serverHasAppearance(backup.crmBackground)
+        );
+        // 采用本地备份的条件：有未同步改动；或服务器为空但本地有历史数据（恢复）。
+        // 例外：若本地备份背景残缺（undefined/空），而服务器上有完整背景设置，
+        // 则放弃本地备份的背景，改用服务器值，避免"背景一片白"。
+        const useLocal = (hasPendingLocal || (!serverHasData && !!backup && (backup.boards?.length > 0)));
 
         let dataToUse: BackupData;
         let savedAt: string;
         if (useLocal && backup) {
+          const preferServerBg = localBackupMissingBg && serverHasBackgrounds;
           dataToUse = {
             boards: backup.boards,
             users: backup.users || [],
-            workspaceBackground: backup.workspaceBackground || '#f5f5f7',
-            loginBackground: backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-            portalBackground: backup.portalBackground || '#f5f5f7',
-            crmBackground: backup.crmBackground || '#f5f5f7',
+            workspaceBackground: preferServerBg
+              ? (wsSettings.workspace_background || backup.workspaceBackground || '#f5f5f7')
+              : (backup.workspaceBackground || '#f5f5f7'),
+            loginBackground: preferServerBg
+              ? (wsSettings.login_background || backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)')
+              : (backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)'),
+            portalBackground: preferServerBg
+              ? (wsSettings.portal_background || backup.portalBackground || '#f5f5f7')
+              : (backup.portalBackground || '#f5f5f7'),
+            crmBackground: preferServerBg
+              ? (wsSettings.crm_background || backup.crmBackground || '#f5f5f7')
+              : (backup.crmBackground || '#f5f5f7'),
             portalImageOpacity: typeof backup.portalImageOpacity === 'number' ? backup.portalImageOpacity : 1,
             crmImageOpacity: typeof backup.crmImageOpacity === 'number' ? backup.crmImageOpacity : 1,
             logo: backup.logo || '',
@@ -571,9 +596,20 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         } catch {}
 
         if (useLocal && backup) {
-          // 本地有未同步改动，或服务器为空需要恢复：补保存到服务器
-          pendingSaveRef.current = true;
-          enqueueSave(dataToUse);
+          // 仅在"确实有未同步改动"或"服务器为空需恢复"时才补保存，
+          // 避免一份陈旧的 pending 备份把服务器上正确的背景设置覆盖掉。
+          const shouldPushToServer = !localBackupMissingBg || !serverHasBackgrounds || hasPendingLocal;
+          if (shouldPushToServer) {
+            pendingSaveRef.current = true;
+            enqueueSave(dataToUse);
+          } else {
+            // 本地备份背景残缺且服务器数据完整：丢弃这份陈旧备份的 pending 标记，
+            // 让本地镜像与服务器对齐，防止问题在每次刷新时复发。
+            pendingSaveRef.current = false;
+            try {
+              window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt: new Date().toISOString(), pending: false }));
+            } catch {}
+          }
         }
       } catch (err) {
         console.warn('Supabase load failed:', err);
