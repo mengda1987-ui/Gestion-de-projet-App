@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { useLang } from '@/context/LangContext';
 import { Upload, X, RotateCcw, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, isImageBackground } from '@/lib/utils';
 
 const PRESET_GRADIENTS = [
   { label: 'ocean', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%)' },
@@ -49,7 +49,7 @@ export default function BackgroundPicker({ current, defaultBg, imageOpacity, onS
   const [uploading, setUploading] = useState(false);
   const [opacity, setOpacity] = useState<number>(imageOpacity ?? 1);
 
-  const isImageCurrent = current.startsWith('url(') || current.startsWith('data:');
+  const isImageCurrent = isImageBackground(current);
   const supportsOpacity = imageOpacity !== undefined;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {

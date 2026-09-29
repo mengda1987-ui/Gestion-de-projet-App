@@ -9,6 +9,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getBgStyle(bg: string): CSSProperties {
+  // 防御：bg 可能因为旧备份/广播 payload 缺字段而为 undefined，
+  // 这里必须容忍空值，否则样式计算抛异常会导致整个页面白屏。
+  if (typeof bg !== 'string' || !bg) return { backgroundColor: '#f5f5f7' };
   if (bg.startsWith('url(') || bg.startsWith('data:')) {
     return {
       backgroundImage: bg,
@@ -24,6 +27,7 @@ export function getBgStyle(bg: string): CSSProperties {
 }
 
 export function isImageBackground(bg: string): boolean {
+  if (typeof bg !== 'string' || !bg) return false;
   return bg.startsWith('url(') || bg.startsWith('data:');
 }
 

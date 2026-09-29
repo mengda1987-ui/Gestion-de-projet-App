@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { LogIn, Languages, User2, Lock, Palette, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, isImageBackground } from '@/lib/utils';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function LoginPage() {
@@ -61,6 +61,8 @@ export default function LoginPage() {
   };
 
   const getBgStyle = (bg: string): React.CSSProperties => {
+    // 防御：与 lib/utils 的 getBgStyle 保持一致，容忍空值避免整页崩溃
+    if (typeof bg !== 'string' || !bg) return { backgroundColor: '#f5f5f7' };
     if (bg.startsWith('url(') || bg.startsWith('data:')) {
       return {
         backgroundImage: bg,
@@ -78,7 +80,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 relative" style={getBgStyle(loginBackground)}>
       {/* Subtle gradient orb — only shown when bg is not an image */}
-      {!(loginBackground.startsWith('url(') || loginBackground.startsWith('data:')) && (
+      {!isImageBackground(loginBackground) && (
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none"
           style={{
             background: 'radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%)',
@@ -194,7 +196,7 @@ export default function LoginPage() {
 
       {/* Version badge */}
       <div className="fixed bottom-3 right-4 text-[11px] text-white/60 font-medium select-none pointer-events-none z-50">
-        v2.2.2
+        v2.2.3
       </div>
 
 

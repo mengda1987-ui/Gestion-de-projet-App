@@ -3,6 +3,37 @@ import { Action } from '../actions';
 import { Board, Label } from '@/types';
 import { generateId } from '@/lib/utils';
 
+// 背景/外观字段的兜底：payload 来源于 localStorage 旧备份、跨标签页广播或
+// 服务器返回，任一处字段缺失都会把 state 里对应字段写成 undefined，
+// 导致 getBgStyle(undefined) 抛异常、所有页面背景一起消失。
+// 因此这里统一做空值兜底，绝不让 undefined 进入 state。
+function withAppearance<T extends Partial<BoardState>>(
+  base: T,
+  payload: {
+    workspaceBackground?: unknown;
+    loginBackground?: unknown;
+    portalBackground?: unknown;
+    crmBackground?: unknown;
+    portalImageOpacity?: unknown;
+    crmImageOpacity?: unknown;
+    logo?: unknown;
+  },
+): T {
+  const defaults = createInitialState();
+  const str = (v: unknown, fallback: string) => (typeof v === 'string' && v ? v : fallback);
+  const num = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : 1);
+  return {
+    ...base,
+    workspaceBackground: str(payload.workspaceBackground, defaults.workspaceBackground),
+    loginBackground: str(payload.loginBackground, defaults.loginBackground),
+    portalBackground: str(payload.portalBackground, defaults.portalBackground),
+    crmBackground: str(payload.crmBackground, defaults.crmBackground),
+    portalImageOpacity: num(payload.portalImageOpacity),
+    crmImageOpacity: num(payload.crmImageOpacity),
+    logo: typeof payload.logo === 'string' ? payload.logo : '',
+  };
+}
+
 export function boardOpsReducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
     case 'LOAD_ALL_DATA': {
@@ -24,22 +55,15 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
       const labelMap = new Map<string, Label>();
       migratedBoards.forEach(b => b.labels?.forEach(l => labelMap.set(l.id, l)));
       const boardLabels = Array.from(labelMap.values());
-      return {
+      return withAppearance({
         ...state,
         users,
         boards: migratedBoards,
         board: firstBoard,
         currentBoardId: '',
-        workspaceBackground,
-        loginBackground,
-        portalBackground,
-        crmBackground,
-        portalImageOpacity,
-        crmImageOpacity,
-        logo,
         boardLabels,
         _loaded: true,
-      };
+      }, { workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo });
     }
 
     case 'APPLY_EXTERNAL_STATE': {
@@ -59,20 +83,13 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
       migratedBoards.forEach(b => b.labels?.forEach(l => labelMap.set(l.id, l)));
       const boardLabels = Array.from(labelMap.values());
       const currentBoard = migratedBoards.find(b => b.id === state.currentBoardId) || migratedBoards[0] || state.board;
-      return {
+      return withAppearance({
         ...state,
         users,
         boards: migratedBoards,
         board: currentBoard,
         boardLabels,
-        workspaceBackground,
-        loginBackground,
-        portalBackground,
-        crmBackground,
-        portalImageOpacity,
-        crmImageOpacity,
-        logo,
-      };
+      }, { workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo });
     }
 
     case 'REORDER_BOARDS': {

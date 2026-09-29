@@ -78,6 +78,8 @@ export default function MainBoard() {
 
   // Compute the background CSS style
   const getBgStyle = (bg: string): React.CSSProperties => {
+    // 防御：与 lib/utils 的 getBgStyle 保持一致，容忍空值避免整页崩溃
+    if (typeof bg !== 'string' || !bg) return { backgroundColor: '#f5f5f7' };
     if (bg.startsWith('url(') || bg.startsWith('data:')) {
       return {
         backgroundImage: bg,
@@ -698,7 +700,7 @@ export default function MainBoard() {
       )}
 
       {/* Version */}
-      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.2.2</span>
+      <span className="fixed bottom-3 right-4 text-[10px] text-black font-medium select-none pointer-events-none z-50">v2.2.3</span>
 
 
 
