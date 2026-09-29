@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase';
 
 const BACKUP_KEY = 'trello_crm_backup_v2';
 const SYNC_CHANNEL = 'trello-crm-sync-channel';
+// 记住用户上次停留的板块，避免刷新或状态重建后被弹回第一个模块
+const ACTIVE_MODULE_KEY = 'trello_crm_active_module';
 
 export type CrmView = 'contacts' | 'pipeline';
 
@@ -338,10 +340,23 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
       // 保留用户当前选中的板块，不要因为后台刷新/轮询就把视图弹回第一个模块。
       // 仅在两种情况下才需要切换：1) 首次加载；2) 当前选中的模块已不存在（被删除）。
       const stillExists = action.payload.some(m => m.id === state.activeModuleId);
+      let nextActive = stillExists ? state.activeModuleId : (action.payload[0]?.id || '');
+
+      // 双保险：若内存中的选择已丢失，尝试从上次记住的板块恢复，
+      // 避免"添加联系人后被弹回第一个板块"这类问题，即使 state 被重建也能回到原位。
+      if (!stillExists && state.activeModuleId === '') {
+        try {
+          const remembered = window.localStorage.getItem(ACTIVE_MODULE_KEY);
+          if (remembered && action.payload.some(m => m.id === remembered)) {
+            nextActive = remembered;
+          }
+        } catch {}
+      }
+
       return {
         ...state,
         modules: action.payload,
-        activeModuleId: stillExists ? state.activeModuleId : (action.payload[0]?.id || ''),
+        activeModuleId: nextActive,
         _loaded: true,
       };
     }
@@ -659,7 +674,10 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       stableContentRef.current = stable;
       lastLocalContentRef.current = JSON.stringify(merged);
       latestModulesRef.current = merged;
-      snapshotRef.current = JSON.stringify(remote);
+      // 注意：这里必须用 merged 而不是 remote。
+      // 若用 remote，本地尚未提交成功的改动会被当作"已保存"写进基线，
+      // 导致 doSave 误判"无变化"而跳过上传，改动就永远丢在本地了。
+      snapshotRef.current = JSON.stringify(merged);
       try {
         window.localStorage.setItem(BACKUP_KEY, JSON.stringify(merged));
       } catch {}
@@ -877,6 +895,15 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setSaveError(null), 8000);
     return () => clearTimeout(timer);
   }, [saveError]);
+
+  // 记住当前板块，供下次加载/状态重建时恢复
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!state.activeModuleId) return;
+    try {
+      window.localStorage.setItem(ACTIVE_MODULE_KEY, state.activeModuleId);
+    } catch {}
+  }, [state.activeModuleId]);
 
   const value = useMemo(() => ({ state, dispatch: trackedDispatch, saveError }), [state, trackedDispatch, saveError]);
 

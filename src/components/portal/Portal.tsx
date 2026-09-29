@@ -131,7 +131,7 @@ export default function Portal() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.1
+        v2.2.2
       </div>
     </div>
   );

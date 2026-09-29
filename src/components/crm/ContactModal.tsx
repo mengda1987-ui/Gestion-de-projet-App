@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CrmContact } from '@/types';
 import { useCrm } from '@/context/CrmContext';
@@ -34,50 +34,86 @@ export default function ContactModal({ contact, onClose, moduleId }: ContactModa
   const [notes, setNotes] = useState(contact?.notes || '');
   const [customFields, setCustomFields] = useState<Record<string, string>>(contact?.customFields || {});
 
-  const handleSave = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const tagList = tags.split(',').map(s => s.trim()).filter(Boolean);
+  // 新建时先记录已生成的 id，避免每次自动保存都重复创建联系人
+  const contactIdRef = useRef<string>(contact?.id || '');
+  const createdRef = useRef<boolean>(!!contact);
+  // 保存上一条后已落库的内容，用于跳过无意义的重复提交
+  const lastSavedRef = useRef<string>(contact ? JSON.stringify(contact) : '');
 
-    if (contact) {
-      dispatch({
-        type: 'CRM_UPDATE_CONTACT',
-        payload: {
-          moduleId: targetModuleId,
-          contactId: contact.id,
-          updates: { name: trimmed, email, phone, company, tags: tagList, ownerId, stageId, notes, customFields },
-        },
-      });
-    } else {
+  const buildPayload = useCallback(() => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    return {
+      name: trimmed,
+      email,
+      phone,
+      company,
+      tags: tags.split(',').map(s => s.trim()).filter(Boolean),
+      ownerId,
+      stageId,
+      notes,
+      customFields,
+    };
+  }, [name, email, phone, company, tags, ownerId, stageId, notes, customFields]);
+
+  // 提交到 reducer：首次是新增，之后都是原地更新
+  const commit = useCallback((payload: ReturnType<typeof buildPayload>) => {
+    if (!payload) return;
+    const serialized = JSON.stringify(payload);
+    if (serialized === lastSavedRef.current) return;
+
+    if (!createdRef.current) {
       const now = new Date().toISOString();
       const newContact: CrmContact = {
-        id: generateId(),
-        name: trimmed,
-        email,
-        phone,
-        company,
-        tags: tagList,
-        ownerId,
-        stageId,
-        notes,
-        customFields,
+        id: contactIdRef.current || generateId(),
+        ...payload,
         createdAt: now,
         updatedAt: now,
       };
+      contactIdRef.current = newContact.id;
+      createdRef.current = true;
       dispatch({ type: 'CRM_ADD_CONTACT', payload: { moduleId: targetModuleId, contact: newContact } });
+    } else {
+      dispatch({
+        type: 'CRM_UPDATE_CONTACT',
+        payload: { moduleId: targetModuleId, contactId: contactIdRef.current, updates: payload },
+      });
     }
+    lastSavedRef.current = serialized;
+  }, [dispatch, targetModuleId]);
+
+  // 自动保存：字段变化后 600ms 落库（防抖，避免每敲一个字就写一次）
+  useEffect(() => {
+    const payload = buildPayload();
+    if (!payload) return;                       // 名称为空时不保存，避免产生空联系人
+    const timer = setTimeout(() => commit(payload), 600);
+    return () => clearTimeout(timer);
+  }, [buildPayload, commit]);
+
+  // 关闭（点遮罩、点 X、或组件卸载）时立即落库，确保最后输入的内容不丢
+  const handleClose = useCallback(() => {
+    commit(buildPayload());
     onClose();
-  };
+  }, [commit, buildPayload, onClose]);
+
+  useEffect(() => {
+    // 卸载兜底：即使不是通过 handleClose 关闭，也把内容保存下来
+    return () => {
+      commit(buildPayload());
+    };
+    // 仅在卸载时执行，依赖保持为空以免频繁触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
       <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto apple-card p-6 animate-slide-up">
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-bold text-slate-900 dark:text-white text-lg">
             {contact ? t('crm.editContact') : t('crm.addContact')}
           </h3>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+          <button onClick={handleClose} className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -157,10 +193,12 @@ export default function ContactModal({ contact, onClose, moduleId }: ContactModa
           <textarea value={notes} onChange={e => setNotes(e.target.value)} className="input min-h-[90px] resize-y" placeholder={t('crm.notes')} />
         </div>
 
-        <div className="mt-6 flex gap-2.5">
-          <button onClick={onClose} className="btn-secondary flex-1">{t('common.cancel')}</button>
-          <button onClick={handleSave} disabled={!name.trim()} className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
-            {t('crm.saveContact')}
+        <div className="mt-6 flex items-center gap-2.5">
+          <p className="flex-1 text-xs text-slate-400 dark:text-slate-500">
+            {t('crm.autosaveHint')}
+          </p>
+          <button onClick={handleClose} className="btn-primary px-6">
+            {t('common.confirm')}
           </button>
         </div>
       </div>

@@ -41,6 +41,10 @@ export default function CrmApp() {
   const [showAddModule, setShowAddModule] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
 
+  // 锁定当前展示联系人的板块：联系人列表来自 module，操作也应作用于同一个板块。
+  // 直接读 activeModuleId 会在后台同步改动它时导致"在不属于当前板块的地方增删联系人"。
+  const contactModuleId = module?.id || activeModuleId;
+
   const isImageBg = isImageBackground(crmBackground);
 
   const modName = (m: CrmModule | null | undefined) => {
@@ -65,12 +69,12 @@ export default function CrmApp() {
     const contact = contacts.find(c => c.id === contactId);
     if (!contact) return;
     if (window.confirm(t('crm.deleteConfirm', { name: contact.name }))) {
-      dispatch({ type: 'CRM_DELETE_CONTACT', payload: { moduleId: activeModuleId, contactId } });
+      dispatch({ type: 'CRM_DELETE_CONTACT', payload: { moduleId: contactModuleId, contactId } });
     }
   };
 
   const handleMove = (contactId: string, stageId: string) => {
-    dispatch({ type: 'CRM_MOVE_CONTACT', payload: { moduleId: activeModuleId, contactId, stageId } });
+    dispatch({ type: 'CRM_MOVE_CONTACT', payload: { moduleId: contactModuleId, contactId, stageId } });
   };
 
   const handleDeleteModule = (m: CrmModule) => {
@@ -325,7 +329,7 @@ export default function CrmApp() {
       {(showAdd || editingContact) && (
         <ContactModal
           contact={editingContact}
-          moduleId={activeModuleId}
+          moduleId={contactModuleId}
           onClose={() => { setShowAdd(false); setEditingContact(null); }}
         />
       )}
@@ -363,7 +367,7 @@ export default function CrmApp() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.1
+        v2.2.2
       </div>
     </div>
   );
