@@ -27,6 +27,7 @@ import {
   ChevronUp,
   AlertTriangle,
   Home,
+  Contact,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -366,6 +367,13 @@ export default function BoardHome() {
             >
               <Home size={14} />
               <span>{lang === 'zh' ? '首页' : 'Home'}</span>
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'SET_APP_SECTION', payload: 'crm' })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-600 hover:text-[#007AFF] hover:bg-white hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
+            >
+              <Contact size={14} />
+              <span>CRM</span>
             </button>
           </div>
 
@@ -892,7 +900,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.9
+        v2.2.11
       </div>
       </div>
     </div>

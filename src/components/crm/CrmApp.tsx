@@ -22,6 +22,7 @@ import {
   Sun,
   Languages,
   ArrowLeft,
+  LayoutDashboard,
   Settings2,
   Palette,
   Trash2,
@@ -190,6 +191,14 @@ export default function CrmApp() {
           title={t('crm.backToPortal')}
         >
           <ArrowLeft size={18} />
+        </button>
+        <button
+          onClick={() => boardDispatch({ type: 'SET_APP_SECTION', payload: 'board' })}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur ring-1 ring-slate-200/60 dark:ring-slate-700/50 text-slate-600 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700 text-xs font-medium shrink-0 transition-all"
+          title={t('crm.backToBoard')}
+        >
+          <LayoutDashboard size={14} />
+          <span className="hidden sm:inline">{t('crm.backToBoard')}</span>
         </button>
         <div className="flex items-center gap-2 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-[#007AFF] text-white flex items-center justify-center">
@@ -384,7 +393,7 @@ export default function CrmApp() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.9
+        v2.2.11
       </div>
     </div>
   );

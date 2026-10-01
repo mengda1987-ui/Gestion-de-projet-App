@@ -301,6 +301,7 @@ const zh: Dict = {
   'crm.field.value': '值',
 
   'crm.backToPortal': '返回首页',
+  'crm.backToBoard': '打开看板',
   'crm.contacts': '联系人',
   'crm.pipeline': '进度',
   'crm.addContact': '新增联系人',
@@ -670,6 +671,7 @@ const en: Dict = {
   'crm.field.value': 'Value',
 
   'crm.backToPortal': 'Back to home',
+  'crm.backToBoard': 'Open board',
   'crm.contacts': 'Contacts',
   'crm.pipeline': 'Pipeline',
   'crm.addContact': 'Add contact',
