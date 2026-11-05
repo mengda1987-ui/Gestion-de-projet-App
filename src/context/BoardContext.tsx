@@ -357,11 +357,32 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         console.warn('[bg] workspace_settings 加载失败，将退回本地/默认背景:', e);
       }
 
-      // 服务器已成功响应：解除降级保护，允许后续正常写回。
+      // 服务器已成功响应。但只有当背景设置真正读到（settingsData 非空）时才解除降级保护，
+      // 否则本次 remote 的背景全是兜底浅灰，一旦允许写回就会把云端正确的背景覆盖掉。
       const wasBlocked = blockSaveRef.current;
-      blockSaveRef.current = false;
+      if (settingsData) {
+        blockSaveRef.current = false;
+      }
 
       const remote = rowsToBackupData(usersData, boardsData, settingsData);
+
+      // 关键：背景设置没读到（settingsData 为空）时，rowsToBackupData 会把四个背景字段
+      // 全部填成兜底值（#f5f5f7 浅灰）。若直接应用，会把屏幕上本来正确的背景刷成"一片白"，
+      // 而且下一次持久化还会写回云端，造成背景永久丢失。
+      // 这里改为沿用内存中当前的背景设置，只更新看板/用户。
+      if (!settingsData) {
+        const current = latestSnapshotRef.current;
+        if (current) {
+          remote.workspaceBackground = current.workspaceBackground;
+          remote.loginBackground = current.loginBackground;
+          remote.portalBackground = current.portalBackground;
+          remote.crmBackground = current.crmBackground;
+          remote.portalImageOpacity = current.portalImageOpacity;
+          remote.crmImageOpacity = current.crmImageOpacity;
+          remote.logo = current.logo;
+        }
+        console.warn('[bg] refetch 未取到 workspace_settings，本次沿用当前背景设置');
+      }
 
       // ===== 逐看板合并：以 updatedAt 为准，谁新用谁 =====
       // 这样即使本地有未同步改动，也只会保留本地更新的看板，
@@ -582,10 +603,27 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           serverHasAppearance(backup.portalBackground) ||
           serverHasAppearance(backup.crmBackground)
         );
+        // 背景设置这一行是否真的读到了。
+        // 关键：settingsData 为 null 意味着「查询超时/报错」，此时 wsSettings 是 {}，
+        // serverHasBackgrounds 必然为 false。若把它当作"服务器本来就没有背景"，
+        // 会连带触发下面错误的 useLocal 降级与 pending 改写，导致：
+        //   1) portal/workspace/crm 背景全部回落默认 #f5f5f7（一片白）
+        //   2) 本地未同步备份被标记为 pending:false，下次刷新内容"消失"
+        // 因此这里必须把"读不到设置"和"服务器确实没有背景"区分开。
+        const settingsLoaded = settingsData !== null && settingsData !== undefined;
+
         // 采用本地备份的条件：有未同步改动；或服务器为空但本地有历史数据（恢复）。
-        // 例外：若本地备份背景残缺（undefined/空），而服务器上有完整背景设置，
-        // 则放弃本地备份的背景，改用服务器值，避免"背景一片白"。
-        const useLocal = (hasPendingLocal || (!serverHasData && !!backup && (backup.boards?.length > 0)));
+        // 例外：若背景设置读取失败（settingsLoaded=false），不做任何本地降级决策，
+        // 保持现状按服务器数据渲染，避免误判覆盖。
+        const useLocal = settingsLoaded && (
+          hasPendingLocal || (!serverHasData && !!backup && (backup.boards?.length > 0))
+        );
+
+        // 背景设置读取失败时，禁止本轮任何写回（否则会用兜底浅灰覆盖云端背景）
+        if (!settingsLoaded) {
+          blockSaveRef.current = true;
+          console.warn('[bg] workspace_settings 未读到，本轮禁用写回，避免覆盖云端背景设置');
+        }
 
         let dataToUse: BackupData;
         let savedAt: string;
@@ -612,16 +650,28 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           };
           savedAt = backup.savedAt;
         } else {
+          // 服务器分支。若背景设置没读到（settingsLoaded=false），这里不能直接用
+          // wsSettings 的兜底浅灰覆盖渲染值，否则一进页面就是"一片白"。
+          // 优先沿用本地备份里已有的背景设置（首次访问且无备份时才用默认值）。
+          const bgFallback = backup || null;
           dataToUse = {
             boards,
             users,
-            workspaceBackground: wsSettings.workspace_background || '#f5f5f7',
-            loginBackground: wsSettings.login_background || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-            portalBackground: wsSettings.portal_background || '#f5f5f7',
-            crmBackground: wsSettings.crm_background || '#f5f5f7',
-            portalImageOpacity: typeof wsSettings.portal_image_opacity === 'number' ? wsSettings.portal_image_opacity : 1,
-            crmImageOpacity: typeof wsSettings.crm_image_opacity === 'number' ? wsSettings.crm_image_opacity : 1,
-            logo: wsSettings.logo || '',
+            workspaceBackground: wsSettings.workspace_background
+              || bgFallback?.workspaceBackground || '#f5f5f7',
+            loginBackground: wsSettings.login_background
+              || bgFallback?.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+            portalBackground: wsSettings.portal_background
+              || bgFallback?.portalBackground || '#f5f5f7',
+            crmBackground: wsSettings.crm_background
+              || bgFallback?.crmBackground || '#f5f5f7',
+            portalImageOpacity: typeof wsSettings.portal_image_opacity === 'number'
+              ? wsSettings.portal_image_opacity
+              : (typeof bgFallback?.portalImageOpacity === 'number' ? bgFallback.portalImageOpacity : 1),
+            crmImageOpacity: typeof wsSettings.crm_image_opacity === 'number'
+              ? wsSettings.crm_image_opacity
+              : (typeof bgFallback?.crmImageOpacity === 'number' ? bgFallback.crmImageOpacity : 1),
+            logo: wsSettings.logo || bgFallback?.logo || '',
           };
           savedAt = new Date().toISOString();
         }
@@ -638,9 +688,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         stableContentRef.current = stableKey(dataToUse);
         latestSnapshotRef.current = dataToUse;
 
-        // 始终将当前加载结果落本地，作为离线兜底镜像（pending 状态保持正确）
+        // 始终将当前加载结果落本地，作为离线兜底镜像。
+        // 注意：pending 必须同时满足「背景设置读取成功」，否则本轮数据里的背景是兜底值，
+        // 一旦被标记为已同步（pending:false），本地真实内容就再也不会被补传。
+        const keepPending = hasPendingLocal || !settingsLoaded;
         try {
-          window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt, pending: hasPendingLocal }));
+          window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt, pending: keepPending }));
         } catch {}
 
         if (useLocal && backup) {
@@ -651,12 +704,28 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             pendingSaveRef.current = true;
             enqueueSave(dataToUse);
           } else {
-            // 本地备份背景残缺且服务器数据完整：丢弃这份陈旧备份的 pending 标记，
-            // 让本地镜像与服务器对齐，防止问题在每次刷新时复发。
-            pendingSaveRef.current = false;
+            // 本地备份背景残缺且服务器数据完整：
+            // 这里只丢弃「残缺的背景字段」，改用服务器值，但**绝不清除 pending 标记**。
+            // 历史 bug：此处曾把整份备份写成 pending:false，等于把本地尚未同步的
+            // 看板/卡片判定为"已同步"，导致下次刷新被服务器数据覆盖、内容凭空消失。
+            // pending 只能由 doSave() 在真正写入成功之后清除。
+            const repairedBg = {
+              workspaceBackground: wsSettings.workspace_background || dataToUse.workspaceBackground,
+              loginBackground: wsSettings.login_background || dataToUse.loginBackground,
+              portalBackground: wsSettings.portal_background || dataToUse.portalBackground,
+              crmBackground: wsSettings.crm_background || dataToUse.crmBackground,
+            };
+            pendingSaveRef.current = hasPendingLocal;
             try {
-              window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt: new Date().toISOString(), pending: false }));
+              window.localStorage.setItem(BACKUP_KEY, JSON.stringify({
+                ...dataToUse,
+                ...repairedBg,
+                savedAt: new Date().toISOString(),
+                pending: hasPendingLocal,
+              }));
             } catch {}
+            // 背景已用服务器值修复，补一次保存让云端与实际渲染保持一致
+            enqueueSave({ ...dataToUse, ...repairedBg });
           }
         }
       } catch (err) {
