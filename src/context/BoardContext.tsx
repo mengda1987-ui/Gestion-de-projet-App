@@ -364,17 +364,38 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           .limit(1)
           .maybeSingle();
 
-        if (remoteSettings && !appearanceDirtyRef.current) {
-          // 用户没有主动改背景 → 一律以云端为准，不覆盖
+        if (remoteSettings) {
+          // 判断某个字段是否为「兜底白底」
+          const isFallbackBg = (v: unknown) => {
+            if (typeof v !== 'string') return false;
+            const t = v.trim().toLowerCase();
+            return !t || t === '#f5f5f7' || t === '#fff' || t === '#ffffff' || t === 'white';
+          };
+
+          const keepOrOverwrite = (serverVal: unknown, localVal: unknown) => {
+            // 用户没主动改背景：一律用云端
+            if (!appearanceDirtyRef.current) return serverVal ?? localVal;
+            // 用户主动改过：允许覆盖，但如果本次是白底而云端不是白底，
+            // 说明这是兜底值意外泄漏，仍然保留云端
+            if (isFallbackBg(localVal) && !isFallbackBg(serverVal)) return serverVal;
+            return localVal;
+          };
+
           settingsPayload = {
             ...settingsPayload,
-            workspace_background: remoteSettings.workspace_background ?? settingsPayload.workspace_background,
-            login_background: remoteSettings.login_background ?? settingsPayload.login_background,
-            portal_background: remoteSettings.portal_background ?? settingsPayload.portal_background,
-            crm_background: remoteSettings.crm_background ?? settingsPayload.crm_background,
-            portal_image_opacity: remoteSettings.portal_image_opacity ?? settingsPayload.portal_image_opacity,
-            crm_image_opacity: remoteSettings.crm_image_opacity ?? settingsPayload.crm_image_opacity,
-            logo: remoteSettings.logo ?? settingsPayload.logo,
+            workspace_background: keepOrOverwrite(remoteSettings.workspace_background, settingsPayload.workspace_background),
+            login_background: keepOrOverwrite(remoteSettings.login_background, settingsPayload.login_background),
+            portal_background: keepOrOverwrite(remoteSettings.portal_background, settingsPayload.portal_background),
+            crm_background: keepOrOverwrite(remoteSettings.crm_background, settingsPayload.crm_background),
+            portal_image_opacity: appearanceDirtyRef.current
+              ? settingsPayload.portal_image_opacity
+              : (remoteSettings.portal_image_opacity ?? settingsPayload.portal_image_opacity),
+            crm_image_opacity: appearanceDirtyRef.current
+              ? settingsPayload.crm_image_opacity
+              : (remoteSettings.crm_image_opacity ?? settingsPayload.crm_image_opacity),
+            logo: appearanceDirtyRef.current
+              ? settingsPayload.logo
+              : (remoteSettings.logo ?? settingsPayload.logo),
           };
         }
 
@@ -714,17 +735,31 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         const hasPendingLocal = !!backup && backup.pending === true;
         // 服务器是否已有有效的背景设置（有值才算有效）
         const serverHasAppearance = (v: unknown) => typeof v === 'string' && v.length > 0;
+        // 是否为「默认兜底色」——它不是用户设置的背景，而是代码里的兜底值。
+        // 2026-11-05 事故：本地备份里的背景被写成 #f5f5f7 后，上一版逻辑把它
+        // 当成「有效背景」，于是 hasPendingLocal 时会把它推回云端，导致每次
+        // 打开页面都把用户的渐变背景刷成一片白。这里必须把兜底色排除在外。
+        const FALLBACK_BG = '#f5f5f7';
+        const isRealBg = (v: unknown) => {
+          if (typeof v !== 'string') return false;
+          const t = v.trim().toLowerCase();
+          if (!t || t === FALLBACK_BG) return false;
+          // 纯白/近白也视作「没有背景」
+          if (t === '#fff' || t === '#ffffff' || t === 'white') return false;
+          return true;
+        };
         const serverHasBackgrounds =
-          serverHasAppearance(wsSettings.workspace_background) ||
-          serverHasAppearance(wsSettings.login_background) ||
-          serverHasAppearance(wsSettings.portal_background) ||
-          serverHasAppearance(wsSettings.crm_background);
-        // 本地备份里的背景是否残缺（旧版本写入的备份可能缺少这些字段）
+          isRealBg(wsSettings.workspace_background) ||
+          isRealBg(wsSettings.login_background) ||
+          isRealBg(wsSettings.portal_background) ||
+          isRealBg(wsSettings.crm_background);
+        // 本地备份里的背景是否残缺（旧版本写入的备份可能缺少这些字段，
+        // 或只剩代码兜底值而没有用户真正设置过的背景）
         const localBackupMissingBg = !!backup && !(
-          serverHasAppearance(backup.workspaceBackground) ||
-          serverHasAppearance(backup.loginBackground) ||
-          serverHasAppearance(backup.portalBackground) ||
-          serverHasAppearance(backup.crmBackground)
+          isRealBg(backup.workspaceBackground) ||
+          isRealBg(backup.loginBackground) ||
+          isRealBg(backup.portalBackground) ||
+          isRealBg(backup.crmBackground)
         );
         // 背景设置这一行是否真的读到了。
         // 关键：settingsData 为 null 意味着「查询超时/报错」，此时 wsSettings 是 {}，
@@ -751,22 +786,22 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         let dataToUse: BackupData;
         let savedAt: string;
         if (useLocal && backup) {
-          const preferServerBg = localBackupMissingBg && serverHasBackgrounds;
+          // 只要服务器有「真实背景」（非兜底白底），一律优先用服务器值。
+          // 本地备份即便有 pending 改动，背景也应该以云端为准，否则旧备份里的
+          // 白底会把云端用户精心设置的渐变覆盖掉（2026-11-05 事故的直接成因）。
+          const preferServerBg = serverHasBackgrounds;
+          const pickBg = (serverVal: unknown, localVal: unknown, def: string) =>
+            (preferServerBg && isRealBg(serverVal))
+              ? (serverVal as string)
+              : (isRealBg(localVal) ? (localVal as string)
+                 : (isRealBg(serverVal) ? (serverVal as string) : def));
           dataToUse = {
             boards: backup.boards,
             users: backup.users || [],
-            workspaceBackground: preferServerBg
-              ? (wsSettings.workspace_background || backup.workspaceBackground || '#f5f5f7')
-              : (backup.workspaceBackground || '#f5f5f7'),
-            loginBackground: preferServerBg
-              ? (wsSettings.login_background || backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)')
-              : (backup.loginBackground || 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)'),
-            portalBackground: preferServerBg
-              ? (wsSettings.portal_background || backup.portalBackground || '#f5f5f7')
-              : (backup.portalBackground || '#f5f5f7'),
-            crmBackground: preferServerBg
-              ? (wsSettings.crm_background || backup.crmBackground || '#f5f5f7')
-              : (backup.crmBackground || '#f5f5f7'),
+            workspaceBackground: pickBg(wsSettings.workspace_background, backup.workspaceBackground, FALLBACK_BG),
+            loginBackground: pickBg(wsSettings.login_background, backup.loginBackground, 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)'),
+            portalBackground: pickBg(wsSettings.portal_background, backup.portalBackground, FALLBACK_BG),
+            crmBackground: pickBg(wsSettings.crm_background, backup.crmBackground, FALLBACK_BG),
             portalImageOpacity: typeof backup.portalImageOpacity === 'number' ? backup.portalImageOpacity : 1,
             crmImageOpacity: typeof backup.crmImageOpacity === 'number' ? backup.crmImageOpacity : 1,
             logo: backup.logo || '',
@@ -820,12 +855,31 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         } catch {}
 
         if (useLocal && backup) {
-          // 仅在"确实有未同步改动"或"服务器为空需恢复"时才补保存，
-          // 避免一份陈旧的 pending 备份把服务器上正确的背景设置覆盖掉。
-          const shouldPushToServer = !localBackupMissingBg || !serverHasBackgrounds || hasPendingLocal;
+          // 仅在「服务器为空、需要恢复」或「本地备份背景本来就完整」时才补保存，
+          // 避免一份背景是白底的陈旧备份把服务器上正确的背景设置覆盖掉。
+          //
+          // 2026-11-05 事故：原条件是 `... || hasPendingLocal`，只要本地有未同步
+          // 改动就会推全量数据（含背景），于是每次打开页面都可能把云端渐变刷白。
+          // 现在改为：backgrounds 必须由服务器优先，只有服务器完全没有背景时才推。
+          const shouldPushToServer =
+            (!serverHasData && backup.boards?.length > 0) ||
+            (!serverHasBackgrounds && !localBackupMissingBg);
           if (shouldPushToServer) {
             pendingSaveRef.current = true;
-            enqueueSave(dataToUse);
+            // 推送前强制用「非白底」的背景，杜绝把兜底色写进云端
+            const safeBg = {
+              workspaceBackground: isRealBg(wsSettings.workspace_background)
+                ? wsSettings.workspace_background
+                : (isRealBg(dataToUse.workspaceBackground) ? dataToUse.workspaceBackground : FALLBACK_BG),
+              loginBackground: wsSettings.login_background || dataToUse.loginBackground,
+              portalBackground: isRealBg(wsSettings.portal_background)
+                ? wsSettings.portal_background
+                : dataToUse.portalBackground,
+              crmBackground: isRealBg(wsSettings.crm_background)
+                ? wsSettings.crm_background
+                : dataToUse.crmBackground,
+            };
+            enqueueSave({ ...dataToUse, ...safeBg });
           } else {
             // 本地备份背景残缺且服务器数据完整：
             // 这里只丢弃「残缺的背景字段」，改用服务器值，但**绝不清除 pending 标记**。
