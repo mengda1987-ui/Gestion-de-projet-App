@@ -185,6 +185,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // 避免“快照对比自动删除”误删他人数据。
   const deletedBoardIdsRef = useRef<Set<string>>(new Set());
   const deletedUserIdsRef = useRef<Set<string>>(new Set());
+  // 用户是否主动修改过背景（用于防止把用户设置的背景冲成默认白底）
+  const appearanceDirtyRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
 
@@ -218,6 +220,81 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 内容（剔除时间戳）有变化才保存
         return boardContentKey(b) !== boardContentKey(prev);
       });
+
+      // ================================================================
+      // 破坏性写入防护（2026-11-05 数据覆盖事故后新增）
+      //
+      // 事故经过：某个客户端持有旧的本地状态，在 15:21 触发了批量 upsert，
+      // 把云端 6 个看板整体覆盖成一个月前的版本。因为 doSave 是无条件写入，
+      // 云端没有任何抵抗能力，事故后也无法回溯。
+      //
+      // 防护策略：写入前先读云端当前卡片总数，若本次写入会让某看板的
+      // 卡片数「大幅减少」，判定为可疑覆盖，直接阻断并报警。
+      // 用户主动删除卡片仍可正常进行（只删少量时不会触发阈值）。
+      // ================================================================
+      if (boardsToSave.length > 0) {
+        const countCards = (cols: any[]): number =>
+          (cols || []).reduce((s, c) => s + ((c?.cards || []).length), 0);
+
+        try {
+          const ids = boardsToSave.map(b => b.id);
+          const { data: remoteRows } = await supabase
+            .from('boards')
+            .select('id,title,data')
+            .in('id', ids);
+
+          const suspicious: string[] = [];
+          for (const row of (remoteRows || []) as any[]) {
+            const localBoard = boardsToSave.find(b => b.id === row.id);
+            if (!localBoard) continue;
+            const remoteCount = countCards(row.data?.columns);
+            const localCount = countCards(localBoard.columns);
+            // 云端有内容，而本次写入会把卡片数砍掉一半以上 → 判定为覆盖事故
+            if (remoteCount >= 5 && localCount < remoteCount * 0.5) {
+              suspicious.push(
+                `${row.title}: 云端 ${remoteCount} 张 → 本次写入 ${localCount} 张`
+              );
+            }
+          }
+
+          if (suspicious.length > 0) {
+            const msg = `已阻止一次疑似覆盖事故：${suspicious.join('；')}。请刷新页面获取最新数据后再操作。`;
+            console.error('[保护] 检测到破坏性写入，已阻断:', suspicious);
+            setSaveError(msg);
+            // 不写入云端，也不更新快照，下一次仍会重新评估
+            return;
+          }
+        } catch (e) {
+          // 读取云端失败时不阻断（避免网络问题导致无法保存），但要记录
+          console.warn('[保护] 写入前校验失败，本次跳过校验:', e);
+        }
+      }
+
+      // 写入前把被覆盖的旧数据快照存档（若历史表已建立）
+      if (boardsToSave.length > 0) {
+        try {
+          const ids = boardsToSave.map(b => b.id);
+          const { data: before } = await supabase
+            .from('boards')
+            .select('*')
+            .in('id', ids);
+          if (before && before.length > 0) {
+            await supabase.from('boards_history').insert(
+              (before as any[]).map(row => ({
+                board_id: row.id,
+                title: row.title,
+                payload: row,
+                card_count: (row.data?.columns || []).reduce(
+                  (s: number, c: any) => s + ((c?.cards || []).length), 0
+                ),
+                reason: 'pre-save',
+              }))
+            );
+          }
+        } catch {
+          // 历史表未建立时静默跳过，不影响主流程
+        }
+      }
 
 
       if (boardsToSave.length > 0) {
@@ -263,7 +340,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 3. 工作区设置（单行，直接 upsert）
-      const { error: settingsError } = await supabase.from('workspace_settings').upsert({
+      //
+      // 防护（2026-11-05 背景被刷白事故后新增）：
+      // 只有「本次提交确实包含用户主动修改的背景」时才写背景字段。
+      // 具体做法：与云端当前值比对，若云端已有非默认背景、而本次是默认兜底值，
+      // 且用户并未主动改背景，则保留云端值，避免把用户设置的背景冲成 #f5f5f7。
+      let settingsPayload: any = {
         id: '00000000-0000-0000-0000-000000000001',
         workspace_background: data.workspaceBackground,
         login_background: data.loginBackground,
@@ -273,9 +355,50 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         crm_image_opacity: data.crmImageOpacity,
         logo: data.logo,
         updated_at: new Date().toISOString(),
-      });
+      };
+
+      try {
+        const { data: remoteSettings } = await supabase
+          .from('workspace_settings')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+
+        if (remoteSettings && !appearanceDirtyRef.current) {
+          // 用户没有主动改背景 → 一律以云端为准，不覆盖
+          settingsPayload = {
+            ...settingsPayload,
+            workspace_background: remoteSettings.workspace_background ?? settingsPayload.workspace_background,
+            login_background: remoteSettings.login_background ?? settingsPayload.login_background,
+            portal_background: remoteSettings.portal_background ?? settingsPayload.portal_background,
+            crm_background: remoteSettings.crm_background ?? settingsPayload.crm_background,
+            portal_image_opacity: remoteSettings.portal_image_opacity ?? settingsPayload.portal_image_opacity,
+            crm_image_opacity: remoteSettings.crm_image_opacity ?? settingsPayload.crm_image_opacity,
+            logo: remoteSettings.logo ?? settingsPayload.logo,
+          };
+        }
+
+        // 存档旧设置（历史表建好后生效）
+        if (remoteSettings && appearanceDirtyRef.current) {
+          try {
+            await supabase.from('workspace_settings_history').insert({
+              payload: remoteSettings,
+              reason: 'pre-save',
+            });
+          } catch {}
+        }
+      } catch (e) {
+        console.warn('[保护] 读取云端背景设置失败，本次按本地值写入:', e);
+      }
+
+      const { error: settingsError } = await supabase
+        .from('workspace_settings')
+        .upsert(settingsPayload);
 
       if (settingsError) throw settingsError;
+      // 背景已与云端对齐，清除"用户主动修改"标记
+      appearanceDirtyRef.current = false;
+
 
       // 保存成功后更新快照（记录服务器当前值）
       boardsSnapshotRef.current = JSON.stringify(data.boards);
@@ -841,6 +964,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       deletedBoardIdsRef.current.add(action.payload);
     } else if (action.type === 'DELETE_USER') {
       deletedUserIdsRef.current.add(action.payload.userId);
+    } else if (
+      action.type === 'UPDATE_WORKSPACE_BG' ||
+      action.type === 'UPDATE_LOGIN_BG' ||
+      action.type === 'UPDATE_PORTAL_BG' ||
+      action.type === 'UPDATE_CRM_BG' ||
+      action.type === 'UPDATE_PORTAL_IMAGE_OPACITY' ||
+      action.type === 'UPDATE_CRM_IMAGE_OPACITY' ||
+      action.type === 'UPDATE_LOGO'
+    ) {
+      // 用户主动修改外观 → 允许本次保存真正写入背景字段
+      appearanceDirtyRef.current = true;
     }
     dispatch(action);
   }, [dispatch]);
@@ -905,7 +1039,7 @@ export function useBoard() {
     }
     return undefined;
   }, [state.board.columns]);
-  
+
   return {
     users: state.users,
     boards: state.boards,
