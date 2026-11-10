@@ -6,3 +6,5 @@ node_modules/
 
 # Vercel 本地链接（含项目 ID，因项目重命名会失效，不入库）
 .vercel
+
+# 本地备份（快照目录不在仓库内）

@@ -16,7 +16,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "backup": "node scripts/backup-snapshot.mjs",
+    "backup:list": "node scripts/restore-snapshot.mjs --list",
+    "backup:install": "bash scripts/install-backup-cron.sh",
+    "backup:uninstall": "bash scripts/install-backup-cron.sh --uninstall"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^16.6.0",
