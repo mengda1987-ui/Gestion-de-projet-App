@@ -1,0 +1,69 @@
+name: Data Guard Backup
+
+# 云端守护：即使你的电脑关机，也会按时检查数据并备份
+#
+# 流量与存储（实测 6 看板 / 82 卡片）：
+#   每次探测：约 0.6 KB（HEAD 计数 0 字节 + id/updated_at 指纹 562 字节）
+#   发生变更才全量：约 550 KB
+#   Actions 免费额度：私有仓库 2000 分钟/月，本任务每次运行不到 10 秒
+#
+# 每天运行 288 次（每 5 分钟）→ 探测流量约 0.17 MB/天，几乎为零
+# 若一天数据变动 50 次 → 全量流量约 27 MB/天
+
+on:
+  schedule:
+    # GitHub Actions 的 cron 最短间隔是 5 分钟，直接用
+    # 注意：实际触发可能有几到十几分钟延迟，这是 GitHub 的限制
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # 支持手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 需要完整历史才能把备份提交回仓库
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Restore guard state
+        uses: actions/cache@v4
+        with:
+          path: .guard-state.json
+          key: guard-state-${{ github.run_id }}
+          restore-keys: |
+            guard-state-
+
+      - name: Probe and backup
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          BACKUP_DIR: backups
+          GUARD_STATE_FILE: .guard-state.json
+        run: node scripts/cloud-guard.mjs --mode=backup
+
+      - name: Commit backup
+        run: |
+          if [ -d backups ] && [ -n "$(ls -A backups 2>/dev/null)" ]; then
+            git config user.name "data-guard[bot]"
+            git config user.email "data-guard@users.noreply.github.com"
+            git add backups .guard-state.json
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: 自动备份 $(date -u +'%Y-%m-%d %H:%M UTC')"
+              git push
+              echo "✓ 已提交新备份"
+            else
+              echo "· 无新内容"
+            fi
+          else
+            echo "· 本次无备份"
+          fi
