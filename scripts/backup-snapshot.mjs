@@ -63,8 +63,14 @@ function countCards(boards) {
 }
 
 async function main() {
-  const keepArgIdx = process.argv.indexOf('--keep');
-  const keep = keepArgIdx > -1 ? parseInt(process.argv[keepArgIdx + 1], 10) : 50;
+  const argOf = (name, def) => {
+    const i = process.argv.indexOf(name);
+    return i > -1 ? parseInt(process.argv[i + 1], 10) : def;
+  };
+  // 保留天数（按时间清理，主策略）
+  const retainDays = argOf('--days', 2);
+  // 保留份数（安全上限，防止极端情况下无限增长）
+  const keep = argOf('--keep', 2000);
 
   const root = path.join(os.homedir(), 'Backups', 'trello-app');
 
@@ -145,15 +151,35 @@ async function main() {
   console.log(`  看板 ${boards.length} 个，卡片 ${cardCount} 张`);
 
   // 清理旧备份
+  //
+  // 2026-11-10 改为按「时间」清理而不是按「份数」：
+  // 按份数会有问题——变更频繁时 500 份可能只覆盖不到 2 天，
+  // 而按天数能保证「始终保留最近 N 天」，且占用随使用强度自适应，
+  // 数据安静时不会白占几百 MB。
   const all = fs.readdirSync(root)
     .filter((n) => /^\d{4}-\d{2}-\d{2}T/.test(n))
     .sort()
     .reverse();
-  if (all.length > keep) {
-    for (const old of all.slice(keep)) {
-      fs.rmSync(path.join(root, old), { recursive: true, force: true });
-    }
-    console.log(`  已清理 ${all.length - keep} 份旧备份（保留最近 ${keep} 份）`);
+
+  const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
+  const expired = all.filter((name) => {
+    const t = new Date(name.replace(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/, '$1T$2:$3:$4Z')).getTime();
+    return Number.isFinite(t) && t < cutoff;
+  });
+
+  // 超额（极端情况：短时间内爆炸式变更）时按天数删完还有剩余，再按份数兜底
+  const remaining = all.filter((n) => !expired.includes(n));
+  const overLimit = remaining.length > keep ? remaining.slice(keep) : [];
+  const toDelete = [...expired, ...overLimit];
+
+  for (const old of toDelete) {
+    fs.rmSync(path.join(root, old), { recursive: true, force: true });
+  }
+  if (toDelete.length > 0) {
+    const freedKb = toDelete.length * 780;
+    console.log(
+      `  已清理 ${toDelete.length} 份超期备份（保留最近 ${retainDays} 天），释放约 ${(freedKb / 1024).toFixed(0)} MB`
+    );
   }
 
   // 健康告警：卡片数比上一份骤降 30% 以上时明确警告

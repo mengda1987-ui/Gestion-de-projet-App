@@ -14,13 +14,15 @@
 set -e
 
 INTERVAL_MIN=5
-KEEP=500
+KEEP=2000
+DAYS=2
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --uninstall) UNINSTALL=1; shift ;;
     --every) INTERVAL_MIN="$2"; shift 2 ;;
     --keep) KEEP="$2"; shift 2 ;;
+    --days) DAYS="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -58,6 +60,8 @@ cat > "$PLIST" <<PLIST_EOF
   <array>
     <string>$NODE_BIN</string>
     <string>$PROJECT_DIR/scripts/backup-snapshot.mjs</string>
+    <string>--days</string>
+    <string>$DAYS</string>
     <string>--keep</string>
     <string>$KEEP</string>
   </array>
@@ -80,12 +84,13 @@ launchctl load "$PLIST"
 
 echo "✓ 已安装自动备份"
 echo "  间隔:     每 $INTERVAL_MIN 分钟一次"
-echo "  保留:     最近 $KEEP 份"
+echo "  保留:     最近 $DAYS 天（最多 $KEEP 份）"
 echo "  备份位置: $HOME/Backups/trello-app/"
 echo "  日志:     $LOG_DIR/backup.log"
 echo ""
 echo "  立即测试:  launchctl start $LABEL"
 echo "  查看日志:  tail -f $LOG_DIR/backup.log"
-echo "  修改间隔:  bash scripts/install-backup-cron.sh --every 10"
+echo "  改保留期:  bash scripts/install-backup-cron.sh --days 7"
+echo "  改间隔:    bash scripts/install-backup-cron.sh --every 10"
 echo "  卸载:      bash scripts/install-backup-cron.sh --uninstall"
 
