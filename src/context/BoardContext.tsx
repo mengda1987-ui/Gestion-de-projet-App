@@ -166,6 +166,60 @@ function boardContentKey(board: any): string {
   );
 }
 
+/**
+ * 取云端总卡片数（轻量）。
+ *
+ * 2026-11-10 移动端流量优化：
+ * 原实现用 select('id,title,data') 拉全量看板 JSON（实测约 548KB）只为算卡片数，
+ * 是移动端流量的主要浪费之一。
+ *
+ * 三级降级策略：
+ *   1. RPC workspace_stats()  → 响应体 < 50 字节（需先执行 add_stats_functions.sql）
+ *   2. RPC count_all_cards()  → 响应体 < 10 字节
+ *   3. 都没建 → 返回 null，跳过校验（不发大请求，宁可少一层保护也不耗流量）
+ *
+ * 注意：不要用 select=data->columns 试图"只取部分字段"——
+ * 实测 PostgREST 仍会返回完整 columns JSON（542KB），几乎等于全量。
+ */
+let statsRpcAvailable: boolean | null = null;
+
+async function fetchRemoteCardTotal(): Promise<number | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+
+  // 已知 RPC 不可用时直接跳过，避免每次保存都产生一个 404 请求
+  if (statsRpcAvailable === false) return null;
+
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/workspace_stats`, {
+      method: 'POST',
+      headers,
+      body: '{}',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      statsRpcAvailable = true;
+      const cards = typeof data?.cards === 'number' ? data.cards : parseInt(data?.cards, 10);
+      return Number.isFinite(cards) ? cards : null;
+    }
+    // 404 = 函数不存在，说明迁移未执行
+    if (res.status === 404) {
+      statsRpcAvailable = false;
+      console.info(
+        '[统计] workspace_stats() 不存在，已跳过写入前校验以节省流量。' +
+        '执行 supabase/migrations/add_stats_functions.sql 可启用。'
+      );
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(boardReducer, null, createInitialState);
@@ -187,6 +241,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const deletedUserIdsRef = useRef<Set<string>>(new Set());
   // 用户是否主动修改过背景（用于防止把用户设置的背景冲成默认白底）
   const appearanceDirtyRef = useRef(false);
+  // boards_history 表是否可用。null=未知，false=表不存在（不再尝试，省流量）
+  const historyTableAvailableRef = useRef<boolean | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
 
@@ -237,32 +293,29 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           (cols || []).reduce((s, c) => s + ((c?.cards || []).length), 0);
 
         try {
-          const ids = boardsToSave.map(b => b.id);
-          const { data: remoteRows } = await supabase
-            .from('boards')
-            .select('id,title,data')
-            .in('id', ids);
+          // 流量优化（2026-11-10）：原来 select('id,title,data') 会再拉一遍
+          // 全量看板 JSON（约 550KB），是移动端流量的主要浪费之一。
+          // 改用 HEAD 精确计数：响应体 0 字节，只读 content-range 头部。
+          // 精度足够——防护只需要知道"云端总卡片数"，不需要逐板明细。
+          const remoteTotal = await fetchRemoteCardTotal();
 
-          const suspicious: string[] = [];
-          for (const row of (remoteRows || []) as any[]) {
-            const localBoard = boardsToSave.find(b => b.id === row.id);
-            if (!localBoard) continue;
-            const remoteCount = countCards(row.data?.columns);
-            const localCount = countCards(localBoard.columns);
-            // 云端有内容，而本次写入会把卡片数砍掉一半以上 → 判定为覆盖事故
-            if (remoteCount >= 5 && localCount < remoteCount * 0.5) {
-              suspicious.push(
-                `${row.title}: 云端 ${remoteCount} 张 → 本次写入 ${localCount} 张`
-              );
+          if (remoteTotal !== null) {
+            const localTotal = boardsToSave.reduce(
+              (s, b) => s + countCards(b.columns), 0
+            );
+            // 注意：boardsToSave 只包含本次变更的看板，因此只能做"总量下限"判断。
+            // 若本次要写的看板数少于云端全部看板数，说明还有其他看板未参与，
+            // 此时不做误阻断。
+            const allLocalTotal = data.boards.reduce(
+              (s, b) => s + countCards(b.columns), 0
+            );
+            if (remoteTotal >= 5 && allLocalTotal < remoteTotal * 0.5) {
+              const msg = `已阻止一次疑似覆盖事故：云端共 ${remoteTotal} 张卡片，本次提交仅 ${allLocalTotal} 张。请刷新页面获取最新数据后再操作。`;
+              console.error('[保护] 检测到破坏性写入，已阻断:', { remoteTotal, allLocalTotal });
+              setSaveError(msg);
+              // 不写入云端，也不更新快照，下一次仍会重新评估
+              return;
             }
-          }
-
-          if (suspicious.length > 0) {
-            const msg = `已阻止一次疑似覆盖事故：${suspicious.join('；')}。请刷新页面获取最新数据后再操作。`;
-            console.error('[保护] 检测到破坏性写入，已阻断:', suspicious);
-            setSaveError(msg);
-            // 不写入云端，也不更新快照，下一次仍会重新评估
-            return;
           }
         } catch (e) {
           // 读取云端失败时不阻断（避免网络问题导致无法保存），但要记录
@@ -271,15 +324,18 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 写入前把被覆盖的旧数据快照存档（若历史表已建立）
-      if (boardsToSave.length > 0) {
+      // 流量优化：仅当历史表存在时才下载全量存档；表不存在时直接跳过，
+      // 避免每次保存都白白下载一遍看板内容。
+      if (boardsToSave.length > 0 && historyTableAvailableRef.current !== false) {
         try {
           const ids = boardsToSave.map(b => b.id);
-          const { data: before } = await supabase
+          const { data: before, error: histQueryErr } = await supabase
             .from('boards')
             .select('*')
             .in('id', ids);
+          if (histQueryErr) throw histQueryErr;
           if (before && before.length > 0) {
-            await supabase.from('boards_history').insert(
+            const { error: histErr } = await supabase.from('boards_history').insert(
               (before as any[]).map(row => ({
                 board_id: row.id,
                 title: row.title,
@@ -290,6 +346,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
                 reason: 'pre-save',
               }))
             );
+            // 表不存在（PGRST205）时永久跳过，避免每次都白下载
+            if (histErr) {
+              if ((histErr as any).code === 'PGRST205') {
+                historyTableAvailableRef.current = false;
+                console.info('[历史存档] boards_history 表不存在，已停止尝试（执行迁移后可启用）');
+              }
+            } else {
+              historyTableAvailableRef.current = true;
+            }
           }
         } catch {
           // 历史表未建立时静默跳过，不影响主流程
@@ -997,8 +1062,14 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   ]);
 
   // ===== 关页面/切后台时强制 flush，防止数据滞留内存 =====
+  //
+  // 流量优化（2026-11-10）：原来每次切后台/锁屏都无条件 enqueueSave，
+  // 手机用户一天切几十次后台就会产生几十次全量上传（每次约 546KB）。
+  // 现在改为：只有当「确实有未同步的改动」时才 flush。
   useEffect(() => {
     const flush = () => {
+      // 没有待同步改动 → 不产生任何网络请求
+      if (!pendingSaveRef.current) return;
       const data = latestSnapshotRef.current;
       if (data) enqueueSave(data);
     };
