@@ -26,9 +26,17 @@
 
 ### 第 3 道：本地定时备份（已安装）
 
-每 30 分钟自动把云端全量数据导出到 `~/Backups/trello-app/`，保留最近 100 份（约 2 天）。
+**每 5 分钟**自动把云端全量数据导出到 `~/Backups/trello-app/`，保留最近 500 份（约 1.7 天）。
+
+实测开销（6 看板 / 82 卡片）：
+
+- 单份快照 **784KB**
+- 单次耗时 **约 4 秒**
+- 500 份总计 **约 380MB**
 
 **这是目前最可靠的一道** —— 完全独立于 Supabase 和 Vercel，云端炸了也不影响。
+
+> 为什么间隔选得这么密：备份成本极低（4 秒、784KB），而每多留一个时间点，就多一次能救回来的机会。事故当天如果早有这个 5 分钟粒度，损失会从"一个月"降到"5 分钟"。
 
 ### 第 4 道：背景防刷白（代码层，v2.2.14 起）
 
@@ -68,8 +76,11 @@ node scripts/restore-snapshot.mjs --from 2026-11-10T22-26-13 --yes --only boards
 ## 定时备份管理
 
 ```bash
-npm run backup:install     # 安装（每 30 分钟）
-npm run backup:uninstall   # 卸载
+npm run backup:install              # 安装（默认每 5 分钟）
+npm run backup:uninstall            # 卸载
+
+# 自定义间隔和保留份数
+bash scripts/install-backup-cron.sh --every 10 --keep 300
 
 # 立即执行一次
 launchctl start com.trelloapp.backup
@@ -77,6 +88,17 @@ launchctl start com.trelloapp.backup
 # 查看日志
 tail -f ~/Backups/trello-app-logs/backup.log
 ```
+
+**间隔与容量参考**（基于每份 784KB）：
+
+| 间隔 | 保留份数 | 覆盖时长 | 占用空间 |
+|---|---|---|---|
+| 5 分钟（默认） | 500 | 约 1.7 天 | 约 380MB |
+| 10 分钟 | 500 | 约 3.5 天 | 约 380MB |
+| 5 分钟 | 2000 | 约 7 天 | 约 1.5GB |
+| 10 分钟 | 1000 | 约 7 天 | 约 760MB |
+
+如果希望保留更久，改大 `--keep` 即可，空间代价很小。
 
 ## 还有一件事建议做
 

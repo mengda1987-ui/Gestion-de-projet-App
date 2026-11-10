@@ -66,8 +66,52 @@ async function main() {
   const keepArgIdx = process.argv.indexOf('--keep');
   const keep = keepArgIdx > -1 ? parseInt(process.argv[keepArgIdx + 1], 10) : 50;
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const root = path.join(os.homedir(), 'Backups', 'trello-app');
+
+  // 内容未变时不重复写盘：对比上一份快照的摘要，
+  // 避免 5 分钟间隔下产生大量完全相同的副本、挤掉更早的时间点。
+  // 仍会在 _meta.json 记 lastCheckedAt，可看出守护是活的。
+  try {
+    const prevDirs = fs.existsSync(root)
+      ? fs.readdirSync(root).filter((n) => /^\d{4}-\d{2}-\d{2}T/.test(n)).sort().reverse()
+      : [];
+    if (prevDirs.length > 0) {
+      const prevDir = path.join(root, prevDirs[0]);
+      const prevMeta = JSON.parse(fs.readFileSync(path.join(prevDir, '_meta.json'), 'utf8'));
+
+      // 拉一次云端做指纹比对（只取 id + 卡片数，开销很小）
+      const res = await fetch(`${url}/rest/v1/boards?select=id,data`, {
+        headers: { apikey: key, Authorization: `Bearer ${key}` },
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        const fingerprint = rows
+          .map((b) => `${b.id}:${countCards([b])}`)
+          .sort()
+          .join('|');
+
+        // 用同样算法算上一份的指纹
+        const prevBoards = JSON.parse(fs.readFileSync(path.join(prevDir, 'boards.json'), 'utf8'));
+        const prevFingerprint = prevBoards
+          .map((b) => `${b.id}:${countCards([b])}`)
+          .sort()
+          .join('|');
+
+        if (fingerprint === prevFingerprint && prevMeta.fingerprint) {
+          // 内容没变，只更新时间戳，不新建目录
+          prevMeta.lastCheckedAt = new Date().toISOString();
+          prevMeta.checkCount = (prevMeta.checkCount || 1) + 1;
+          fs.writeFileSync(path.join(prevDir, '_meta.json'), JSON.stringify(prevMeta, null, 2));
+          console.log(`· 内容未变化，跳过写入（上一份: ${prevDirs[0]}，已检查 ${prevMeta.checkCount} 次）`);
+          return;
+        }
+      }
+    }
+  } catch {
+    // 指纹比对失败不影响正常备份
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = path.join(root, stamp);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -83,10 +127,16 @@ async function main() {
   // 写入摘要，便于快速判断这份备份是否健康
   const boards = JSON.parse(fs.readFileSync(path.join(dir, 'boards.json'), 'utf8'));
   const cardCount = countCards(boards);
+  const fingerprint = boards
+    .map((b) => `${b.id}:${countCards([b])}`)
+    .sort()
+    .join('|');
   const meta = {
     createdAt: new Date().toISOString(),
     counts: summary,
     totalCards: cardCount,
+    fingerprint,
+    checkCount: 1,
     source: url,
   };
   fs.writeFileSync(path.join(dir, '_meta.json'), JSON.stringify(meta, null, 2));
