@@ -436,8 +436,21 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       // 0. 显式删除：只删除用户主动删除的看板/用户（不再靠快照对比自动删）
       if (deletedBoardIdsRef.current.size > 0) {
         const ids = Array.from(deletedBoardIdsRef.current);
-        const { error } = await supabase.from('boards').delete().in('id', ids);
-        if (error) throw error;
+        // boards 表写权限已收敛到服务端（审计 C1），改走 /api/boards 软删除。
+        // 失败不阻断主流程，下一次保存会重试。
+        for (const id of ids) {
+          try {
+            const res = await fetch(`/api/boards?id=${encodeURIComponent(id)}`, {
+              method: 'DELETE',
+              credentials: 'same-origin',
+            });
+            if (!res.ok && res.status !== 401) {
+              console.warn('[Persistence] 看板删除失败:', id, res.status);
+            }
+          } catch (e) {
+            console.warn('[Persistence] 看板删除请求异常:', e);
+          }
+        }
         deletedBoardIdsRef.current.clear();
       }
       if (deletedUserIdsRef.current.size > 0) {
@@ -518,61 +531,50 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 写入前把被覆盖的旧数据快照存档（若历史表已建立）
-      // 流量优化：仅当历史表存在时才下载全量存档；表不存在时直接跳过，
-      // 避免每次保存都白白下载一遍看板内容。
-      if (boardsToSave.length > 0 && historyTableAvailableRef.current !== false) {
-        try {
-          const ids = boardsToSave.map(b => b.id);
-          const { data: before, error: histQueryErr } = await supabase
-            .from('boards')
-            .select('*')
-            .in('id', ids);
-          if (histQueryErr) throw histQueryErr;
-          if (before && before.length > 0) {
-            const { error: histErr } = await supabase.from('boards_history').insert(
-              (before as any[]).map(row => ({
-                board_id: row.id,
-                title: row.title,
-                payload: row,
-                card_count: (row.data?.columns || []).reduce(
-                  (s: number, c: any) => s + ((c?.cards || []).length), 0
-                ),
-                reason: 'pre-save',
-              }))
-            );
-            // 表不存在（PGRST205）时永久跳过，避免每次都白下载
-            if (histErr) {
-              if ((histErr as any).code === 'PGRST205') {
-                historyTableAvailableRef.current = false;
-                console.info('[历史存档] boards_history 表不存在，已停止尝试（执行迁移后可启用）');
-              }
-            } else {
-              historyTableAvailableRef.current = true;
-            }
-          }
-        } catch {
-          // 历史表未建立时静默跳过，不影响主流程
-        }
-      }
+      // 说明：原实现在这里「下载被覆盖的全量 + 前端 insert boards_history」。
+      // 两个问题：
+      //   1. boards_history 已撤 anon 权限（审计 C3），前端写必然失败
+      //   2. 每次保存都要下载一遍全量看板（约 550KB），纯浪费流量
+      // 现在历史快照由服务端在 apply_board_patch / soft_delete_board_by_id
+      // 的同一事务内写入，既原子又不占客户端流量。
+      void historyTableAvailableRef;
 
 
       if (boardsToSave.length > 0) {
-        const rows = boardsToSave.map(b => ({
-          id: b.id,
-          title: b.title,
-          background: b.background,
-          labels: b.labels,
-          data: { columns: b.columns, mindmap: b.mindmap },
-          emoji: b.emoji || null,
-          iconBg: b.iconBg || null,
-          iconImage: b.iconImage || null,
-          visibleTo: b.visibleTo || [],
-          order: b.order ?? 0,
-          updated_at: new Date().toISOString(),
-        }));
-        const { error: boardsError } = await supabase.from('boards').upsert(rows);
-        if (boardsError) throw boardsError;
+        // ================================================================
+        // 关键安全改造（审计 C1）
+        //
+        // 原实现：supabase.from('boards').upsert(整板 JSON)
+        //   → 任何持有旧内存状态的客户端都会整块覆盖云端（11-05 事故根因）
+        //   → boards 表对 anon 开放写权限时，攻击者可绕过前端直接覆盖
+        //
+        // 现在：整板 upsert 一律禁止。
+        //   - patch 通道启用时：增量已由 enqueuePatch → /api/board/patch 提交
+        //   - 看板元数据（标题/背景/图标/可见性/排序/新建）走 /api/boards
+        //   - 卡片/列/心智图内容只允许经 apply_board_patch（带版本校验）
+        // 这里仅兜底同步「看板级元数据」，绝不写 data 字段。
+        // ================================================================
+        const metaRes = await fetch('/api/boards/metadata', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            boards: boardsToSave.map(b => ({
+              id: b.id,
+              title: b.title,
+              background: b.background,
+              labels: b.labels,
+              emoji: b.emoji ?? null,
+              iconBg: b.iconBg ?? null,
+              iconImage: b.iconImage ?? null,
+              visibleTo: b.visibleTo ?? [],
+              order: b.order ?? 0,
+            })),
+          }),
+        });
+        if (!metaRes.ok && metaRes.status !== 401) {
+          console.warn('[Persistence] 看板元数据同步失败:', metaRes.status);
+        }
       }
 
       // 2. 用户：不再整表 upsert（审计 C2 —— 任何持有旧内存状态的客户端
@@ -671,24 +673,35 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           };
         }
 
-        // 存档旧设置（历史表建好后生效）
-        if (remoteSettings && appearanceDirtyRef.current) {
-          try {
-            await supabase.from('workspace_settings_history').insert({
-              payload: remoteSettings,
-              reason: 'pre-save',
-            });
-          } catch {}
-        }
+        // 存档旧设置：历史表已撤 anon 权限（审计 C3），改由服务端 RPC 在同一事务内完成，
+        // 这里不再单独 insert。
       } catch (e) {
         console.warn('[保护] 读取云端背景设置失败，本次按本地值写入:', e);
       }
 
-      const { error: settingsError } = await supabase
-        .from('workspace_settings')
-        .upsert(settingsPayload);
-
-      if (settingsError) throw settingsError;
+      // 工作区设置：改走服务端（审计 C1 —— anon 写权限将被撤销）
+      // 服务端 RPC 会做字段白名单 + 同事务历史快照，且只更新传入的字段。
+      try {
+        const settingsRes = await fetch('/api/workspace-settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            workspace_background: settingsPayload.workspace_background,
+            login_background: settingsPayload.login_background,
+            portal_background: settingsPayload.portal_background,
+            crm_background: settingsPayload.crm_background,
+            portal_image_opacity: settingsPayload.portal_image_opacity,
+            crm_image_opacity: settingsPayload.crm_image_opacity,
+            logo: settingsPayload.logo,
+          }),
+        });
+        if (!settingsRes.ok && settingsRes.status !== 401) {
+          console.warn('[Persistence] 工作区设置保存失败:', settingsRes.status);
+        }
+      } catch (e) {
+        console.warn('[Persistence] 工作区设置保存异常:', e);
+      }
       // 背景已与云端对齐，清除"用户主动修改"标记
       appearanceDirtyRef.current = false;
 

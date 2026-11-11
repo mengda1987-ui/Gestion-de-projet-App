@@ -579,14 +579,24 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   // 显式删除追踪：只有用户主动删除的模块才会从服务器删除，避免误删他人数据
   const deletedModuleIdsRef = useRef<Set<string>>(new Set());
 
-  // ===== 保存到 Supabase（增量：只 upsert 真正有变化的模块）=====
+  // ===== 保存到服务端（增量：只提交真正有变化的模块）=====
+  // 审计 C1：crm_modules 的写权限将撤销 anon，改走 /api/crm/modules。
+  // 服务端 RPC 会在同一事务内写「变更前快照」，可回溯。
   const doSave = useCallback(async (modules: CrmModules) => {
     try {
       // 0. 显式删除
       if (deletedModuleIdsRef.current.size > 0) {
         const ids = Array.from(deletedModuleIdsRef.current);
-        const { error } = await supabase.from('crm_modules').delete().in('id', ids);
-        if (error) throw error;
+        const res = await fetch('/api/crm/modules', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ ids }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error || `HTTP ${res.status}`);
+        }
         deletedModuleIdsRef.current.clear();
       }
 
@@ -601,9 +611,26 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (toSave.length > 0) {
-        const rows = toSave.map(m => moduleToRow(m, modules.findIndex(x => x.id === m.id)));
-        const { error } = await supabase.from('crm_modules').upsert(rows);
-        if (error) throw error;
+        const payload = toSave.map(m => ({
+          id: m.id,
+          name: m.name,
+          nameEn: m.nameEn,
+          emoji: m.emoji,
+          color: m.color,
+          order: modules.findIndex(x => x.id === m.id),
+          data: { stages: m.stages, fields: m.fields, contacts: m.contacts },
+        }));
+
+        const res = await fetch('/api/crm/modules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ modules: payload }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error || `HTTP ${res.status}`);
+        }
       }
 
       // 保存成功：更新快照
