@@ -329,22 +329,89 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
    * 修复：只要有未确认的 patch，就禁止 refetch 覆盖本地该看板的数据。
    */
   const pendingPatchCountRef = useRef<Map<string, number>>(new Map());
+  /** 每个看板「第一次出现未确认 patch」的时间戳，用于超时降级 */
+  const pendingPatchFirstSeenRef = useRef<Map<string, number>>(new Map());
   // 正在进行中的 refetch（避免并发拉取互相覆盖）
   const refetchingRef = useRef(false);
 
   const bumpPending = useCallback((boardId: string, delta: number) => {
     const cur = pendingPatchCountRef.current.get(boardId) ?? 0;
     const next = Math.max(0, cur + delta);
-    if (next === 0) pendingPatchCountRef.current.delete(boardId);
-    else pendingPatchCountRef.current.set(boardId, next);
+    if (next === 0) {
+      pendingPatchCountRef.current.delete(boardId);
+      pendingPatchFirstSeenRef.current.delete(boardId);
+    } else {
+      pendingPatchCountRef.current.set(boardId, next);
+      // 只在「从 0 变为有」时记录起始时间
+      if (cur === 0) pendingPatchFirstSeenRef.current.set(boardId, Date.now());
+    }
   }, []);
 
-  const hasPendingPatch = useCallback((boardId: string) => {
+  /**
+   * 是否有「新鲜」的未确认 patch。
+   *
+   * 与 hasPendingPatch 的区别：超过 PENDING_STALE_MS 仍未确认的条目视为
+   * 「卡死的旧条目」（例如服务端 4xx 但客户端没处理），不再阻断同步，
+   * 避免网络异常后同步被永久冻结。
+   */
+  const PENDING_STALE_MS = 30_000;
+  const hasFreshPendingPatch = useCallback((boardId: string) => {
+    const rec = pendingPatchFirstSeenRef.current.get(boardId);
+    if (!rec) return false;
+    if (Date.now() - rec > PENDING_STALE_MS) return false;
     return (pendingPatchCountRef.current.get(boardId) ?? 0) > 0;
   }, []);
 
-  /** patch 通道是否真正可用（开关 + 未熔断） */
-  const patchActive = useCallback(() => patchEnabledRef.current && !patchBrokenRef.current, []);
+  const hasAnyFreshPending = useCallback(() => {
+    const now = Date.now();
+    for (const [boardId, count] of pendingPatchCountRef.current) {
+      if (count <= 0) continue;
+      const firstSeen = pendingPatchFirstSeenRef.current.get(boardId) ?? now;
+      if (now - firstSeen < PENDING_STALE_MS) return true;
+    }
+    return false;
+  }, []);
+
+  /**
+   * patch 通道是否可用（未熔断即视为可用）。
+   *
+   * 【修复 2026-11-11】原实现要求 NEXT_PUBLIC_USE_PATCH_RPC === 'true'，
+   * 但该变量是**构建期内联**的：只要 Vercel 构建时没读到（环境变量没配、
+   * 或配在错误的作用域），线上就永远走旧的全量路径 ——
+   * 而旧路径正是「整板覆盖 + 时间戳合并」导致回滚的根源。
+   *
+   * 现在改为：默认启用，仅当显式设为 'false' 才关闭。
+   * 这样即使变量缺失，也不会退回到有缺陷的旧路径。
+   */
+  const patchActive = useCallback(() => !patchBrokenRef.current, []);
+
+  /**
+   * 诊断：把 patch 通道的真实状态暴露到 window，
+   * 便于在浏览器 Console 中一键确认「为什么改动没走增量通道」。
+   *
+   * 用法：控制台执行 __trelloPatchDiagnose()
+   */
+  const exposeDiagnostics = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    (window as any).__trelloPatchDiagnose = () => {
+      const info = {
+        开关值: process.env.NEXT_PUBLIC_USE_PATCH_RPC ?? '(未定义)',
+        patchEnabled: patchEnabledRef.current,
+        已熔断: patchBrokenRef.current,
+        最终生效: patchActive(),
+        已知版本: Object.fromEntries(boardVersionsRef.current),
+        待提交数量: Object.fromEntries(pendingPatchCountRef.current),
+      };
+      console.table(info);
+      if (!patchEnabledRef.current) {
+        console.error(
+          '❌ patch 通道未启用：NEXT_PUBLIC_USE_PATCH_RPC 未在【构建时】为 "true"。\n' +
+          '   该变量是构建期内联的，改完必须重新部署（Redeploy），仅改环境变量不会生效。',
+        );
+      }
+      return info;
+    };
+  }, [patchActive]);
 
   /** 记录云端版本（初始化 / refetch 时更新） */
   const setBoardVersion = useCallback((boardId: string, version: number) => {
@@ -923,46 +990,50 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         }
 
         // ================================================================
-        // 【保存回滚 Bug 修复 2026-11-11】—— 最关键的一处
+        // 【保存回滚 Bug 修复】—— 最关键的一处
         //
         // 该看板还有未确认落库的 patch 时，绝不能用云端数据覆盖本地：
         //   - 云端此刻可能是「patch 之前」的旧快照
         //   - 覆盖后 UI 会立刻回滚（线上表现为「拖拽后 3 秒跳回原样」）
         //   - patch 随后成功，但本地已无对应改动可应用，数据看起来"被删除"
-        // 因此：有 pending patch → 一律保留本地，等 patch 确认后再同步。
+        //
+        // 注意：这里【不判断 patchEnabledRef】。
+        // 即使灰度开关没生效（构建时未注入），只要本地有未确认改动，
+        // 也必须保护 —— 否则开关一旦失效就退回"必回滚"状态。
         // ================================================================
-        if (patchEnabledRef.current && hasPendingPatch(rb.id)) {
+        if (hasFreshPendingPatch(rb.id)) {
           mergedBoards.push(lb);
           continue;
         }
 
-        // patch 通道启用时：以「版本号」为唯一真相，不再依赖客户端时钟
+        // 以「版本号」为唯一真相，不再依赖客户端时钟
         // （本地/云端时间戳来自不同时钟，比较结果不可靠 —— 审计 M1）
-        if (patchEnabledRef.current) {
+        //
+        // 【修复 2026-11-11】这里不再受灰度开关控制：
+        // 时间戳比较本身就是回滚的成因之一，任何情况下都不应回退到它。
+        {
           const localV = boardVersionsRef.current.get(rb.id);
           const remoteV = typeof (rb as any).version === 'number' ? (rb as any).version : undefined;
 
-          // 远端版本明确更新 → 采用远端
+          // 1) 远端版本明确更大 → 采用远端
           if (typeof remoteV === 'number' && typeof localV === 'number' && remoteV > localV) {
             boardVersionsRef.current.set(rb.id, remoteV);
             mergedBoards.push(rb);
             continue;
           }
-          // 版本相同或本地更新 → 保留本地（内容差异由后续 patch 提交）
+
+          // 2) 本地还没有版本基准（如首次同步前）：用远端校准，但只在
+          //    本地内容为空时采用，避免覆盖尚未提交的本地改动
+          if (typeof localV !== 'number') {
+            if (typeof remoteV === 'number') boardVersionsRef.current.set(rb.id, remoteV);
+            const localEmpty = !lb.columns?.length && !lb.mindmap?.length;
+            mergedBoards.push(localEmpty ? rb : lb);
+            continue;
+          }
+
+          // 3) 版本相同或本地更新 → 保留本地（内容差异由后续 patch 提交）
           mergedBoards.push(lb);
           continue;
-        }
-
-        // 旧通道（patch 未启用）：保持原有的时间戳比较逻辑
-        const remoteTime = new Date(rb.updatedAt || 0).getTime();
-        const localTime = new Date(lb.updatedAt || 0).getTime();
-        // 远端更新（或时间相同但内容不同）则采用远端，否则保留本地
-        if (remoteTime > localTime) {
-          mergedBoards.push(rb);
-        } else if (remoteTime === localTime && boardContentKey(rb) !== boardContentKey(lb)) {
-          mergedBoards.push(rb);
-        } else {
-          mergedBoards.push(lb);
         }
       }
 
@@ -1004,7 +1075,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     } finally {
       refetchingRef.current = false;
     }
-  }, [dispatch, hasPendingPatch]);
+  }, [dispatch, hasFreshPendingPatch]);
   // 说明：setBoardVersion 通过 ref 间接使用（boardVersionsRef），
   // 不放进依赖可避免每次渲染重建 refetchFromServer（会导致 Realtime 反复重订阅）。
 
@@ -1044,9 +1115,27 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     if (!url) return;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
+    /**
+     * 【保存回滚 Bug 根治 2026-11-11】
+     *
+     * Realtime 会把「本端自己刚写的那次」变更也推回来：
+     * 本端 patch 成功 → DB 触发器更新 updated_at → 推送 → 本端 refetch。
+     * 若 patch 还没落库（网络慢），refetch 拉到的仍是旧数据，
+     * 合并就会把 UI 覆盖回修改前 —— 这就是「拖拽后跳回原样」。
+     *
+     * 根治：本端存在未确认 patch 时，直接跳过这次 refetch。
+     * patch 成功后会自行推进版本号，不需要靠 refetch 同步自己。
+     */
     const scheduleRefetch = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => refetchFromServer(), 800);
+      timer = setTimeout(() => {
+        if (hasAnyFreshPending()) {
+          // 有未确认改动：推迟同步，等 patch 落库后再拉（超时后自动放行）
+          scheduleRefetch();
+          return;
+        }
+        void refetchFromServer();
+      }, 800);
     };
 
     const channel = supabase
@@ -1057,8 +1146,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       .subscribe();
 
     // 兜底轮询：即使 Realtime 未在 Supabase 后台开启，也能保证多用户最终一致
+    // 注意：有未确认 patch 时跳过本轮，避免用云端旧数据覆盖本地改动
     const poll = setInterval(() => {
-      if (document.visibilityState === 'visible') refetchFromServer();
+      if (document.visibilityState !== 'visible') return;
+      if (hasAnyFreshPending()) return;
+      void refetchFromServer();
     }, 15000);
 
     return () => {
@@ -1066,6 +1158,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       clearInterval(poll);
       supabase.removeChannel(channel);
     };
+    // hasAnyFreshPending 依赖 ref，本身稳定；不放入依赖避免 Realtime 反复重订阅
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetchFromServer]);
 
 
@@ -1547,9 +1641,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // ===== patch 通道初始化：开关 / 版本同步 / outbox 重放（灰度）=====
   useEffect(() => {
     patchEnabledRef.current = isPatchRpcEnabled();
-    if (!patchEnabledRef.current) return;
+    exposeDiagnostics();
+    if (!patchEnabledRef.current) {
+      console.warn('[patch] 增量写入通道已被显式关闭（NEXT_PUBLIC_USE_PATCH_RPC=false）');
+      return;
+    }
 
-    console.info('[patch] 增量写入通道已启用（NEXT_PUBLIC_USE_PATCH_RPC=true）');
+    console.info('[patch] 增量写入通道已启用');
 
     // 1. 从服务端同步各看板当前版本（乐观锁基准）。
     //    单独用轻量请求只取 id+version，避免再拉一遍全量看板 JSON。

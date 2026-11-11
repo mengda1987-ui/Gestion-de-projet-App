@@ -35,9 +35,12 @@ export type PatchResult = PatchSuccess | PatchConflict | PatchRejected;
 
 const ENDPOINT = '/api/board/patch';
 
-/** 是否启用了 patch 通道（灰度开关） */
+/** 是否启用了 patch 通道 */
 export function isPatchRpcEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_USE_PATCH_RPC === 'true';
+  // 默认启用；只有显式设为 'false' 才关闭。
+  // 原因：NEXT_PUBLIC_* 是构建期内联的，一旦漏配就会永久退回旧的全量路径，
+  // 而那条路径正是「保存后自动回滚」的根源。宁可默认走新路径。
+  return process.env.NEXT_PUBLIC_USE_PATCH_RPC !== 'false';
 }
 
 function toResult(body: any): PatchResult {
