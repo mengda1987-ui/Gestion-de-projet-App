@@ -2,6 +2,36 @@
 
 > 建立于 2026-11-05 数据覆盖事故之后。目标是：**任何一次误操作，都能在 10 分钟内完全恢复到上一小时的状态。**
 
+## 项目位置
+
+```
+/Users/mengda/AI/Project Trello          项目主目录
+/Users/mengda/AI/trello-recovery-20261105  11/5 事故时的数据存档
+```
+
+> 2026-11-11 从 `~/contact@les-francophiles.com/Ecole/AI/Project Trello` 迁移至此。
+> 迁移后已重新安装定时任务并逐项验证（构建、备份、恢复、云端数据均正常）。
+
+## 相关目录
+
+| 路径 | 用途 |
+|---|---|
+| `~/Backups/trello-app/` | 每 5 分钟自动快照（保留 2 天） |
+| `~/Backups/trello-app-logs/backup.log` | 备份日志 |
+| `~/Library/LaunchAgents/com.trelloapp.backup.plist` | 定时任务配置（含绝对路径，移动项目后需重装） |
+
+## 迁移项目后必做的一件事
+
+定时任务里写死了绝对路径，**移动项目文件夹后备份会静默失效**。移动后必须执行：
+
+```bash
+cd "<新路径>"
+bash scripts/install-backup-cron.sh --days 2 --every 5
+launchctl start com.trelloapp.backup   # 立即测试一次
+tail -5 ~/Backups/trello-app-logs/backup.log
+```
+
+
 ## 事故回顾
 
 - **时间**：2026-11-05
