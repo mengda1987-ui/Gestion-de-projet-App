@@ -18,7 +18,9 @@ on:
   workflow_dispatch: # 支持手动触发
 
 permissions:
-  contents: write
+  # 安全：工作流不再向仓库写入任何内容（备份含全部用户口令与 CRM 联系人），
+  # 产物通过 artifact 上传，因此只需要只读权限。
+  contents: read
 
 jobs:
   guard:
@@ -27,7 +29,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # 需要完整历史才能把备份提交回仓库
           fetch-depth: 1
 
       - name: Setup Node
@@ -47,28 +48,21 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          BACKUP_DIR: backups
+          # 写到 runner 临时目录，完全不触碰仓库工作树
+          BACKUP_DIR: ${{ runner.temp }}/trello-backups
           GUARD_STATE_FILE: .guard-state.json
         run: node scripts/cloud-guard.mjs --mode=backup
 
-      - name: Commit backup
-        run: |
-          # 清理超过 2 天的备份（与本地策略一致，避免仓库无限增长）
-          if [ -d backups ]; then
-            find backups -maxdepth 1 -type d -name '20*' -mtime +2 -exec rm -rf {} + 2>/dev/null || true
-          fi
+      # 原来的 "Commit backup" 步骤（git add -A + git commit + git push）
+      # 已移除：它会把包含明文口令的 users.json 等生产数据提交到仓库。
+      # 现在改为上传 artifact，随 workflow 运行过期自动清理。
+      - name: Upload backup artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trello-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/trello-backups
+          # 与原先「保留 2 天」的策略对齐（artifact 保留期 1~90 天）
+          retention-days: 2
+          if-no-files-found: ignore
 
-          if [ -d backups ] && [ -n "$(ls -A backups 2>/dev/null | grep -v .gitkeep)" ]; then
-            git config user.name "data-guard[bot]"
-            git config user.email "data-guard@users.noreply.github.com"
-            git add -A backups .guard-state.json
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: 自动备份 $(date -u +'%Y-%m-%d %H:%M UTC')"
-              git push
-              echo "✓ 已提交新备份"
-            else
-              echo "· 无新内容"
-            fi
-          else
-            echo "· 本次无备份"
-          fi

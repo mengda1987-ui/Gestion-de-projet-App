@@ -7,4 +7,9 @@ node_modules/
 # Vercel 本地链接（含项目 ID，因项目重命名会失效，不入库）
 .vercel
 
-# 本地备份（快照目录不在仓库内）
+# 备份快照：包含全量生产数据（含用户口令、CRM 联系人），一律不入库。
+# GitHub Actions 的备份改为上传 artifact，详见 .github/workflows/data-guard.yml。
+/backups/
+
+# 云端守护的探测状态（含全部看板 ID 与 updated_at 指纹），属环境元数据
+/.guard-state.json
