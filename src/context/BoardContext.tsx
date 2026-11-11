@@ -302,6 +302,49 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // 显式删除追踪：只有用户主动删除的看板/用户才会从服务器删除，
   // 避免“快照对比自动删除”误删他人数据。
   const deletedBoardIdsRef = useRef<Set<string>>(new Set());
+  // 【防复活】已删除看板的持久化墓碑（localStorage）。
+  // 原实现只存在内存，刷新后即丢失 → NOT_FOUND 补建逻辑会把删掉的看板复活。
+  const DELETED_TOMBSTONE_KEY = 'trello_deleted_board_tombstones';
+
+  /** 读取已删除看板墓碑（跨刷新保留） */
+  const readBoardTombstones = useCallback((): Set<string> => {
+    try {
+      const raw = window.localStorage.getItem(DELETED_TOMBSTONE_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) ? arr.filter((x: any) => typeof x === 'string') : []);
+    } catch {
+      return new Set();
+    }
+  }, []);
+
+  /** 写入墓碑 */
+  const writeBoardTombstones = useCallback((ids: Set<string>) => {
+    try {
+      // 只保留最近 200 条，避免无限增长
+      const arr = Array.from(ids).slice(-200);
+      window.localStorage.setItem(DELETED_TOMBSTONE_KEY, JSON.stringify(arr));
+    } catch {}
+  }, []);
+
+  /** 记录一个删除墓碑 */
+  const markBoardDeleted = useCallback(
+    (id: string) => {
+      const set = readBoardTombstones();
+      set.add(id);
+      writeBoardTombstones(set);
+    },
+    [readBoardTombstones, writeBoardTombstones],
+  );
+
+  /** 该看板是否被用户删除过（内存 + 墓碑） */
+  const isBoardDeleted = useCallback(
+    (id: string) => {
+      if (deletedBoardIdsRef.current.has(id)) return true;
+      return readBoardTombstones().has(id);
+    },
+    [readBoardTombstones],
+  );
   const deletedUserIdsRef = useRef<Set<string>>(new Set());
   // 用户是否主动修改过背景（用于防止把用户设置的背景冲成默认白底）
   const appearanceDirtyRef = useRef(false);
@@ -643,12 +686,48 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         // 【关键】若是用户主动删除的看板，绝不能补建 ——
         // 否则会出现「删掉了、刷新又回来」的复活现象。
-        if (deletedBoardIdsRef.current.has(entry.boardId)) {
+        // 使用 isBoardDeleted（内存 + localStorage 墓碑），刷新后依然有效。
+        if (isBoardDeleted(entry.boardId)) {
+          console.info('[patch] 跳过已删除看板的补建:', entry.boardId);
           return;
         }
 
         const board = latestSnapshotRef.current?.boards?.find(b => b.id === entry.boardId);
         if (!board) {
+          return;
+        }
+
+        // 【关键修复 2026-11-11】补建前必须确认云端确实不存在（含软删除行）。
+        //
+        // 曾经的 bug：NOT_FOUND 就无脑补建，而 NOT_FOUND 也可能来自
+        // 「该看板已被软删除（is_deleted=true）」→ 于是补建把删掉的看板复活，
+        // 形成「删掉 → 复活 → 再删 → 再复活」的无限循环，
+        // 并产生多条同名看板记录。
+        try {
+          const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (url && key) {
+            const chk = await fetch(
+              `${url}/rest/v1/boards?select=id,is_deleted&id=eq.${encodeURIComponent(entry.boardId)}`,
+              { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+            );
+            if (chk.ok) {
+              const rows = await chk.json();
+              const existed = Array.isArray(rows) && rows.length > 0;
+              // 行存在（无论是否软删除）→ 绝不补建
+              if (existed) {
+                console.info(
+                  '[patch] 该看板在云端已存在（可能已被删除），跳过补建:',
+                  entry.boardId,
+                  'is_deleted=',
+                  rows[0]?.is_deleted,
+                );
+                return;
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn('[patch] 补建前检查失败，跳过补建以避免复活:', e?.message);
           return;
         }
 
@@ -739,7 +818,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         }, delay);
       }
     }
-  }, [patchActive, setBoardVersion, bumpPending]);
+  }, [patchActive, setBoardVersion, bumpPending, isBoardDeleted]);
 
   /** 入队并触发提交（同一看板串行） */
   const enqueuePatch = useCallback(
@@ -2073,6 +2152,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
     if (action.type === 'DELETE_BOARD') {
       deletedBoardIdsRef.current.add(action.payload);
+      // 【防复活】同时写入持久化墓碑，刷新后依然能识别「这是用户删的」
+      markBoardDeleted(action.payload);
       // 【关键修复】patch 通道启用时 doSave 不再执行，
       // 删除请求必须直接发出，否则「删掉的看板刷新后又回来」。
       const boardId = action.payload;
@@ -2129,7 +2210,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       boardAfter = state.board;
     }
     dispatchWithPatch(action, boardAfter);
-  }, [dispatch, state, patchActive, dispatchWithPatch]);
+  }, [dispatch, state, patchActive, dispatchWithPatch, markBoardDeleted]);
 
   const broadcastChange = useCallback((action: Action) => {
     trackedDispatch(action);

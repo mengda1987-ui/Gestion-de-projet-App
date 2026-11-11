@@ -57,7 +57,6 @@ BEGIN
     RAISE NOTICE '唯一索引 uniq_users_name_key 已创建';
   END IF;
 END $$;
-
 -- 软删除查询用的部分索引
 CREATE INDEX IF NOT EXISTS idx_users_live ON users (id) WHERE NOT is_deleted;
 
@@ -81,12 +80,26 @@ NOTIFY pgrst, 'reload schema';
 
 -- ---------------------------------------------------------------------------
 -- 第 5 步：自检（执行后请核对输出）
+--
+-- 注意：所有子查询都必须限定到 public schema 且 LIMIT 1，
+-- 否则 pg_class 里可能存在同名表/视图（不同 schema），
+-- 导致 "more than one row returned by a subquery used as an expression"（SQLSTATE 21000）。
 -- ---------------------------------------------------------------------------
 SELECT '列检查' AS 检查项,
        (SELECT COUNT(*) FROM information_schema.columns
-         WHERE table_name = 'users'
+         WHERE table_schema = 'public'
+           AND table_name = 'users'
            AND column_name IN ('password_hash','name_key','is_deleted','deleted_at')) AS 已存在列数,
-       (SELECT COUNT(*) FROM users WHERE name_key IS NOT NULL) AS name_key已回填,
-       (SELECT COUNT(*) FROM users) AS 用户总数,
-       has_table_privilege('anon', 'users', 'SELECT') AS anon可读,
-       (SELECT relrowsecurity FROM pg_class WHERE relname = 'users') AS rls已启用;
+       (SELECT COUNT(*) FROM public.users WHERE name_key IS NOT NULL) AS name_key已回填,
+       (SELECT COUNT(*) FROM public.users) AS 用户总数,
+       has_table_privilege('anon', 'public.users', 'SELECT') AS anon可读,
+       (SELECT relrowsecurity
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relname = 'users'
+         LIMIT 1) AS rls已启用,
+       (SELECT COUNT(*) FROM (
+          SELECT name_key FROM public.users
+           WHERE name_key IS NOT NULL
+           GROUP BY name_key HAVING COUNT(*) > 1
+        ) d) AS 重复name_key组数;

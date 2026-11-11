@@ -66,13 +66,37 @@ export async function POST(request: NextRequest) {
   if (requestedId && UUID_RE.test(requestedId)) {
     const { data: existing } = await admin
       .from('boards')
-      .select('id')
+      .select('id, is_deleted')
       .eq('id', requestedId)
       .limit(1);
 
     if (existing && existing.length > 0) {
-      // 已存在：幂等返回
-      return NextResponse.json({ ok: true, board: { id: requestedId }, existed: true });
+      // 已存在：幂等返回（含已软删除的情况 —— 绝不复活）
+      return NextResponse.json({
+        ok: true,
+        board: { id: requestedId },
+        existed: true,
+        deleted: existing[0]?.is_deleted === true,
+      });
+    }
+
+    // 【防复活】同名看板已被软删除时，拒绝补建。
+    // 场景：用户删掉名为「1」的看板后，旧客户端的 NOT_FOUND 补建逻辑
+    // 会用新的本地 id 再建一条同名的 —— 于是看板"删不掉、越删越多"。
+    if (title) {
+      const { data: sameName } = await admin
+        .from('boards')
+        .select('id, is_deleted')
+        .eq('title', title)
+        .eq('is_deleted', true)
+        .limit(1);
+      if (sameName && sameName.length > 0) {
+        console.info('[boards] 存在同名已删除看板，拒绝补建:', title);
+        return NextResponse.json(
+          { ok: false, error: 'NAME_DELETED', message: '同名看板已被删除，不再重建' },
+          { status: 409 },
+        );
+      }
     }
 
     const { data: inserted, error: insErr } = await admin
