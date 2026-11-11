@@ -262,14 +262,11 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
       };
 
     case 'DELETE_CARD':
-      // 软删除：不物理移除，保留可恢复性（审计 M7）
-      return {
-        ops: [{
-          op: 'update_card',
-          cardId: action.payload.cardId,
-          fields: { deleted: true, deletedAt: new Date().toISOString() },
-        }],
-      };
+      // 【关键修复 2026-11-11】原实现发的是 update_card + {deleted:true}，
+      // 但 RPC 的 update_card 只会「写一个字段」，并不会移除卡片。
+      // 而前端 reducer 是真删除 → 云端仍留有卡片 → 下次拉取「删掉的卡片又回来」。
+      // 正确做法：用 RPC 支持的 remove_card，真正从列里移除。
+      return { ops: [{ op: 'remove_card', cardId: action.payload.cardId }] };
 
     case 'ARCHIVE_CARD': {
       const card = allCards.find(c => c.id === action.payload.cardId);

@@ -362,6 +362,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const forceRefetchRef = useRef(false);
   /** 诊断函数用：转接 forceRefetch（避免声明顺序问题） */
   const forceRefetchRef2 = useRef<((reason: string) => Promise<void>) | null>(null);
+  /** 版本冲突重试次数（防止无限重试） */
+  const conflictRetryRef = useRef<Map<string, number>>(new Map());
 
   const bumpPending = useCallback((boardId: string, delta: number) => {
     const cur = pendingPatchCountRef.current.get(boardId) ?? 0;
@@ -573,25 +575,52 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
     switch (result.code) {
       case 'VERSION_CONFLICT': {
-        // 乐观锁生效：绝不覆盖云端。记录新版本，并让本地按新版本重试，
-        // 而不是直接丢弃改动（修复：原实现直接 outboxDequeue = 丢掉用户修改）。
+        // 乐观锁冲突：云端版本已更新（通常是其他设备改过）。
+        //
+        // 【关键修复 2026-11-11】
+        // 原实现只更新版本号就 outboxDequeue 丢弃改动 —— 用户的删除/编辑被静默丢弃，
+        // 随后 refetch 拉回云端旧数据，表现为「改完 3 秒又弹回去」。
+        //
+        // 正确做法：用云端最新版本号**自动重试一次**，用户的改动必须被应用。
         setBoardVersion(entry.boardId, result.currentVersion);
         await outboxDequeue(entry.id);
         bumpPending(entry.boardId, -1);
 
-        // 用服务端返回的最新数据更新本地，避免基于旧状态继续操作
-        if (result.currentData) {
-          try {
-            window.dispatchEvent(new CustomEvent('trello:patch-conflict', {
-              detail: { boardId: entry.boardId, version: result.currentVersion },
-            }));
-          } catch {}
+        const retryKey = `${entry.boardId}:${entry.id}`;
+        const tried = (conflictRetryRef.current.get(retryKey) ?? 0);
+        if (tried < 2) {
+          // 第一次冲突：静默重试（用户无感）
+          conflictRetryRef.current.set(retryKey, tried + 1);
+          console.info(
+            `[patch] 版本冲突（本地 ${entry.baseVersion} → 云端 ${result.currentVersion}），自动重试第 ${tried + 1} 次`,
+          );
+          const fresh: OutboxEntry = {
+            ...entry,
+            id: newEntryId(),
+            baseVersion: result.currentVersion,
+            attempts: 0,
+          };
+          await outboxEnqueue(fresh);
+          await enqueuePatchRef.current?.(entry.boardId, entry.payload);
+          return;
         }
-        const msg = '检测到他人同时修改了该看板，已同步最新数据。';
-        if (lastPatchNoticeRef.current !== msg) {
-          lastPatchNoticeRef.current = msg;
-          setSaveError(msg);
-        }
+
+        // 连续冲突 2 次：可能存在持续写入的并发。先同步云端最新状态，
+        // 再重试一次（此时 baseVersion 已是最新），仍失败才提示用户。
+        conflictRetryRef.current.delete(retryKey);
+        console.warn('[patch] 多次冲突，先同步云端再重试');
+        try {
+          await forceRefetchRef2.current?.('conflict-retry');
+        } catch {}
+        const latestV = boardVersionsRef.current.get(entry.boardId) ?? result.currentVersion;
+        const fresh2: OutboxEntry = {
+          ...entry,
+          id: newEntryId(),
+          baseVersion: latestV,
+          attempts: 0,
+        };
+        await outboxEnqueue(fresh2);
+        await enqueuePatchRef.current?.(entry.boardId, entry.payload);
         return;
       }
       case 'DESTRUCTIVE_WRITE_BLOCKED':
@@ -721,10 +750,45 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         if (!payload.title && !payload.background && !payload.labels && !payload.data) return;
       }
 
+      // 【关键修复 2026-11-11】入队前主动校准 baseVersion。
+      //
+      // 问题：电脑端标签页长时间开着，本地 boardVersionsRef 会停留在旧值；
+      // 期间手机端每次保存都会让云端 version +1，于是电脑端再提交必然 409，
+      // 改动被丢弃 → 表现为「改完 3 秒又弹回去」。
+      //
+      // 做法：提交前拉一次云端真实版本（轻量 select=version）。
+      // 若无未确认改动，直接把基准对齐到云端最新值。
+      let baseVersion = boardVersionsRef.current.get(boardId) ?? 0;
+      if ((pendingPatchCountRef.current.get(boardId) ?? 0) === 0) {
+        try {
+          const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (url && key) {
+            const res = await fetch(
+              `${url}/rest/v1/boards?select=version&id=eq.${encodeURIComponent(boardId)}`,
+              { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+            );
+            if (res.ok) {
+              const rows = await res.json();
+              const v = rows?.[0]?.version;
+              if (typeof v === 'number') {
+                if (v !== baseVersion) {
+                  console.info(`[patch] 提交前校准版本: 本地 ${baseVersion} → 云端 ${v}`);
+                }
+                baseVersion = v;
+                boardVersionsRef.current.set(boardId, v);
+              }
+            }
+          }
+        } catch {
+          // 校准失败不影响提交，后续冲突时还有自动重试兜底
+        }
+      }
+
       const entry: OutboxEntry = {
         id: newEntryId(),
         boardId,
-        baseVersion: boardVersionsRef.current.get(boardId) ?? 0,
+        baseVersion,
         // 所有入队的 patch 都源自用户 Action，显式声明 intent，
         // 否则服务端会按「异常覆盖」把正常的删卡/拖拽也拦下来。
         payload: { ...payload, intent: 'user_edit' },
