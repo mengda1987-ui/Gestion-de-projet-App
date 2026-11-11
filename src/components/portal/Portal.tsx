@@ -9,7 +9,7 @@ import { getBgStyle, isImageBackground } from '@/lib/utils';
 import { LayoutDashboard, Users, LogOut, Languages, ArrowRight, Palette, X } from 'lucide-react';
 
 export default function Portal() {
-  const { currentUser, dispatch, portalBackground, portalImageOpacity } = useBoard();
+  const { currentUser, dispatch, portalBackground, portalImageOpacity, logout } = useBoard();
   const { t, lang, toggleLang } = useLang();
   const [showBgPicker, setShowBgPicker] = useState(false);
 
@@ -51,7 +51,7 @@ export default function Portal() {
               {lang === 'zh' ? 'EN' : '中'}
             </button>
             <button
-              onClick={() => dispatch({ type: 'SET_CURRENT_USER', payload: null })}
+              onClick={() => { void logout(); }}
               className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/70 dark:bg-white/10 backdrop-blur border border-slate-200/60 dark:border-white/10 text-slate-600 dark:text-slate-200 text-sm font-medium hover:bg-white dark:hover:bg-white/20 transition-colors"
             >
               <LogOut size={15} />

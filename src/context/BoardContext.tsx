@@ -74,6 +74,8 @@ interface BoardContextType {
   dispatch: React.Dispatch<Action>;
   broadcastChange: (action: Action) => void;
   saveError: string | null;
+  /** 登出：清除服务端会话 Cookie 并重置本地登录态 */
+  logout: () => Promise<void>;
 }
 
 const BoardContext = createContext<BoardContextType | undefined>(undefined);
@@ -125,6 +127,39 @@ function buildBackup(state: BoardState): BackupData {
     crmImageOpacity: state.crmImageOpacity,
     logo: state.logo,
   };
+}
+
+/**
+ * 加载成员列表。
+ *
+ * users 表对 anon 关闭后不能再直连 Supabase（审计 C3），改走 /api/members。
+ * 返回 null 表示「会话已失效或服务端不可用」——调用方应保留本地缓存，
+ * 绝不能当成「没有成员」处理（否则会把空列表写回，造成数据丢失）。
+ */
+async function fetchMembersForLoad(): Promise<any[] | null> {
+  try {
+    const res = await fetch('/api/members', { credentials: 'same-origin' });
+    if (!res.ok) {
+      console.warn('[load] 成员列表读取失败:', res.status);
+      return null;
+    }
+    const body = await res.json();
+    const members = Array.isArray(body?.members) ? body.members : [];
+    // 统一成 rowsToBackupData 期望的形状（服务端已不含口令）
+    return members.map((m: any) => ({
+      id: m.id,
+      name: m.name,
+      email: m.email || '',
+      avatar: m.avatar || '',
+      color: m.color || '#3B82F6',
+      role: m.role || 'member',
+      lang: m.lang || 'zh',
+      password: '', // 服务端不再下发；保留空串以兼容旧结构
+    }));
+  } catch (e) {
+    console.warn('[load] 成员列表请求异常:', e);
+    return null;
+  }
 }
 
 // 将数据库行映射为 BackupData（与 loadData 中的映射保持一致）
@@ -264,6 +299,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const historyTableAvailableRef = useRef<boolean | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // 当前用户的最新值（供 doSave 等稳定回调读取，避免 hook 依赖抖动）
+  const currentUserRef = useRef<User | null>(null);
+  useEffect(() => {
+    currentUserRef.current = state.currentUser;
+  }, [state.currentUser]);
+
   // ===== P1 patch 通道（灰度，NEXT_PUBLIC_USE_PATCH_RPC=true 时启用）=====
   // 设计：dispatch 后按 action → ops 生成最小增量，先落 IndexedDB outbox，
   // 再串行提交 /api/board/patch（服务端调用 apply_board_patch，行锁 + 版本校验）。
@@ -401,8 +442,21 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
       if (deletedUserIdsRef.current.size > 0) {
         const ids = Array.from(deletedUserIdsRef.current);
-        const { error } = await supabase.from('users').delete().in('id', ids);
-        if (error) throw error;
+        // users 表已对 anon 关闭，改走服务端（审计 C3）。
+        // 失败不阻断主流程：成员删除有独立接口，这里是兜底清理。
+        for (const id of ids) {
+          try {
+            const res = await fetch(`/api/members?id=${encodeURIComponent(id)}`, {
+              method: 'DELETE',
+              credentials: 'same-origin',
+            });
+            if (!res.ok) {
+              console.warn('[Persistence] 成员删除失败:', id, res.status);
+            }
+          } catch (e) {
+            console.warn('[Persistence] 成员删除请求异常:', e);
+          }
+        }
         deletedUserIdsRef.current.clear();
       }
 
@@ -521,28 +575,40 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         if (boardsError) throw boardsError;
       }
 
-      // 2. 用户：同样只保存有变化的
-      const prevUsers: any[] = usersSnapshotRef.current ? JSON.parse(usersSnapshotRef.current) : [];
-      const prevUserMap = new Map<string, any>(prevUsers.map((u: any) => [u.id, u]));
-      const usersToSave = data.users.filter(u => {
-        const prev = prevUserMap.get(u.id);
-        if (!prev) return true;
-        return JSON.stringify(prev) !== JSON.stringify(u);
-      });
-
-      if (usersToSave.length > 0) {
-        const rows = usersToSave.map(u => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar,
-          color: u.color,
-          role: u.role,
-          password: u.password,
-          lang: u.lang,
-        }));
-        const { error: usersError } = await supabase.from('users').upsert(rows);
-        if (usersError) throw usersError;
+      // 2. 用户：不再整表 upsert（审计 C2 —— 任何持有旧内存状态的客户端
+      //    都会把已删除成员 upsert 复活，并把口令重新写回）。
+      //    成员的新增/改名/改密/删除统一由 /api/members 负责，那里有服务端权限校验。
+      //    这里仅同步「当前用户自己的非敏感资料」变更（头像/颜色/语言）。
+      const me = currentUserRef.current;
+      if (me) {
+        const prevMe = latestSnapshotRef.current?.users?.find(u => u.id === me.id);
+        const profileChanged =
+          !prevMe ||
+          prevMe.name !== me.name ||
+          prevMe.avatar !== me.avatar ||
+          prevMe.color !== me.color ||
+          prevMe.lang !== me.lang;
+        if (profileChanged) {
+          try {
+            const res = await fetch('/api/members', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({
+                id: me.id,
+                name: me.name,
+                avatar: me.avatar,
+                color: me.color,
+                lang: me.lang,
+              }),
+            });
+            if (!res.ok && res.status !== 401) {
+              console.warn('[Persistence] 个人资料同步失败:', res.status);
+            }
+          } catch (e) {
+            console.warn('[Persistence] 个人资料同步异常:', e);
+          }
+        }
       }
 
       // 3. 工作区设置（单行，直接 upsert）
@@ -644,12 +710,39 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       console.error('[Persistence] 数据保存失败:', err);
       setSaveError('数据保存失败，已暂存在本地备份。请检查网络后重试。');
     }
+    // 依赖保持为空数组：doSave 会被 enqueueSave 串行调用，
+    // 若因 state 变化重建会导致保存队列被替换。currentUser 通过 ref 读取。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
   const enqueueSave = useCallback((data: BackupData) => {
     saveQueueRef.current = saveQueueRef.current.then(() => doSave(data)).catch(() => {});
   }, [doSave]);
+
+  /**
+   * 刷新页面后用会话 Cookie 恢复登录态（/api/auth/me）。
+   *
+   * 旧实现 currentUser 只存在内存里，一刷新就掉线，用户会以为
+   * 「还在登录但数据没同步」——这是数据丢失体验的诱因之一。
+   * 现在服务端持有 HttpOnly 签名 Cookie，刷新后可直接恢复。
+   */
+  const restoreSession = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const body = await res.json();
+      const me = body?.user;
+      if (!me) return;
+      dispatch({ type: 'SET_CURRENT_USER', payload: me });
+      if (me.lang === 'zh' || me.lang === 'en') {
+        try { window.localStorage.setItem('trello-clone.lang', me.lang); } catch {}
+      }
+    } catch (e) {
+      // 会话恢复失败不阻断使用：用户仍可用本地备份浏览
+      console.warn('[auth] 会话恢复失败:', e);
+    }
+  }, [dispatch]);
 
   // ===== 跨标签页广播 =====
   const broadcastSnapshot = useCallback((data: BackupData, savedAt: string) => {
@@ -669,13 +762,16 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
       );
 
-      const [{ data: usersData }, { data: boardsData }] = await Promise.race([
+      const [{ data: boardsData }, membersRows] = await Promise.race([
         Promise.all([
-          supabase.from('users').select('*'),
           supabase.from('boards').select('*'),
+          fetchMembersForLoad(),
         ]),
         timeout,
       ]) as any;
+      // membersRows 为 null 表示会话失效/服务端不可用：沿用内存中的成员列表，
+      // 绝不用空数组覆盖（否则会把用户列表清空并写回）。
+      const usersData = membersRows ?? (latestSnapshotRef.current?.users || []);
 
       // 背景设置单独请求，并使用「独立」的超时 Promise。
       // 注意：不能复用上面的 timeout —— 它一旦 settle 就无法再次参与 race，
@@ -880,13 +976,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
         );
 
-        const [{ data: usersData }, { data: boardsData }] = await Promise.race([
+        const [{ data: boardsData }, membersRows] = await Promise.race([
           Promise.all([
-            supabase.from('users').select('*'),
             supabase.from('boards').select('*'),
+            fetchMembersForLoad(),
           ]),
           timeout,
         ]) as any;
+        // 同上：读取失败时沿用内存缓存，避免把成员列表清空后写回
+        const usersData = membersRows ?? (latestSnapshotRef.current?.users || []);
 
         // 背景设置使用「独立」超时 Promise（不能复用上面的 timeout，原因见 refetchFromServer）
         let settingsData: any = null;
@@ -1049,6 +1147,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         dispatch({ type: 'LOAD_ALL_DATA', payload: dataToUse });
         loadedRef.current = true;
+        void restoreSession();
 
         // 快照记录“服务器当前值”，用于删除判断
         boardsSnapshotRef.current = JSON.stringify(boards);
@@ -1158,6 +1257,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         dispatch({ type: 'LOAD_ALL_DATA', payload: dataToUse });
         loadedRef.current = true;
+        void restoreSession();
         boardsSnapshotRef.current = JSON.stringify(dataToUse.boards);
         usersSnapshotRef.current = JSON.stringify(dataToUse.users);
         // 注意：这里不更新 lastLocalContentRef / stableContentRef，
@@ -1165,7 +1265,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
     }
     loadData();
-  }, [dispatch, enqueueSave]);
+  }, [dispatch, enqueueSave, restoreSession]);
 
   // ===== 持久化：内容变化时立即落本地 + 广播 + 串行保存 =====
   useEffect(() => {
@@ -1295,6 +1395,33 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     trackedDispatch(action);
   }, [trackedDispatch]);
 
+  /**
+   * 登出：先让服务端失效会话（清 HttpOnly Cookie），再重置前端状态。
+   *
+   * 旧实现只 dispatch({type:'SET_CURRENT_USER', payload:null})，
+   * 服务端会话仍然有效 —— 这是审计 C3 的会话管理缺陷。
+   */
+  const logout = useCallback(async () => {
+    // 登出前先把待提交的 patch 尽量发出去，避免丢改动
+    try {
+      if (patchEnabledRef.current) {
+        const pending = await outboxListAll();
+        for (const entry of pending) {
+          await flushPatchEntry(entry);
+        }
+      }
+    } catch (e) {
+      console.warn('[logout] flush 待提交改动失败:', e);
+    }
+
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch (e) {
+      console.warn('[logout] 服务端登出失败:', e);
+    }
+    trackedDispatch({ type: 'SET_CURRENT_USER', payload: null });
+  }, [trackedDispatch, flushPatchEntry]);
+
 
   // 优化：useMemo 包裹 context value，避免不必要的重渲染
   // 注意：对外暴露 trackedDispatch，确保删除动作能被追踪
@@ -1302,8 +1429,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     state,
     dispatch: trackedDispatch,
     broadcastChange,
-    saveError
-  }), [state, trackedDispatch, broadcastChange, saveError]);
+    saveError,
+    logout,
+  }), [state, trackedDispatch, broadcastChange, saveError, logout]);
 
 
   // 保存失败提示自动消失
@@ -1416,7 +1544,7 @@ export function useBoardContext() {
 }
 
 export function useBoard() {
-  const { state, dispatch, broadcastChange, saveError } = useBoardContext();
+  const { state, dispatch, broadcastChange, saveError, logout } = useBoardContext();
   
   // 优化：缓存 findCard 函数，避免每次渲染重新创建
   const findCard = useCallback((cardId: string): { card: any; columnId: string } | undefined => {
@@ -1450,6 +1578,7 @@ export function useBoard() {
     dispatch,
     broadcastChange,
     saveError,
+    logout,
     findCard,
   };
 }

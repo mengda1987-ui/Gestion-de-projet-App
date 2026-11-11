@@ -41,10 +41,12 @@ export default function LoginPage() {
 
       if (!response.ok) {
         setError(
-          data.error === 'User not found'
-            ? (lang === 'zh' ? '用户不存在，请联系管理员创建账号' : 'User not found. Contact admin to create an account.')
-            : data.error === 'Incorrect password'
-            ? (lang === 'zh' ? '密码错误' : 'Incorrect password')
+          data.error === 'Invalid credentials'
+            ? (lang === 'zh' ? '用户名或密码错误' : 'Incorrect name or password')
+            : data.error === 'RATE_LIMITED'
+            ? (lang === 'zh' ? '尝试过于频繁，请稍后再试' : 'Too many attempts. Please try again later.')
+            : data.error === 'SERVER_NOT_CONFIGURED' || data.error === 'SESSION_NOT_CONFIGURED'
+            ? (lang === 'zh' ? '服务器未就绪，请联系管理员配置' : 'Server not configured. Contact admin.')
             : (lang === 'zh' ? '登录失败，请稍后重试' : 'Login failed. Please try again.')
         );
         setIsLogging(false);
@@ -188,8 +190,8 @@ export default function LoginPage() {
 
           <p className="text-center text-[11px] text-slate-400 mt-5">
             {lang === 'zh'
-              ? `${users.length} 位成员 · 默认密码 123456`
-              : `${users.length} members · Default password: 123456`}
+              ? `${users.length} 位成员 · 忘记密码请联系管理员`
+              : `${users.length} members · Contact admin if you forgot your password`}
           </p>
         </div>
       </div>

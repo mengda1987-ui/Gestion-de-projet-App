@@ -5,7 +5,12 @@ export interface User {
   avatar: string;
   color: string;
   role: 'admin' | 'member';
-  password: string;
+  /**
+   * @deprecated 口令不再下发到前端（审计 C3）。
+   * 保留为可选字段仅为兼容旧本地备份/localStorage 里的历史数据，
+   * 新代码一律不得读取或写入。
+   */
+  password?: string;
   lang: 'zh' | 'en';
 }
 

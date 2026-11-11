@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { User } from '@/types';
+import { updateMember } from '@/lib/api/members';
 import {
   X,
   UserCircle2,
@@ -148,16 +149,16 @@ export default function UserProfileModal({ onClose }: UserProfileModalProps) {
     }, 300);
   };
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     setPasswordError('');
     setPasswordSuccess(false);
 
-    if (currentPassword !== currentUser.password) {
-      setPasswordError(lang === 'zh' ? '当前密码不正确' : 'Current password is incorrect');
+    if (!newPassword.trim() || newPassword.trim().length < 8) {
+      setPasswordError(lang === 'zh' ? '新密码至少需要 8 个字符' : 'New password must be at least 8 characters');
       return;
     }
-    if (!newPassword.trim() || newPassword.trim().length < 4) {
-      setPasswordError(lang === 'zh' ? '新密码至少需要4个字符' : 'New password must be at least 4 characters');
+    if (/^\d+$/.test(newPassword.trim())) {
+      setPasswordError(lang === 'zh' ? '密码不能是纯数字' : 'Password cannot be all digits');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -165,10 +166,23 @@ export default function UserProfileModal({ onClose }: UserProfileModalProps) {
       return;
     }
 
-    broadcastChange({
-      type: 'UPDATE_USER',
-      payload: { userId: currentUser.id, updates: { password: newPassword.trim() } },
+    // 旧口令由服务端校验（前端不再持有 password 字段，审计 C3）
+    const { error } = await updateMember({
+      id: currentUser.id,
+      password: newPassword.trim(),
+      currentPassword,
     });
+
+    if (error) {
+      setPasswordError(
+        error.code === 'INVALID_PASSWORD'
+          ? (lang === 'zh' ? '当前密码不正确' : 'Current password is incorrect')
+          : error.code === 'WEAK_PASSWORD'
+          ? (lang === 'zh' ? (error.message || '密码太弱') : 'Password too weak')
+          : (lang === 'zh' ? '修改失败，请稍后重试' : 'Failed to change password'),
+      );
+      return;
+    }
 
     setPasswordSuccess(true);
     setCurrentPassword('');

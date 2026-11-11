@@ -53,6 +53,7 @@ export default function MainBoard() {
     dispatch,
     darkMode,
     filters,
+    logout,
   } = useBoard();
   const { lang, toggleLang, t } = useLang();
 
@@ -73,7 +74,8 @@ export default function MainBoard() {
   ], [t]);
 
   const handleLogout = () => {
-    dispatch({ type: 'SET_CURRENT_USER', payload: null });
+    // 必须让服务端清 Cookie，否则会话仍然有效（审计 C3）
+    void logout();
   };
 
   // Compute the background CSS style

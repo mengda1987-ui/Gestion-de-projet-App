@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { getAdminClient } from '@/lib/supabaseAdmin';
 
 /**
  * POST /api/board/patch
@@ -26,9 +26,6 @@ export const dynamic = 'force-dynamic';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_PATCH_BYTES = 2 * 1024 * 1024; // 2MB：防止超大附件把请求撑爆
 const MAX_OPS = 200;
-
-let cached: SupabaseClient | null = null;
-let cachedKey = '';
 
 /**
  * 进程内幂等缓存：sendBeacon 与正常 fetch 可能同时提交同一条 entry。
@@ -57,18 +54,6 @@ function markProcessed(entryId: string, result: any) {
     }
   }
   processedEntries.set(entryId, { at: Date.now(), result });
-}
-
-function getAdminClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  if (cached && cachedKey === key) return cached;
-  cached = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  cachedKey = key;
-  return cached;
 }
 
 function bad(status: number, code: string, message: string, extra?: Record<string, unknown>) {

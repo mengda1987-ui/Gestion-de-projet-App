@@ -85,7 +85,7 @@ function getBoardFallbackEmoji(title: string): string {
 }
 
 export default function BoardHome() {
-  const { boards, currentUser, users, dispatch, broadcastChange, workspaceBackground, logo } = useBoard();
+  const { boards, currentUser, users, dispatch, broadcastChange, workspaceBackground, logo, logout } = useBoard();
   const { t, lang, toggleLang } = useLang();
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -378,7 +378,7 @@ export default function BoardHome() {
           </div>
 
           <button
-            onClick={() => dispatch({ type: 'SET_CURRENT_USER', payload: null })}
+            onClick={() => { void logout(); }}
             className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/70 backdrop-blur-md border border-slate-200/60 shadow-sm text-slate-500 hover:text-red-500 hover:bg-white hover:border-red-200 hover:shadow-md transition-all duration-200 text-sm font-medium active:scale-95"
           >
             <LogOut size={14} />

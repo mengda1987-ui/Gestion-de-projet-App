@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { Avatar } from '@/components/ui/Avatar';
-import { generateId } from '@/lib/utils';
+import { createMember, deleteMember } from '@/lib/api/members';
 import {
   X,
   Plus,
@@ -34,42 +34,73 @@ export default function MemberManageModal({ onClose }: Props) {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newLang, setNewLang] = useState<'zh' | 'en'>('en');
+  const [creating, setCreating] = useState(false);
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     const name = newName.trim();
     if (!name || !newPassword.trim()) return;
 
-    const user = {
-      id: generateId(),
-      name,
-      email: newEmail.trim() || `${name.toLowerCase().replace(/\s/g, '')}@team.com`,
-      avatar: `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20avatar%20kawaii%20style%20big%20eyes%20round%20face%20pastel%20background&image_size=square`,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      role: 'member' as const,
-      password: newPassword.trim(),
-      lang: newLang,
-    };
-
-    // 检查重名
+    // 提前本地拦截重名，减少一次往返（服务端仍会再校验一次）
     if (users.some(u => u.name.toLowerCase() === name.toLowerCase())) {
       alert(lang === 'zh' ? '该名字已存在，请换一个' : 'Name already taken');
       return;
     }
 
-    dispatch({ type: 'ADD_USER', payload: { user } });
-    setNewName('');
-    setNewEmail('');
-    setNewPassword('');
-    setShowAdd(false);
+    if (creating) return;
+    setCreating(true);
+    try {
+      // 走服务端：口令在服务端 scrypt 哈希后入库，永不经过前端存储（审计 C3）
+      const { data, error } = await createMember({
+        name,
+        password: newPassword.trim(),
+        email: newEmail.trim() || `${name.toLowerCase().replace(/\s/g, '')}@team.com`,
+        avatar: `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20cartoon%20avatar%20kawaii%20style%20big%20eyes%20round%20face%20pastel%20background&image_size=square`,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        role: 'member',
+        lang: newLang,
+      });
+
+      if (error || !data?.member) {
+        const msg =
+          error?.code === 'NAME_TAKEN'
+            ? (lang === 'zh' ? '该名字已存在，请换一个' : 'Name already taken')
+            : error?.code === 'WEAK_PASSWORD'
+            ? (lang === 'zh' ? (error.message || '密码太弱') : 'Password too weak')
+            : error?.code === 'FORBIDDEN'
+            ? (lang === 'zh' ? '只有管理员可以添加成员' : 'Only admins can add members')
+            : (lang === 'zh' ? '添加失败，请稍后重试' : 'Failed to add member');
+        alert(msg);
+        return;
+      }
+
+      dispatch({ type: 'ADD_USER', payload: { user: data.member as any } });
+      setNewName('');
+      setNewEmail('');
+      setNewPassword('');
+      setShowAdd(false);
+    } finally {
+      setCreating(false);
+    }
   };
 
-  const handleDeleteUser = (userId: string, userName: string) => {
+  const handleDeleteUser = async (userId: string, userName: string) => {
     const target = users.find(u => u.id === userId);
     if (target?.role === 'admin') {
       alert(lang === 'zh' ? '不能删除管理员账号' : 'Cannot delete admin account');
       return;
     }
-    if (!confirm(lang === 'zh' ? `确定删除成员「${userName}」？此操作不可撤销。` : `Delete member "${userName}"? This cannot be undone.`)) return;
+    if (!confirm(lang === 'zh' ? `确定删除成员「${userName}」？` : `Delete member "${userName}"?`)) return;
+
+    // 服务端软删除（is_deleted），可恢复；不再是不可逆的物理删除
+    const { error } = await deleteMember(userId);
+    if (error) {
+      alert(
+        error.code === 'LAST_ADMIN'
+          ? (lang === 'zh' ? '不能删除最后一个管理员' : 'Cannot delete the last admin')
+          : (lang === 'zh' ? '删除失败，请稍后重试' : 'Failed to delete member'),
+      );
+      return;
+    }
     dispatch({ type: 'DELETE_USER', payload: { userId } });
   };
 
