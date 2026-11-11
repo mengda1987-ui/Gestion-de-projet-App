@@ -214,26 +214,38 @@ const flush = () => { if (!pendingSaveRef.current) return; ... };
 
 **当前配置：2 天，最坏情况也只要 76MB。** 需要更久的历史就改成 7 天（267MB）或 30 天（1.1GB）。
 
-## 启用云端守护（需要你操作 2 步）
+## 启用云端守护（已配置完成 ✓）
 
-### 第 1 步：把 Supabase 密钥加到 GitHub Secrets
+2026-11-11：首次运行失败，原因是 **GitHub Secrets 未配置**，脚本启动即退出（`✗ 缺少 Supabase 配置`）。
 
-打开 `https://github.com/mengda1987-ui/Gestion-de-projet-App/settings/secrets/actions`
+已通过 `scripts/setup-github-secrets.py` 用本地 git 凭据自动配置完成，并验证通过：
 
-点 `New repository secret`，添加两个：
+```
+Job: guard → success
+   5. Probe and backup: success
+   6. Commit backup: success
+```
 
-| Name | Value |
-|---|---|
-| `SUPABASE_URL` | `.env.local` 里的 `NEXT_PUBLIC_SUPABASE_URL` |
-| `SUPABASE_ANON_KEY` | `.env.local` 里的 `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+配置命令（如需重配）：
 
-### 第 2 步：启用 Actions
+```bash
+python3 -m venv /tmp/secretenv && /tmp/secretenv/bin/pip install pynacl
+/tmp/secretenv/bin/python scripts/setup-github-secrets.py
+```
 
-打开 `https://github.com/mengda1987-ui/Gestion-de-projet-App/actions`
+手动触发验证：
 
-如果提示 workflow 需要启用，点 `I understand my workflows, go ahead and enable them`。
+```bash
+python3 scripts/trigger-guard.py
+```
 
-然后手动跑一次验证：左侧选 `Data Guard Backup` → 右侧 `Run workflow`。
+### 如果再次失败，按这个顺序排查
+
+| 失败步骤 | 原因 | 解决 |
+|---|---|---|
+| `Probe and backup` | Secrets 缺失或失效 | 重跑 `setup-github-secrets.py` |
+| `Probe and backup` | Supabase 项目被暂停（免费版 7 天不活动） | 打开 Supabase 后台恢复 |
+| `Commit backup` | 工作流权限不足 | 检查 Settings → Actions → Workflow permissions 是否为 Read and write |
 
 ### 两个必须知道的事实
 

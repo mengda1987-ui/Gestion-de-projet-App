@@ -53,10 +53,15 @@ jobs:
 
       - name: Commit backup
         run: |
-          if [ -d backups ] && [ -n "$(ls -A backups 2>/dev/null)" ]; then
+          # 清理超过 2 天的备份（与本地策略一致，避免仓库无限增长）
+          if [ -d backups ]; then
+            find backups -maxdepth 1 -type d -name '20*' -mtime +2 -exec rm -rf {} + 2>/dev/null || true
+          fi
+
+          if [ -d backups ] && [ -n "$(ls -A backups 2>/dev/null | grep -v .gitkeep)" ]; then
             git config user.name "data-guard[bot]"
             git config user.email "data-guard@users.noreply.github.com"
-            git add backups .guard-state.json
+            git add -A backups .guard-state.json
             if ! git diff --cached --quiet; then
               git commit -m "chore: 自动备份 $(date -u +'%Y-%m-%d %H:%M UTC')"
               git push
