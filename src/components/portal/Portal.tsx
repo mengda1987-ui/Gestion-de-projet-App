@@ -6,6 +6,7 @@ import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 import { getBgStyle, isImageBackground } from '@/lib/utils';
+import { APP_VERSION_LABEL } from '@/lib/version';
 import { LayoutDashboard, Users, LogOut, Languages, ArrowRight, Palette, X } from 'lucide-react';
 
 export default function Portal() {
@@ -131,7 +132,7 @@ export default function Portal() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.15
+        {APP_VERSION_LABEL}
       </div>
     </div>
   );

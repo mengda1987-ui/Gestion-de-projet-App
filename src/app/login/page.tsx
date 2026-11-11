@@ -6,6 +6,7 @@ import { useBoard } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { LogIn, Languages, User2, Lock, Palette, X } from 'lucide-react';
 import { cn, isImageBackground } from '@/lib/utils';
+import { APP_VERSION_LABEL } from '@/lib/version';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function LoginPage() {
@@ -198,7 +199,7 @@ export default function LoginPage() {
 
       {/* Version badge */}
       <div className="fixed bottom-3 right-4 text-[11px] text-white/60 font-medium select-none pointer-events-none z-50">
-        v2.2.15
+        {APP_VERSION_LABEL}
       </div>
 
 

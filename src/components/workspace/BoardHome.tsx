@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { APP_VERSION_LABEL } from '@/lib/version';
 import MemberManageModal from '@/components/ui/MemberManageModal';
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 import { parseISO, isToday } from 'date-fns';
@@ -900,7 +901,7 @@ export default function BoardHome() {
 
       {/* Version */}
       <div className="fixed bottom-3 right-4 text-[11px] text-black font-medium select-none pointer-events-none z-50">
-        v2.2.15
+        {APP_VERSION_LABEL}
       </div>
       </div>
     </div>
