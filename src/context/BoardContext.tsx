@@ -360,6 +360,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
    * 本地未提交改动依然在 outbox 里，随后会补交，不会丢。
    */
   const forceRefetchRef = useRef(false);
+  /** 诊断函数用：转接 forceRefetch（避免声明顺序问题） */
+  const forceRefetchRef2 = useRef<((reason: string) => Promise<void>) | null>(null);
 
   const bumpPending = useCallback((boardId: string, delta: number) => {
     const cur = pendingPatchCountRef.current.get(boardId) ?? 0;
@@ -420,6 +422,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
    */
   const exposeDiagnostics = useCallback(() => {
     if (typeof window === 'undefined') return;
+
     (window as any).__trelloPatchDiagnose = () => {
       const info = {
         开关值: process.env.NEXT_PUBLIC_USE_PATCH_RPC ?? '(未定义)',
@@ -438,7 +441,89 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
       return info;
     };
-  }, [patchActive]);
+
+    /**
+     * 【移动端】一键打印「远端同步」全链路状态。
+     *
+     * 在手机上打开 Console（或 Safari 的 Web Inspector）执行：
+     *   await __trelloSyncDebug()
+     *
+     * 输出内容：
+     *   1. Realtime 连接状态
+     *   2. 本地已知版本 vs 云端真实版本（逐个看板）
+     *   3. 当前选中看板的本地内容 vs 云端内容差异
+     *   4. 强制拉取一次并打印合并决策
+     */
+    (window as any).__trelloSyncDebug = async () => {
+      const out: any = {
+        时间: new Date().toISOString(),
+        Realtime状态: realtimeStatusRef.current || '(未建立)',
+        Realtime已断: realtimeBrokenRef.current,
+        未确认patch: Object.fromEntries(pendingPatchCountRef.current),
+        本地已知版本: Object.fromEntries(boardVersionsRef.current),
+      };
+      console.log('===== 同步诊断 =====');
+      console.table(out);
+
+      // 直接查云端真实版本
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (url && key) {
+          const res = await fetch(
+            `${url}/rest/v1/boards?select=id,title,version,updated_at&or=(is_deleted.is.null,is_deleted.eq.false)&order=title`,
+            { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+          );
+          if (res.ok) {
+            const rows = await res.json();
+            console.log('===== 云端真实状态 =====');
+            console.table(
+              rows.map((r: any) => ({
+                看板: r.title,
+                云端version: r.version,
+                本地已知version: boardVersionsRef.current.get(r.id) ?? '(无)',
+                一致: boardVersionsRef.current.get(r.id) === r.version,
+              })),
+            );
+          }
+        }
+      } catch (e: any) {
+        console.warn('查询云端失败:', e?.message);
+      }
+
+      // 当前选中看板的内容对比
+      const cur = state.boards.find(b => b.id === state.currentBoardId);
+      if (cur) {
+        const countCards = (b: any) =>
+          (b.columns || []).reduce((s: number, c: any) => s + (c.cards?.length || 0), 0);
+        console.log('===== 当前看板（本地内存）=====');
+        console.table([{
+          看板: cur.title,
+          id: cur.id,
+          本地version: cur.version ?? boardVersionsRef.current.get(cur.id) ?? '(无)',
+          卡片数: countCards(cur),
+          列数: (cur.columns || []).length,
+        }]);
+      }
+
+      // 强制拉一次并打印决策
+      console.log('===== 强制拉取云端并合并（观察 trace）=====');
+      try {
+        await forceRefetchRef2.current?.('manual-debug');
+        console.log('强制同步完成，请查看上方 [refetch] 日志');
+      } catch (e: any) {
+        console.warn('强制同步失败:', e?.message);
+      }
+
+      return out;
+    };
+
+    console.info(
+      '%c同步调试已就绪',
+      'color:#0a0;font-weight:bold',
+      '\n  执行 await __trelloSyncDebug() 查看完整同步状态',
+    );
+  }, [patchActive, state.boards, state.currentBoardId]);
 
   /** 记录云端版本（初始化 / refetch 时更新） */
   const setBoardVersion = useCallback((boardId: string, version: number) => {
@@ -1113,72 +1198,69 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         console.warn('[bg] refetch 未取到 workspace_settings，本次沿用当前背景设置');
       }
 
-      // ===== 逐看板合并：以 updatedAt 为准，谁新用谁 =====
-      // 这样即使本地有未同步改动，也只会保留本地更新的看板，
-      // 而远端更新的看板会被应用进来，彻底解决“B 看不到 A 的改动”。
+      // ===== 逐看板合并：以版本号为准 =====
       const localBoards: Board[] = latestSnapshotRef.current?.boards || [];
       const localBoardMap = new Map<string, Board>(localBoards.map(b => [b.id, b]));
 
       const mergedBoards: Board[] = [];
       const remoteBoardIds = new Set<string>();
+      const mergeTrace: any[] = [];
 
       for (const rb of remote.boards) {
         remoteBoardIds.add(rb.id);
         const lb = localBoardMap.get(rb.id);
         if (!lb) {
+          mergeTrace.push({ board: rb.title, decision: 'remote(新看板)' });
           mergedBoards.push(rb); // 远端新增的看板
           continue;
         }
 
-        // ================================================================
-        // 【保存回滚 Bug 修复】—— 最关键的一处
-        //
-        // 该看板还有未确认落库的 patch 时，绝不能用云端数据覆盖本地：
-        //   - 云端此刻可能是「patch 之前」的旧快照
-        //   - 覆盖后 UI 会立刻回滚（线上表现为「拖拽后 3 秒跳回原样」）
-        //   - patch 随后成功，但本地已无对应改动可应用，数据看起来"被删除"
-        //
-        // 注意：这里【不判断 patchEnabledRef】。
-        // 即使灰度开关没生效（构建时未注入），只要本地有未确认改动，
-        // 也必须保护 —— 否则开关一旦失效就退回"必回滚"状态。
-        //
-        // 例外：force=true（用户主动回到前台）时不保护，
-        // 必须立刻呈现云端最新状态；本地改动仍在 outbox 中随后补交。
-        // ================================================================
+        // 该看板还有未确认落库的 patch 时，不用云端覆盖本地
+        // （例外：force=true 时跳过，因为用户主动回到前台）
         if (!force && hasFreshPendingPatch(rb.id)) {
+          mergeTrace.push({ board: rb.title, decision: 'local(有未确认patch)' });
           mergedBoards.push(lb);
           continue;
         }
 
-        // 以「版本号」为唯一真相，不再依赖客户端时钟
-        // （本地/云端时间戳来自不同时钟，比较结果不可靠 —— 审计 M1）
+        const localV = boardVersionsRef.current.get(rb.id);
+        const remoteV = typeof (rb as any).version === 'number' ? (rb as any).version : undefined;
+
+        // 1) 远端版本明确更大 → 采用远端
+        if (typeof remoteV === 'number' && typeof localV === 'number' && remoteV > localV) {
+          boardVersionsRef.current.set(rb.id, remoteV);
+          mergeTrace.push({ board: rb.title, decision: 'remote(版本更新)', localV, remoteV });
+          mergedBoards.push(rb);
+          continue;
+        }
+
+        // 2) 本地没有版本基准 → 必须用远端校准（否则永远停在本地旧数据）
+        if (typeof localV !== 'number') {
+          if (typeof remoteV === 'number') boardVersionsRef.current.set(rb.id, remoteV);
+          mergeTrace.push({ board: rb.title, decision: 'remote(无本地版本基准)', localV, remoteV });
+          mergedBoards.push(rb);
+          continue;
+        }
+
+        // 3) 版本相同 → 比较内容：不同则以远端为准（内容级修复）
         //
-        // 【修复 2026-11-11】这里不再受灰度开关控制：
-        // 时间戳比较本身就是回滚的成因之一，任何情况下都不应回退到它。
-        {
-          const localV = boardVersionsRef.current.get(rb.id);
-          const remoteV = typeof (rb as any).version === 'number' ? (rb as any).version : undefined;
-
-          // 1) 远端版本明确更大 → 采用远端
-          if (typeof remoteV === 'number' && typeof localV === 'number' && remoteV > localV) {
-            boardVersionsRef.current.set(rb.id, remoteV);
+        // 【手机端修复】原实现在「版本相同」时直接保留本地，
+        // 导致：手机端版本号与云端一直相等，但内容落后（因为内容变更没推进版本），
+        // 于是永远不接受远端 —— 这就是「电脑加的卡片手机看不到」。
+        if (typeof remoteV === 'number' && remoteV === localV) {
+          if (boardContentKey(rb) !== boardContentKey(lb)) {
+            mergeTrace.push({ board: rb.title, decision: 'remote(版本相同但内容不同)', localV, remoteV });
             mergedBoards.push(rb);
-            continue;
+          } else {
+            mergeTrace.push({ board: rb.title, decision: 'local(完全相同)', localV, remoteV });
+            mergedBoards.push(lb);
           }
-
-          // 2) 本地还没有版本基准（如首次同步前）：用远端校准，但只在
-          //    本地内容为空时采用，避免覆盖尚未提交的本地改动
-          if (typeof localV !== 'number') {
-            if (typeof remoteV === 'number') boardVersionsRef.current.set(rb.id, remoteV);
-            const localEmpty = !lb.columns?.length && !lb.mindmap?.length;
-            mergedBoards.push(localEmpty ? rb : lb);
-            continue;
-          }
-
-          // 3) 版本相同或本地更新 → 保留本地（内容差异由后续 patch 提交）
-          mergedBoards.push(lb);
           continue;
         }
+
+        // 4) 本地版本更高（本地有未提交改动）→ 保留本地
+        mergeTrace.push({ board: rb.title, decision: 'local(本地版本更高)', localV, remoteV });
+        mergedBoards.push(lb);
       }
 
       // 本地有、远端没有的看板：保留（可能是本地刚创建还没保存成功）
@@ -1200,9 +1282,32 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       };
 
       const stable = stableKey(merged);
+
+      // ===== 诊断：把「远端推送 → 比对 → 采纳/丢弃」完整链路打出来 =====
+      console.info('[refetch] 合并决策', {
+        force,
+        remoteBoards: remote.boards.length,
+        localBoards: localBoards.length,
+        trace: mergeTrace,
+        stableChanged: stable !== stableContentRef.current,
+        wasBlocked,
+      });
+
       // 若刚从「服务器不可用」的降级状态恢复，强制应用远端数据，
       // 保证屏幕上立刻从空看板切回真实数据。
-      if (!wasBlocked && stable === stableContentRef.current) return;
+      //
+      // 【手机端修复】force=true（回到前台/网络恢复）时必须强制 dispatch，
+      // 否则 stable 相同就 return → React 不重渲染 → 用户看不到更新。
+      if (!force && !wasBlocked && stable === stableContentRef.current) {
+        console.info('[refetch] 内容无变化，跳过 dispatch');
+        return;
+      }
+
+      // 计算哪些看板实际被远端替换了，用于诊断
+      const replaced = mergeTrace.filter((t) => String(t.decision).startsWith('remote'));
+      if (replaced.length > 0) {
+        console.warn('[refetch] 采纳远端数据的看板:', replaced);
+      }
 
       stableContentRef.current = stable;
       lastLocalContentRef.current = JSON.stringify(merged);
@@ -1214,6 +1319,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...merged, savedAt: new Date().toISOString(), pending: pendingSaveRef.current }));
       } catch {}
       dispatch({ type: 'APPLY_EXTERNAL_STATE', payload: merged });
+      console.info('[refetch] 已 dispatch APPLY_EXTERNAL_STATE');
     } catch (err) {
       console.warn('[Realtime] 重新拉取失败:', err);
     } finally {
@@ -1237,6 +1343,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     },
     [refetchFromServer],
   );
+
+  // 供 __trelloSyncDebug() 调用
+  useEffect(() => {
+    forceRefetchRef2.current = forceRefetch;
+  }, [forceRefetch]);
   // 说明：setBoardVersion 通过 ref 间接使用（boardVersionsRef），
   // 不放进依赖可避免每次渲染重建 refetchFromServer（会导致 Realtime 反复重订阅）。
 
@@ -2006,10 +2117,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [saveError]);
 
+  // ===== 同步调试指令挂载（依赖 state，随其更新）=====
+  useEffect(() => {
+    exposeDiagnostics();
+  }, [exposeDiagnostics]);
+
   // ===== patch 通道初始化：开关 / 版本同步 / outbox 重放（灰度）=====
   useEffect(() => {
     patchEnabledRef.current = isPatchRpcEnabled();
-    exposeDiagnostics();
+    // 诊断函数单独在下面的 effect 里挂载（它依赖 state，需随 state 更新重新挂载）
     if (!patchEnabledRef.current) {
       console.warn('[patch] 增量写入通道已被显式关闭（NEXT_PUBLIC_USE_PATCH_RPC=false）');
       return;
