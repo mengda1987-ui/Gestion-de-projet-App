@@ -1,0 +1,802 @@
+[
+  {
+    "id": "cours",
+    "name": "课程",
+    "name_en": "Courses",
+    "emoji": "🎓",
+    "color": "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",
+    "data": {
+      "fields": [
+        {
+          "id": "005014d9-34c7-477b-b33f-f20be09703a7",
+          "name": "ID Contact",
+          "type": "text"
+        },
+        {
+          "id": "fbe93a26-27b5-40de-819a-2fae2669aeff",
+          "name": "Date d'ajout",
+          "type": "date"
+        },
+        {
+          "id": "9054ae28-1015-4538-b9ba-64873a5b087f",
+          "name": "Nom parent",
+          "type": "text"
+        },
+        {
+          "id": "5aef3572-5c35-4606-bd7b-d4b1fc688799",
+          "name": "Prénom parent",
+          "type": "text"
+        },
+        {
+          "id": "65d04988-d5ca-4699-9f49-e6816cd41075",
+          "name": "Titre parent",
+          "type": "text"
+        },
+        {
+          "id": "443d9158-4e3c-46d7-8517-3f505339e1a7",
+          "name": "Nom élève",
+          "type": "text"
+        },
+        {
+          "id": "ae4f1817-230d-4b79-9664-9e027241dede",
+          "name": "Prénom élève",
+          "type": "text"
+        },
+        {
+          "id": "644e4b66-a4c0-4261-81c9-e8425c2be6c9",
+          "name": "Titre",
+          "type": "text"
+        },
+        {
+          "id": "1bc0f644-e827-4544-a21c-f12226141040",
+          "name": "Age élève",
+          "type": "number"
+        },
+        {
+          "id": "ec7364ed-3534-4394-a918-d4297d99f3b2",
+          "name": "Nom établissement",
+          "type": "text"
+        },
+        {
+          "id": "3cfd2022-cb2c-4545-9719-ad00238edb48",
+          "name": "Type établissement",
+          "type": "text"
+        },
+        {
+          "id": "992e6d1e-c46d-4fe5-ba43-ffb0c4c6119c",
+          "name": "Pays",
+          "type": "text"
+        },
+        {
+          "id": "bb98489a-4e6e-4ac1-b0cf-25e83676ffe0",
+          "name": "Ville",
+          "type": "text"
+        },
+        {
+          "id": "cb3d0bcc-75e5-46c2-b4b2-55e325499ce0",
+          "name": "Fuseau horaire",
+          "type": "text"
+        },
+        {
+          "id": "41714865-9d0b-4b89-ae36-0059b3a2ec64",
+          "name": "Adresse postale",
+          "type": "text"
+        },
+        {
+          "id": "101af17e-d24d-4ec0-aa73-11d3ad39aa2b",
+          "name": "ID Wechat parent",
+          "type": "text"
+        },
+        {
+          "id": "d181fd88-aea4-4396-ab18-9b2a1ceda817",
+          "name": "ID Wechat enfant",
+          "type": "text"
+        },
+        {
+          "id": "58ac39b4-bd3f-40fe-aac8-5ab4533772ef",
+          "name": "Mail parent",
+          "type": "text"
+        },
+        {
+          "id": "e0947d19-fe4b-4d67-aa77-db156a59ae7f",
+          "name": "Mail enfant",
+          "type": "text"
+        },
+        {
+          "id": "4eceae63-f879-4620-9b87-3920e7dbc480",
+          "name": "Langue parlée à la maison",
+          "type": "text"
+        },
+        {
+          "id": "434b89ea-ecc2-43ba-9f5b-11ccaa6261cd",
+          "name": "Créneaux horaires disponibles",
+          "type": "text"
+        },
+        {
+          "id": "6440b6e2-e02f-4667-8e33-5461e65d7f5b",
+          "name": "Besoins",
+          "type": "text"
+        },
+        {
+          "id": "60afef28-6f87-4dc5-ba1f-df6d12460b4b",
+          "name": "Niveau",
+          "type": "text"
+        },
+        {
+          "id": "69d4c954-10e0-4c83-9f7e-f4e8c88daf13",
+          "name": "Statut lead",
+          "type": "select",
+          "options": [
+            "1er contact pris",
+            "1er entretien fait",
+            "Inscrit",
+            "Perdu"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "id": "ad6930b6-01f3-4707-a0cb-b83156f24b1f",
+          "name": "1er contact pris",
+          "order": 0
+        },
+        {
+          "id": "8feb7492-ab89-459d-bafc-802d2cbf3a14",
+          "name": "1er entretien fait",
+          "order": 1
+        },
+        {
+          "id": "7fdb43b7-b95d-40ca-9cd5-7364475da754",
+          "name": "Inscrit",
+          "order": 2
+        },
+        {
+          "id": "46861bab-4b3c-4765-8cc0-384fd897e87d",
+          "name": "Perdu",
+          "order": 3
+        }
+      ],
+      "contacts": [
+        {
+          "id": "6d7f3079-d091-4a44-b14f-7b3492aa5db9",
+          "name": "zhang 3",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "123",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "ad6930b6-01f3-4707-a0cb-b83156f24b1f",
+          "createdAt": "2026-09-28T22:48:13.033Z",
+          "updatedAt": "2026-09-28T22:48:25.680Z",
+          "customFields": {
+            "005014d9-34c7-477b-b33f-f20be09703a7": "123",
+            "41714865-9d0b-4b89-ae36-0059b3a2ec64": "123",
+            "65d04988-d5ca-4699-9f49-e6816cd41075": "123",
+            "9054ae28-1015-4538-b9ba-64873a5b087f": "123",
+            "ae4f1817-230d-4b79-9664-9e027241dede": "123",
+            "bb98489a-4e6e-4ac1-b0cf-25e83676ffe0": "123",
+            "d181fd88-aea4-4396-ab18-9b2a1ceda817": "123",
+            "e0947d19-fe4b-4d67-aa77-db156a59ae7f": "123"
+          }
+        },
+        {
+          "id": "8ba19be0-c273-4d62-a78d-7a390430a44f",
+          "name": "li 4",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "ad6930b6-01f3-4707-a0cb-b83156f24b1f",
+          "createdAt": "2026-09-28T22:50:48.246Z",
+          "updatedAt": "2026-09-28T22:50:48.246Z",
+          "customFields": {
+            "005014d9-34c7-477b-b33f-f20be09703a7": "123123123123"
+          }
+        },
+        {
+          "id": "7d22aff0-b0f6-474d-b7a8-e9cc487fb375",
+          "name": "wang 5",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "7fdb43b7-b95d-40ca-9cd5-7364475da754",
+          "createdAt": "2026-09-28T22:56:40.138Z",
+          "updatedAt": "2026-09-28T22:56:40.138Z",
+          "customFields": {}
+        },
+        {
+          "id": "0501ed86-b48e-4914-8e3c-9ba3dac480da",
+          "name": "wa123123123",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "232be095-7b91-46b2-9ea3-b2bfa8ab923a",
+          "createdAt": "2026-09-28T22:56:55.921Z",
+          "updatedAt": "2026-09-28T22:56:55.921Z",
+          "customFields": {}
+        },
+        {
+          "id": "55e5df46-6384-4092-9952-e732e5c29bb2",
+          "name": "213",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "232be095-7b91-46b2-9ea3-b2bfa8ab923a",
+          "createdAt": "2026-09-28T22:57:10.921Z",
+          "updatedAt": "2026-09-28T22:57:10.921Z",
+          "customFields": {}
+        }
+      ]
+    },
+    "order": 0,
+    "created_at": "2026-09-28T22:47:53.389+00:00",
+    "updated_at": "2026-09-28T22:57:10.921+00:00"
+  },
+  {
+    "id": "voyages",
+    "name": "旅行",
+    "name_en": "Trips",
+    "emoji": "✈️",
+    "color": "linear-gradient(135deg, #10b981 0%, #14b8a6 100%)",
+    "data": {
+      "fields": [
+        {
+          "id": "90525f65-c13a-427d-8e32-beac1b6449b6",
+          "name": "ID Contact",
+          "type": "text"
+        },
+        {
+          "id": "ec3befa2-9a40-4a92-8b16-3e531cb5ca7d",
+          "name": "Date d'ajout",
+          "type": "date"
+        },
+        {
+          "id": "83718bc2-a1c6-4a51-8563-860ee0d1faf1",
+          "name": "ID Etablissement",
+          "type": "text"
+        },
+        {
+          "id": "b5c86c7a-62d2-4d93-beba-657140fa0665",
+          "name": "Pays",
+          "type": "text"
+        },
+        {
+          "id": "b32511ca-148e-48c9-accf-4938c18be2b2",
+          "name": "Ville",
+          "type": "text"
+        },
+        {
+          "id": "72e5bdc3-acb9-4545-8f0c-705beaedf08f",
+          "name": "Adresse",
+          "type": "text"
+        },
+        {
+          "id": "8c962ccf-63f5-4bbb-9485-de476f87a6fe",
+          "name": "Nom contact",
+          "type": "text"
+        },
+        {
+          "id": "3ed08f74-7219-413b-8b22-bc8ed7ab757f",
+          "name": "Prénom contact",
+          "type": "text"
+        },
+        {
+          "id": "88b87ecb-a4f1-48d9-9df2-c6dc4e9b2f74",
+          "name": "Titre contact",
+          "type": "text"
+        },
+        {
+          "id": "125dc5cf-4c6f-453a-a432-ec47d9ce0b51",
+          "name": "Fonction contact",
+          "type": "text"
+        },
+        {
+          "id": "3f967330-42ad-46d3-9b40-0259c02e1c20",
+          "name": "Mail contact",
+          "type": "text"
+        },
+        {
+          "id": "ddb459ce-a9e3-4bad-98e0-177fd9fc849b",
+          "name": "ID Wechat contact",
+          "type": "text"
+        },
+        {
+          "id": "7bd8a398-ffcd-49c4-b119-8cad51903085",
+          "name": "Fuseau horaire",
+          "type": "text"
+        },
+        {
+          "id": "ad5b35f4-f765-4da9-86b9-113eef8f9e06",
+          "name": "Besoins",
+          "type": "text"
+        },
+        {
+          "id": "9f05ed07-20fe-4351-88d2-ec87631728d9",
+          "name": "Niveau d'engagement",
+          "type": "select",
+          "options": [
+            "Chaud",
+            "Neutre",
+            "Résistant"
+          ]
+        },
+        {
+          "id": "da48b282-1125-474d-aac9-1f8a75cb62e5",
+          "name": "Actions",
+          "type": "text"
+        }
+      ],
+      "stages": [
+        {
+          "id": "232be095-7b91-46b2-9ea3-b2bfa8ab923a",
+          "name": "Nouveau",
+          "order": 0
+        },
+        {
+          "id": "64b8a8da-bcd9-442e-89a0-17af0d6687af",
+          "name": "Qualifié",
+          "order": 1
+        },
+        {
+          "id": "985f5919-c8b9-41c3-84a4-e11d12b09af8",
+          "name": "Devis envoyé",
+          "order": 2
+        },
+        {
+          "id": "b70b3e56-87c9-4d74-a352-759f56995dd4",
+          "name": "Gagné",
+          "order": 3
+        },
+        {
+          "id": "1b3a9c39-2634-477f-8e01-e965bbc80ea2",
+          "name": "Perdu",
+          "order": 4
+        }
+      ],
+      "contacts": [
+        {
+          "id": "af089e71-7acd-482e-8889-4f883872d765",
+          "name": "Hui Mingyang",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "232be095-7b91-46b2-9ea3-b2bfa8ab923a",
+          "createdAt": "2026-09-28T22:47:53.389Z",
+          "updatedAt": "2026-09-28T22:47:53.389Z",
+          "customFields": {
+            "3ed08f74-7219-413b-8b22-bc8ed7ab757f": "Mingyang",
+            "8c962ccf-63f5-4bbb-9485-de476f87a6fe": "Hui",
+            "9f05ed07-20fe-4351-88d2-ec87631728d9": "Chaud",
+            "da48b282-1125-474d-aac9-1f8a75cb62e5": "Appel pour faire un point sur les voyages"
+          }
+        },
+        {
+          "id": "f76c3550-3d77-47ec-bdf0-0931656c1f64",
+          "name": "今年大客户",
+          "tags": [],
+          "email": "123@gmail.com",
+          "notes": "",
+          "phone": "62803208",
+          "company": "Lenovo",
+          "ownerId": "dac34bac-1201-467f-a7d8-041c4566f9ed",
+          "stageId": "232be095-7b91-46b2-9ea3-b2bfa8ab923a",
+          "createdAt": "2026-09-28T23:32:21.407Z",
+          "updatedAt": "2026-09-28T23:32:37.252Z",
+          "customFields": {
+            "72e5bdc3-acb9-4545-8f0c-705beaedf08f": "Wangfujing",
+            "b32511ca-148e-48c9-accf-4938c18be2b2": "Beijing"
+          }
+        }
+      ]
+    },
+    "order": 1,
+    "created_at": "2026-09-28T22:47:53.389+00:00",
+    "updated_at": "2026-09-28T23:32:21.407+00:00"
+  },
+  {
+    "id": "projets",
+    "name": "项目",
+    "name_en": "Projects",
+    "emoji": "🚀",
+    "color": "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
+    "data": {
+      "fields": [
+        {
+          "id": "e7ce13ad-8476-4e16-9046-52f543ae6a48",
+          "name": "ID Projet",
+          "type": "text"
+        },
+        {
+          "id": "a611b9dc-a7e9-46c3-8124-9b5faf1af67c",
+          "name": "Nom Projet",
+          "type": "text"
+        },
+        {
+          "id": "5857c8d7-bc12-48e8-8ca7-34bc0357eb59",
+          "name": "ID Etablissement",
+          "type": "text"
+        },
+        {
+          "id": "5c795319-012e-4286-bc57-6928fae4ce5a",
+          "name": "Etablissement",
+          "type": "text"
+        },
+        {
+          "id": "7a4155a8-1433-4a99-9c67-1bfbd3d8c14a",
+          "name": "ID Responsable Voyage",
+          "type": "text"
+        },
+        {
+          "id": "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b",
+          "name": "Nom Responsable Voyage",
+          "type": "text"
+        },
+        {
+          "id": "de795286-7c87-42a9-96d1-f43f333d6a6c",
+          "name": "ID Autre Contact",
+          "type": "text"
+        },
+        {
+          "id": "3f28fe89-a2f3-4cc1-9c73-10163289cf73",
+          "name": "Nom Autre Contact",
+          "type": "text"
+        },
+        {
+          "id": "a587e607-04dc-4282-a032-83d24eacf9cc",
+          "name": "Dates Voyage",
+          "type": "text"
+        },
+        {
+          "id": "a61edad1-cb58-4ec5-9690-bffafcd2fd33",
+          "name": "Effectif Estimé",
+          "type": "number"
+        },
+        {
+          "id": "8c7c6027-15df-4c02-abf6-71b1c805ff31",
+          "name": "Prix Estimé",
+          "type": "text"
+        },
+        {
+          "id": "f43efc82-4751-4aaa-a2e3-ca0f14a8bf54",
+          "name": "Budget Total Voyage",
+          "type": "text"
+        },
+        {
+          "id": "b14be0cc-5cb4-4636-b65f-dee51d285f18",
+          "name": "Etape Cycle de Vente",
+          "type": "select",
+          "options": [
+            "Projet validé par le responsable",
+            "Projet validé par le n+1",
+            "Inscriptions reçues"
+          ]
+        },
+        {
+          "id": "dd4cc07b-5cd9-4ae9-899b-e18989ba0817",
+          "name": "Statut Projet",
+          "type": "select",
+          "options": [
+            "En cours",
+            "Gagné",
+            "Perdu",
+            "Reporté"
+          ]
+        },
+        {
+          "id": "a98cbb86-68b8-4ba6-ad7c-7fee82322a13",
+          "name": "Action",
+          "type": "text"
+        }
+      ],
+      "stages": [
+        {
+          "id": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "name": "En cours",
+          "order": 0
+        },
+        {
+          "id": "52f3efa4-5cb9-41e2-a70a-4d3ba8cfb9fc",
+          "name": "Gagné",
+          "order": 1
+        },
+        {
+          "id": "71aeee05-6668-499b-b3c5-724c603b186b",
+          "name": "Perdu",
+          "order": 2
+        },
+        {
+          "id": "9621be6e-7658-45e7-96f6-848b85f2e622",
+          "name": "Reporté",
+          "order": 3
+        }
+      ],
+      "contacts": [
+        {
+          "id": "460a7f8e-e61d-4fa4-821e-4c10487f8868",
+          "name": "Voyage Chine Les Chartreux 2026",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.389Z",
+          "updatedAt": "2026-09-28T22:47:53.389Z",
+          "customFields": {
+            "3f28fe89-a2f3-4cc1-9c73-10163289cf73": "Arthur Gouhier",
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "Vincent Li",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Les Chartreux",
+            "8c7c6027-15df-4c02-abf6-71b1c805ff31": "800,00 €",
+            "a587e607-04dc-4282-a032-83d24eacf9cc": "16 au 24 octobre 2026",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage Chine Les Chartreux 2026",
+            "a61edad1-cb58-4ec5-9690-bffafcd2fd33": "20",
+            "f43efc82-4751-4aaa-a2e3-ca0f14a8bf54": "16 000,00 €"
+          }
+        },
+        {
+          "id": "4e9a0e31-9b32-4914-bb6e-a6ef20d65753",
+          "name": "Voyage France",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-29T21:17:30.925Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "Yanjun",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Keystone",
+            "a587e607-04dc-4282-a032-83d24eacf9cc": "octobre 2027",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage France",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Envoi devis à Yanjun"
+          }
+        },
+        {
+          "id": "08213861-0aed-4c51-a9f6-7b44a0e80ca4",
+          "name": "Voyage UK",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "??",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Keystone",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage UK",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Demande Sarah + autre prof pour voyage cette année"
+          }
+        },
+        {
+          "id": "4045e279-1ef0-4d4a-b517-4368b4a18383",
+          "name": "Voyage Allemagne",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "Tingting",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Keystone",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage Allemagne",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Parler à Tingting de l'Allemagne"
+          }
+        },
+        {
+          "id": "0488ac8d-b6dc-4f8d-8da6-992d96aada42",
+          "name": "Voyage Italie",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "Yanjun",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Keystone",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage Italie",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Envoi devis à Yanjun"
+          }
+        },
+        {
+          "id": "ecd7a0be-50f1-4265-a415-ec2b9f6e9719",
+          "name": "Voyage Allemagne",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "Prof d'allemand",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Shanghai Waiguoyu",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage Allemagne",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Trouver échange scolaire en Allemagne : Sophie Santini, Lena, école partenaire des Chartreux, pote de Houli"
+          }
+        },
+        {
+          "id": "39d6a126-49a0-48cc-b7ea-51ac819094de",
+          "name": "Voyage France",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "M. Chen",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Shanghai Waiguoyu",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage France",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Reprise contact M. Chen et Mme Hui"
+          }
+        },
+        {
+          "id": "813a4946-f964-4d8c-b2f1-d6e911cc4863",
+          "name": "Voyage Italie",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "4e8bf309-ddf6-4dc3-bdf7-94453ce4994b": "Prof d'art",
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Hangzhou Jack Ma",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage Italie",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Relance avec catalogue"
+          }
+        },
+        {
+          "id": "b9fa9c4e-b891-466c-a761-dae8b5d413ec",
+          "name": "Voyage France",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Shenyang",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage France",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Relance avec propale été Chartreux internat"
+          }
+        },
+        {
+          "id": "73017ebe-bd2d-4920-8888-73546a23423d",
+          "name": "Voyage France",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Haidian Waiguoyu",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage France",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Pause"
+          }
+        },
+        {
+          "id": "8efd1398-d680-4cbf-9597-00d68f7e71bc",
+          "name": "Voyage Chine",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:47:53.390Z",
+          "updatedAt": "2026-09-28T22:47:53.390Z",
+          "customFields": {
+            "5c795319-012e-4286-bc57-6928fae4ce5a": "Ecole de Wuhan",
+            "a611b9dc-a7e9-46c3-8124-9b5faf1af67c": "Voyage Chine",
+            "a98cbb86-68b8-4ba6-ad7c-7fee82322a13": "Trouver échange scolaire en Allemagne : Sophie Santini, Lena, école partenaire des Chartreux, pote de Houli"
+          }
+        },
+        {
+          "id": "47646f4a-6480-48f2-8477-d84f0face4d1",
+          "name": "阿萨德",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T22:59:13.583Z",
+          "updatedAt": "2026-09-28T22:59:13.583Z",
+          "customFields": {}
+        },
+        {
+          "id": "201b9678-f8a0-4812-8fbf-5bb6800ad980",
+          "name": "圣埃蒂安",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "dac34bac-1201-467f-a7d8-041c4566f9ed",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T23:32:51.500Z",
+          "updatedAt": "2026-09-28T23:32:51.500Z",
+          "customFields": {}
+        },
+        {
+          "id": "1ed62ba6-56e5-449a-9605-c70c98438ae3",
+          "name": "123123123",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "dac34bac-1201-467f-a7d8-041c4566f9ed",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-28T23:33:16.164Z",
+          "updatedAt": "2026-09-28T23:33:16.164Z",
+          "customFields": {}
+        },
+        {
+          "id": "a18a058b-823b-4c87-9561-88e6618b93e7",
+          "name": "Voyage",
+          "tags": [],
+          "email": "",
+          "notes": "",
+          "phone": "",
+          "company": "",
+          "ownerId": "d185efe0-2285-4ba1-9631-6c77cc2e8c79",
+          "stageId": "f35ad2fa-efe5-402d-91b5-5000dbcd0a2a",
+          "createdAt": "2026-09-29T08:30:59.129Z",
+          "updatedAt": "2026-09-29T08:30:59.129Z",
+          "customFields": {}
+        }
+      ]
+    },
+    "order": 2,
+    "created_at": "2026-09-28T22:47:53.389+00:00",
+    "updated_at": "2026-09-29T08:30:59.131+00:00"
+  }
+]

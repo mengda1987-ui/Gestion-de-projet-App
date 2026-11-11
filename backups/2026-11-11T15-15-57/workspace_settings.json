@@ -1,0 +1,13 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "workspace_background": "linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)",
+    "login_background": "linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)",
+    "updated_at": "2026-11-10T22:21:25.696+00:00",
+    "logo": "",
+    "portal_background": "linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)",
+    "crm_background": "linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)",
+    "portal_image_opacity": 1,
+    "crm_image_opacity": 1
+  }
+]
