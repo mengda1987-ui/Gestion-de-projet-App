@@ -12,6 +12,25 @@ import { mindmapOpsReducer } from './reducers/mindmapOpsReducer';
 import { syncMindMapCards } from './middlewares/mindmapSync';
 import { syncBoardInList } from './middlewares/boardListSync';
 import { supabase } from '@/lib/supabase';
+import {
+  actionToPatch,
+  isLocalOnlyAction,
+  type BoardPatchPayload,
+} from './patch/ops';
+import {
+  enqueue as outboxEnqueue,
+  dequeue as outboxDequeue,
+  listAll as outboxListAll,
+  newEntryId,
+  type OutboxEntry,
+} from './patch/outbox';
+import {
+  isPatchRpcEnabled,
+  submitEntry,
+  beaconSubmit,
+  backoffDelay,
+  type PatchResult,
+} from './patch/client';
 // 注意：不再导入 MOCK_BOARDS/MOCK_USERS。
 // 历史遗留的 mock 兜底会把示例数据写回生产数据库（曾导致「产品开发项目」污染），
 // 现已改为「服务器不可用 → 空数据 + 禁止写回」。
@@ -244,6 +263,128 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // boards_history 表是否可用。null=未知，false=表不存在（不再尝试，省流量）
   const historyTableAvailableRef = useRef<boolean | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ===== P1 patch 通道（灰度，NEXT_PUBLIC_USE_PATCH_RPC=true 时启用）=====
+  // 设计：dispatch 后按 action → ops 生成最小增量，先落 IndexedDB outbox，
+  // 再串行提交 /api/board/patch（服务端调用 apply_board_patch，行锁 + 版本校验）。
+  // 开关关闭时以下所有逻辑都不会运行，旧 doSave 路径行为完全不变。
+  const patchEnabledRef = useRef(false);
+  // 每个看板当前已知的云端版本（乐观锁基准）
+  const boardVersionsRef = useRef<Map<string, number>>(new Map());
+  // 同一看板的 patch 串行队列（保证 baseVersion 单调递增）
+  const patchQueueRef = useRef<Map<string, Promise<void>>>(new Map());
+  // 运行时熔断：服务端返回 DISABLED / 连续失败时自动退回旧通道
+  const patchBrokenRef = useRef(false);
+  // 冲突/阻断提示（避免每条 patch 都弹一次）
+  const lastPatchNoticeRef = useRef<string>('');
+
+  /** patch 通道是否真正可用（开关 + 未熔断） */
+  const patchActive = useCallback(() => patchEnabledRef.current && !patchBrokenRef.current, []);
+
+  /** 记录云端版本（初始化 / refetch 时更新） */
+  const setBoardVersion = useCallback((boardId: string, version: number) => {
+    if (typeof version !== 'number' || !isFinite(version)) return;
+    boardVersionsRef.current.set(boardId, version);
+  }, []);
+
+  /** 把一条 entry 提交到服务端，处理冲突与失败 */
+  const flushPatchEntry = useCallback(async (entry: OutboxEntry): Promise<void> => {
+    if (!patchActive()) {
+      // 熔断后退回旧通道：从 outbox 移除，交由 doSave 全量兜底
+      await outboxDequeue(entry.id);
+      return;
+    }
+
+    const result: PatchResult = await submitEntry(entry);
+
+    if (result.ok) {
+      setBoardVersion(entry.boardId, result.version);
+      await outboxDequeue(entry.id);
+      lastPatchNoticeRef.current = '';
+      return;
+    }
+
+    switch (result.code) {
+      case 'VERSION_CONFLICT': {
+        // 乐观锁生效：绝不覆盖。记录新版本并丢弃这条 entry，
+        // 随后由 refetch 拉取云端最新数据，UI 会呈现服务端真实状态。
+        setBoardVersion(entry.boardId, result.currentVersion);
+        await outboxDequeue(entry.id);
+        const msg = '检测到他人同时修改了该看板，已改为拉取最新数据（你的这次改动未覆盖他人内容）。';
+        if (lastPatchNoticeRef.current !== msg) {
+          lastPatchNoticeRef.current = msg;
+          setSaveError(msg);
+        }
+        // 触发一次拉取，避免本地继续基于旧状态操作
+        window.dispatchEvent(new CustomEvent('trello:patch-conflict', {
+          detail: { boardId: entry.boardId, version: result.currentVersion },
+        }));
+        return;
+      }
+      case 'DESTRUCTIVE_WRITE_BLOCKED':
+        await outboxDequeue(entry.id);
+        setSaveError(
+          `已阻止一次疑似覆盖：卡片数将从 ${result.before} 降为 ${result.after}。请刷新后再操作。`,
+        );
+        return;
+      case 'BAD_PATCH':
+      case 'NOT_FOUND':
+        // 结构性错误：重试无意义，丢弃并提示（数据仍在本地备份里）
+        await outboxDequeue(entry.id);
+        console.warn('[patch] 被服务端拒绝:', entry.id, result.code, result.message);
+        return;
+      case 'DISABLED': {
+        // service_role 未配置或通道未开启：整体退回旧通道，避免改动丢失
+        patchBrokenRef.current = true;
+        await outboxDequeue(entry.id);
+        console.info('[patch] 服务端未启用 patch 通道，已回退到旧保存路径');
+        return;
+      }
+      default: {
+        // 网络错误等可重试：保留在 outbox，退避后再来
+        await outboxEnqueue({ ...entry, attempts: entry.attempts + 1 });
+        if (entry.attempts + 1 >= 5) {
+          setSaveError('网络异常，改动已暂存本地，恢复连接后会自动重试。');
+        }
+        const delay = backoffDelay(entry.attempts + 1);
+        setTimeout(() => {
+          void flushPatchEntry({ ...entry, attempts: entry.attempts + 1 });
+        }, delay);
+      }
+    }
+  }, [patchActive, setBoardVersion]);
+
+  /** 入队并触发提交（同一看板串行） */
+  const enqueuePatch = useCallback(
+    async (boardId: string, payload: BoardPatchPayload) => {
+      if (!patchActive()) return;
+      if (!payload.ops || payload.ops.length === 0) {
+        // 只有元数据（标题/背景/标签），仍然要走 patch，否则会丢
+        if (!payload.title && !payload.background && !payload.labels && !payload.data) return;
+      }
+
+      const entry: OutboxEntry = {
+        id: newEntryId(),
+        boardId,
+        baseVersion: boardVersionsRef.current.get(boardId) ?? 0,
+        // 所有入队的 patch 都源自用户 Action，显式声明 intent，
+        // 否则服务端会按「异常覆盖」把正常的删卡/拖拽也拦下来。
+        payload: { ...payload, intent: 'user_edit' },
+        createdAt: Date.now(),
+        attempts: 0,
+      };
+
+      // 先落盘（断电/关页不丢），再提交
+      await outboxEnqueue(entry);
+
+      const prev = patchQueueRef.current.get(boardId) ?? Promise.resolve();
+      const next = prev
+        .then(() => flushPatchEntry(entry))
+        .catch(err => console.warn('[patch] 提交异常:', err));
+      patchQueueRef.current.set(boardId, next);
+    },
+    [patchActive, flushPatchEntry],
+  );
 
 
   // ===== 保存到 Supabase（增量保存：只写真正变化的看板，避免整表覆盖）=====
@@ -575,6 +716,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
       const remote = rowsToBackupData(usersData, boardsData, settingsData);
 
+      // patch 通道：把云端最新版本号记录为后续写入的乐观锁基准（避免用旧版本反复冲突）
+      if (patchEnabledRef.current && Array.isArray(boardsData)) {
+        for (const row of boardsData as any[]) {
+          if (row?.id) setBoardVersion(row.id, Number(row.version) || 0);
+        }
+      }
+
       // 关键：背景设置没读到（settingsData 为空）时，rowsToBackupData 会把四个背景字段
       // 全部填成兜底值（#f5f5f7 浅灰）。若直接应用，会把屏幕上本来正确的背景刷成"一片白"，
       // 而且下一次持久化还会写回云端，造成背景永久丢失。
@@ -657,7 +805,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn('[Realtime] 重新拉取失败:', err);
     }
-  }, [dispatch]);
+  }, [dispatch, setBoardVersion]);
 
 
   // ===== 初始化 BroadcastChannel（跨标签页实时同步）=====
@@ -1043,8 +1191,13 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     // 2. 广播给其他标签页
     broadcastSnapshot(data, savedAt);
 
-    // 3. 串行保存到 Supabase
-    enqueueSave(data);
+    // 3. 落库
+    //    - patch 通道生效时：增量已由 enqueuePatch 提交（带版本校验），
+    //      这里绝不能再做全量 upsert，否则等于把修复撤销了。
+    //    - patch 通道未启用/已熔断：走原来的全量保存路径。
+    if (!patchActive()) {
+      enqueueSave(data);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     state.boards,
@@ -1084,6 +1237,28 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   }, [enqueueSave]);
 
   // ===== 包装 dispatch：拦截删除动作，记录被显式删除的 ID =====
+  // 传入的 board 是「apply 该 action 之后」的看板（由 patch effect 计算），
+  // 保证 actionToPatch 拿到的是 reducer 已经把改动算进去的最新状态。
+  const dispatchWithPatch = useCallback((action: Action, boardAfter: Board) => {
+    if (!patchActive()) {
+      dispatch(action);
+      return;
+    }
+    if (isLocalOnlyAction(action)) {
+      dispatch(action);
+      return;
+    }
+    try {
+      const payload = actionToPatch(action, boardAfter);
+      if (payload && (payload.ops.length > 0 || payload.title || payload.background || payload.labels || payload.data)) {
+        void enqueuePatch(boardAfter.id, payload);
+      }
+    } catch (err) {
+      console.warn('[patch] 生成 patch 失败，本次改动仍会由本地备份兜底:', err);
+    }
+    dispatch(action);
+  }, [dispatch, patchActive, enqueuePatch]);
+
   const trackedDispatch = useCallback((action: Action) => {
     if (action.type === 'DELETE_BOARD') {
       deletedBoardIdsRef.current.add(action.payload);
@@ -1101,8 +1276,20 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       // 用户主动修改外观 → 允许本次保存真正写入背景字段
       appearanceDirtyRef.current = true;
     }
-    dispatch(action);
-  }, [dispatch]);
+
+    if (!patchActive()) {
+      dispatch(action);
+      return;
+    }
+    // 用 reducer 预演一次得到「apply 后」的看板，供 actionToPatch 计算位置/字段
+    let boardAfter: Board = state.board;
+    try {
+      boardAfter = baseReducer(state, action).board;
+    } catch {
+      boardAfter = state.board;
+    }
+    dispatchWithPatch(action, boardAfter);
+  }, [dispatch, state, patchActive, dispatchWithPatch]);
 
   const broadcastChange = useCallback((action: Action) => {
     trackedDispatch(action);
@@ -1125,6 +1312,81 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setSaveError(null), 8000);
     return () => clearTimeout(timer);
   }, [saveError]);
+
+  // ===== patch 通道初始化：开关 / 版本同步 / outbox 重放（灰度）=====
+  useEffect(() => {
+    patchEnabledRef.current = isPatchRpcEnabled();
+    if (!patchEnabledRef.current) return;
+
+    console.info('[patch] 增量写入通道已启用（NEXT_PUBLIC_USE_PATCH_RPC=true）');
+
+    // 1. 从服务端同步各看板当前版本（乐观锁基准）。
+    //    单独用轻量请求只取 id+version，避免再拉一遍全量看板 JSON。
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!url || !key) return;
+        const res = await fetch(`${url}/rest/v1/boards?select=id,version`, {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
+        });
+        if (!res.ok) return;
+        const rows = await res.json();
+        if (cancelled || !Array.isArray(rows)) return;
+        for (const row of rows) {
+          if (row?.id) setBoardVersion(row.id, Number(row.version) || 0);
+        }
+        console.info('[patch] 已同步云端版本:', rows.length, '个看板');
+      } catch (err) {
+        console.warn('[patch] 同步云端版本失败:', err);
+      }
+    })();
+
+    // 2. 重放上次未提交成功的 patch（关页/断网遗留）。
+    //    同一看板的 baseVersion 必须串行，重放时按条目顺序推进。
+    (async () => {
+      const pending = await outboxListAll();
+      if (cancelled || pending.length === 0) return;
+      console.info(`[patch] 发现 ${pending.length} 条未提交改动，开始重放`);
+      for (const entry of pending) {
+        if (cancelled) break;
+        await flushPatchEntry(entry);
+      }
+    })();
+
+    // 3. 其他端修改后，用 refetch 拿到的新版本号更新基准
+    const onConflict = () => {
+      // 冲突时主动放弃本地排队项，避免在旧状态上继续叠加
+      void (async () => {
+        const pending = await outboxListAll();
+        for (const e of pending) await outboxDequeue(e.id);
+      })();
+    };
+    window.addEventListener('trello:patch-conflict', onConflict);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('trello:patch-conflict', onConflict);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ===== 关页/切后台：outbox 里还有未提交项时用 sendBeacon 兜底 =====
+  useEffect(() => {
+    if (!patchEnabledRef.current) return;
+    const flush = () => {
+      void (async () => {
+        const pending = await outboxListAll();
+        for (const entry of pending) {
+          // 服务端按 entryId 幂等，重复提交无副作用
+          beaconSubmit(entry);
+        }
+      })();
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
 
   return (
     <BoardContext.Provider value={contextValue}>

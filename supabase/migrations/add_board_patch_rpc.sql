@@ -319,13 +319,35 @@ BEGIN
   END IF;
 
   -- ④ 破坏性写入保护（把前端「骤降阻断」下沉到 DB，判断是原子的）
+  --    规则：
+  --      - 默认（未声明 intent）：只要卡片数下降就阻断 —— 防止旧客户端/异常状态批量覆盖
+  --      - intent='user_edit'：用户主动操作（含拖拽、删卡），允许下降，但仍拦截「几乎清空」
+  --        （删掉 >90% 且原数量 >= 5 时阻断，避免误操作把整列清空）
   v_cards_before := public._board_card_count(v_old.data);
   v_cards_after  := public._board_card_count(v_new_data);
-  IF v_cards_before > 10 AND v_cards_after < (v_cards_before / 2) THEN
-    RETURN jsonb_build_object(
-      'ok', false, 'code', 'DESTRUCTIVE_WRITE_BLOCKED',
-      'before', v_cards_before, 'after', v_cards_after
-    );
+
+  IF v_cards_after < v_cards_before THEN
+    IF NOT (COALESCE(p_patch->>'intent', '') = 'user_edit') THEN
+      RETURN jsonb_build_object(
+        'ok', false, 'code', 'DESTRUCTIVE_WRITE_BLOCKED',
+        'before', v_cards_before, 'after', v_cards_after,
+        'reason', 'card_count_decreased_without_intent'
+      );
+    END IF;
+    IF v_cards_before > 0 AND v_cards_after = 0 THEN
+      RETURN jsonb_build_object(
+        'ok', false, 'code', 'DESTRUCTIVE_WRITE_BLOCKED',
+        'before', v_cards_before, 'after', v_cards_after,
+        'reason', 'total_wipe'
+      );
+    END IF;
+    IF v_cards_before >= 5 AND v_cards_after < (v_cards_before::numeric * 0.1) THEN
+      RETURN jsonb_build_object(
+        'ok', false, 'code', 'DESTRUCTIVE_WRITE_BLOCKED',
+        'before', v_cards_before, 'after', v_cards_after,
+        'reason', 'near_total_wipe'
+      );
+    END IF;
   END IF;
 
   -- ⑤ 快照：与更新同一事务，写不进去就整体失败（修复审计 C4）
