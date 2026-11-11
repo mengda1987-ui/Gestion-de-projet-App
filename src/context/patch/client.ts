@@ -107,20 +107,30 @@ export async function submitPatch(
     //   1. 改动永远落不了库，却看起来"还在同步中"
     //   2. 用户刷新后改动彻底消失（outbox 重放仍然 404）
     // 这里必须明确返回不可重试的错误码。
+    //
+    // v2.4.3：把「实际请求的完整 URL」和响应体一并带出，便于精确定位。
     if (res.status === 404 || res.status === 405) {
+      let absUrl = ENDPOINT;
+      try { absUrl = new URL(ENDPOINT, window.location.origin).toString(); } catch {}
+      // 把响应体也读出来（Vercel 的 404 会返回 HTML，能据此判断是路由缺失还是别的）
+      let snippet = '';
+      try {
+        const t = await res.text();
+        snippet = t.replace(/\s+/g, ' ').slice(0, 120);
+      } catch {}
       if (!endpointMissingLogged) {
         endpointMissingLogged = true;
         console.error(
-          `[patch] ❌ ${ENDPOINT} 返回 ${res.status}：接口不存在。\n` +
-          '   极可能是后端未部署（Vercel 只发布了前端静态产物）。\n' +
-          '   请确认部署包含 src/app/api/** 目录，再重新部署。\n' +
-          '   —— 在此之前所有改动都不会写入数据库。',
+          `[patch] ❌ ${absUrl} 返回 ${res.status}\n` +
+          `   页面: ${typeof window !== 'undefined' ? window.location.href : '?'}\n` +
+          `   响应: ${snippet || '(空)'}\n` +
+          '   → HTTP 404 通常表示该路径下没有对应的 API 路由。',
         );
       }
       return {
         ok: false,
         code: 'ENDPOINT_MISSING',
-        message: `接口 ${ENDPOINT} 不存在（HTTP ${res.status}），后端可能未部署`,
+        message: `${absUrl} → ${res.status} ${snippet}`,
       };
     }
 

@@ -522,7 +522,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 重试无意义；但改动保留在 outbox，部署修复后可重放。
         // 递减 pending，避免同步被永久冻结（否则所有后续同步都停止）。
         bumpPending(entry.boardId, -1);
-        setSyncState({ kind: 'error', label: '未保存：接口不存在', detail: '后端未部署' });
+        setSyncState({
+          kind: 'error',
+          label: '未保存：接口不存在',
+          detail: result.message || '/api/board/patch 返回 404/405',
+        });
         if (lastPatchNoticeRef.current !== 'ENDPOINT_MISSING') {
           lastPatchNoticeRef.current = 'ENDPOINT_MISSING';
           setSaveError(
@@ -1711,14 +1715,23 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     })();
 
     // 2. 重放上次未提交成功的 patch（关页/断网遗留）。
-    //    同一看板的 baseVersion 必须串行，重放时按条目顺序推进。
+    //
+    //    【修复】原实现直接用 entry 里存的旧 baseVersion 重放，
+    //    而页面加载时已经把 boardVersionsRef 同步成了云端最新版本，
+    //    于是重放必然 VERSION_CONFLICT → 改动被丢弃。
+    //    现在重放前用「当前已知版本」覆盖 baseVersion（改动内容保留，仅更新锁基准）。
     (async () => {
       const pending = await outboxListAll();
       if (cancelled || pending.length === 0) return;
       console.info(`[patch] 发现 ${pending.length} 条未提交改动，开始重放`);
       for (const entry of pending) {
         if (cancelled) break;
-        await flushPatchEntry(entry);
+        const fresh: OutboxEntry = {
+          ...entry,
+          baseVersion: boardVersionsRef.current.get(entry.boardId) ?? entry.baseVersion,
+          attempts: 0,
+        };
+        await flushPatchEntry(fresh);
       }
     })();
 
