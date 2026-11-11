@@ -77,6 +77,9 @@ export async function submitPatch(
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // 显式携带会话 Cookie：缺少它会在启用鉴权后拿到 401，
+      // 进而触发「丢弃本地改动」——线上保存回滚的潜在诱因之一。
+      credentials: 'same-origin',
       body: JSON.stringify({ boardId, baseVersion, patch: payload, entryId }),
       signal,
     });
@@ -116,6 +119,8 @@ export function beaconSubmit(entry: OutboxEntry): boolean {
       })],
       { type: 'application/json' },
     );
+    // sendBeacon 会自动携带同源 Cookie（无需显式配置），
+    // 但服务端按 entryId 幂等，重复提交无副作用。
     return navigator.sendBeacon(ENDPOINT, blob);
   } catch {
     return false;

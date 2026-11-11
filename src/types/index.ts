@@ -160,6 +160,8 @@ export interface Board {
   updatedAt: string;
   visibleTo?: string[];
   order?: number;
+  /** 云端乐观锁版本号（仅用于合并判断，不参与内容比较） */
+  version?: number;
 }
 
 export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary';

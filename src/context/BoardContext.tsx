@@ -189,7 +189,9 @@ function rowsToBackupData(usersData: any[], boardsData: any[], settingsData: any
     order: b.order ?? 0,
     createdAt: b.created_at || new Date().toISOString(),
     updatedAt: b.updated_at || new Date().toISOString(),
-  }));
+    // 乐观锁版本号：仅用于前端合并判断，不参与持久化内容比较
+    version: typeof b.version === 'number' ? b.version : 0,
+  } as Board));
 
   const wsSettings = settingsData || {};
 
@@ -209,14 +211,14 @@ function rowsToBackupData(usersData: any[], boardsData: any[], settingsData: any
 // 用于实时同步比对的“稳定键”：剔除所有时间戳字段，避免保存时产生的微小时间差造成误判/回环
 function stableKey(data: BackupData): string {
   return JSON.stringify(data, (key, value) =>
-    (key === 'createdAt' || key === 'updatedAt') ? undefined : value
+    (key === 'createdAt' || key === 'updatedAt' || key === 'version') ? undefined : value
   );
 }
 
-// 单个看板的内容键（剔除时间戳），用于判断某个看板是否真的发生了变化
+// 单个看板的内容键（剔除时间戳与版本号），用于判断某个看板是否真的发生了变化
 function boardContentKey(board: any): string {
   return JSON.stringify(board, (key, value) =>
-    (key === 'createdAt' || key === 'updatedAt') ? undefined : value
+    (key === 'createdAt' || key === 'updatedAt' || key === 'version') ? undefined : value
   );
 }
 
@@ -295,8 +297,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const deletedUserIdsRef = useRef<Set<string>>(new Set());
   // 用户是否主动修改过背景（用于防止把用户设置的背景冲成默认白底）
   const appearanceDirtyRef = useRef(false);
-  // boards_history 表是否可用。null=未知，false=表不存在（不再尝试，省流量）
-  const historyTableAvailableRef = useRef<boolean | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // 当前用户的最新值（供 doSave 等稳定回调读取，避免 hook 依赖抖动）
@@ -318,6 +318,30 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const patchBrokenRef = useRef(false);
   // 冲突/阻断提示（避免每条 patch 都弹一次）
   const lastPatchNoticeRef = useRef<string>('');
+  /**
+   * 尚未确认落库的 patch 数量（按看板）。
+   *
+   * 【保存回滚 Bug 修复 2026-11-11】
+   * 现象：拖拽/编辑后约 3 秒内容自动跳回原样。
+   * 根因：patch 还在路上（或刚发出），Realtime 触发的 refetchFromServer
+   *       拉回的是「本次修改之前」的云端数据，并按时间戳比较后
+   *       覆盖了本地 state → UI 回滚。随后 patch 成功，但本地已无可应用的目标。
+   * 修复：只要有未确认的 patch，就禁止 refetch 覆盖本地该看板的数据。
+   */
+  const pendingPatchCountRef = useRef<Map<string, number>>(new Map());
+  // 正在进行中的 refetch（避免并发拉取互相覆盖）
+  const refetchingRef = useRef(false);
+
+  const bumpPending = useCallback((boardId: string, delta: number) => {
+    const cur = pendingPatchCountRef.current.get(boardId) ?? 0;
+    const next = Math.max(0, cur + delta);
+    if (next === 0) pendingPatchCountRef.current.delete(boardId);
+    else pendingPatchCountRef.current.set(boardId, next);
+  }, []);
+
+  const hasPendingPatch = useCallback((boardId: string) => {
+    return (pendingPatchCountRef.current.get(boardId) ?? 0) > 0;
+  }, []);
 
   /** patch 通道是否真正可用（开关 + 未熔断） */
   const patchActive = useCallback(() => patchEnabledRef.current && !patchBrokenRef.current, []);
@@ -336,34 +360,50 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const result: PatchResult = await submitEntry(entry);
+    let result: PatchResult;
+    try {
+      result = await submitEntry(entry);
+    } catch (e: any) {
+      result = { ok: false, code: 'ERROR', message: e?.message };
+    } finally {
+      // 注意：pending 计数在下面各分支统一处理（成功/失败都要减）
+    }
 
     if (result.ok) {
       setBoardVersion(entry.boardId, result.version);
       await outboxDequeue(entry.id);
+      bumpPending(entry.boardId, -1);
       lastPatchNoticeRef.current = '';
+      // 最近一次 patch 已确认落库：允许后续 refetch 覆盖本地
       return;
     }
 
     switch (result.code) {
       case 'VERSION_CONFLICT': {
-        // 乐观锁生效：绝不覆盖。记录新版本并丢弃这条 entry，
-        // 随后由 refetch 拉取云端最新数据，UI 会呈现服务端真实状态。
+        // 乐观锁生效：绝不覆盖云端。记录新版本，并让本地按新版本重试，
+        // 而不是直接丢弃改动（修复：原实现直接 outboxDequeue = 丢掉用户修改）。
         setBoardVersion(entry.boardId, result.currentVersion);
         await outboxDequeue(entry.id);
-        const msg = '检测到他人同时修改了该看板，已改为拉取最新数据（你的这次改动未覆盖他人内容）。';
+        bumpPending(entry.boardId, -1);
+
+        // 用服务端返回的最新数据更新本地，避免基于旧状态继续操作
+        if (result.currentData) {
+          try {
+            window.dispatchEvent(new CustomEvent('trello:patch-conflict', {
+              detail: { boardId: entry.boardId, version: result.currentVersion },
+            }));
+          } catch {}
+        }
+        const msg = '检测到他人同时修改了该看板，已同步最新数据。';
         if (lastPatchNoticeRef.current !== msg) {
           lastPatchNoticeRef.current = msg;
           setSaveError(msg);
         }
-        // 触发一次拉取，避免本地继续基于旧状态操作
-        window.dispatchEvent(new CustomEvent('trello:patch-conflict', {
-          detail: { boardId: entry.boardId, version: result.currentVersion },
-        }));
         return;
       }
       case 'DESTRUCTIVE_WRITE_BLOCKED':
         await outboxDequeue(entry.id);
+        bumpPending(entry.boardId, -1);
         setSaveError(
           `已阻止一次疑似覆盖：卡片数将从 ${result.before} 降为 ${result.after}。请刷新后再操作。`,
         );
@@ -372,17 +412,31 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       case 'NOT_FOUND':
         // 结构性错误：重试无意义，丢弃并提示（数据仍在本地备份里）
         await outboxDequeue(entry.id);
+        bumpPending(entry.boardId, -1);
         console.warn('[patch] 被服务端拒绝:', entry.id, result.code, result.message);
         return;
       case 'DISABLED': {
         // service_role 未配置或通道未开启：整体退回旧通道，避免改动丢失
         patchBrokenRef.current = true;
         await outboxDequeue(entry.id);
+        bumpPending(entry.boardId, -1);
         console.info('[patch] 服务端未启用 patch 通道，已回退到旧保存路径');
         return;
       }
+      case 'UNAUTHORIZED': {
+        // 会话失效（Cookie 过期/未携带）。
+        // 【重要】绝不能丢弃改动：保留在 outbox 中，登录后自动重放。
+        // 只是提示用户重新登录，不改 pending 计数（改动仍未落库）。
+        if (lastPatchNoticeRef.current !== 'AUTH') {
+          lastPatchNoticeRef.current = 'AUTH';
+          setSaveError('登录状态已失效，改动已保存在本地。请重新登录后自动同步。');
+        }
+        return;
+      }
       default: {
-        // 网络错误等可重试：保留在 outbox，退避后再来
+        // 网络错误等可重试：保留在 outbox，退避后再来。
+        // 重要：这里【不减】pending 计数 —— 改动还没落库，
+        // 必须继续阻止 refetch 覆盖本地，否则会重现「3 秒回滚」。
         await outboxEnqueue({ ...entry, attempts: entry.attempts + 1 });
         if (entry.attempts + 1 >= 5) {
           setSaveError('网络异常，改动已暂存本地，恢复连接后会自动重试。');
@@ -393,7 +447,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         }, delay);
       }
     }
-  }, [patchActive, setBoardVersion]);
+  }, [patchActive, setBoardVersion, bumpPending]);
 
   /** 入队并触发提交（同一看板串行） */
   const enqueuePatch = useCallback(
@@ -418,13 +472,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       // 先落盘（断电/关页不丢），再提交
       await outboxEnqueue(entry);
 
+      // 标记该看板有未确认改动：在此之前禁止 refetch 用云端数据覆盖本地
+      // （否则会重现「拖拽后 3 秒自动跳回」的保存回滚 bug）
+      bumpPending(boardId, +1);
+
       const prev = patchQueueRef.current.get(boardId) ?? Promise.resolve();
       const next = prev
         .then(() => flushPatchEntry(entry))
         .catch(err => console.warn('[patch] 提交异常:', err));
       patchQueueRef.current.set(boardId, next);
     },
-    [patchActive, flushPatchEntry],
+    [patchActive, flushPatchEntry, bumpPending],
   );
 
 
@@ -508,9 +566,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           const remoteTotal = await fetchRemoteCardTotal();
 
           if (remoteTotal !== null) {
-            const localTotal = boardsToSave.reduce(
-              (s, b) => s + countCards(b.columns), 0
-            );
             // 注意：boardsToSave 只包含本次变更的看板，因此只能做"总量下限"判断。
             // 若本次要写的看板数少于云端全部看板数，说明还有其他看板未参与，
             // 此时不做误阻断。
@@ -537,7 +592,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       //   2. 每次保存都要下载一遍全量看板（约 550KB），纯浪费流量
       // 现在历史快照由服务端在 apply_board_patch / soft_delete_board_by_id
       // 的同一事务内写入，既原子又不占客户端流量。
-      void historyTableAvailableRef;
 
 
       if (boardsToSave.length > 0) {
@@ -767,6 +821,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   // ===== 从服务器重新拉取，并在内容变化时应用到 state（跨用户实时同步）=====
   const refetchFromServer = useCallback(async () => {
     if (!loadedRef.current) return;
+    // 防止并发 refetch 互相覆盖（后到的请求可能基于更早的读，写回时覆盖新数据）
+    if (refetchingRef.current) return;
+    refetchingRef.current = true;
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
       if (!url) return;
@@ -825,12 +882,10 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
       const remote = rowsToBackupData(usersData, boardsData, settingsData);
 
-      // patch 通道：把云端最新版本号记录为后续写入的乐观锁基准（避免用旧版本反复冲突）
-      if (patchEnabledRef.current && Array.isArray(boardsData)) {
-        for (const row of boardsData as any[]) {
-          if (row?.id) setBoardVersion(row.id, Number(row.version) || 0);
-        }
-      }
+      // 注意：这里【不能】无脑把本地版本号覆盖成云端值。
+      // 合并逻辑需要「本地已知版本 vs 云端版本」的对比来判断谁更新，
+      // 提前覆盖会让比较恒成立（远端永远"不更新"）或恒不成立。
+      // 版本号的更新放在合并循环里，仅在「采纳远端」时才推进。
 
       // 关键：背景设置没读到（settingsData 为空）时，rowsToBackupData 会把四个背景字段
       // 全部填成兜底值（#f5f5f7 浅灰）。若直接应用，会把屏幕上本来正确的背景刷成"一片白"，
@@ -866,6 +921,39 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           mergedBoards.push(rb); // 远端新增的看板
           continue;
         }
+
+        // ================================================================
+        // 【保存回滚 Bug 修复 2026-11-11】—— 最关键的一处
+        //
+        // 该看板还有未确认落库的 patch 时，绝不能用云端数据覆盖本地：
+        //   - 云端此刻可能是「patch 之前」的旧快照
+        //   - 覆盖后 UI 会立刻回滚（线上表现为「拖拽后 3 秒跳回原样」）
+        //   - patch 随后成功，但本地已无对应改动可应用，数据看起来"被删除"
+        // 因此：有 pending patch → 一律保留本地，等 patch 确认后再同步。
+        // ================================================================
+        if (patchEnabledRef.current && hasPendingPatch(rb.id)) {
+          mergedBoards.push(lb);
+          continue;
+        }
+
+        // patch 通道启用时：以「版本号」为唯一真相，不再依赖客户端时钟
+        // （本地/云端时间戳来自不同时钟，比较结果不可靠 —— 审计 M1）
+        if (patchEnabledRef.current) {
+          const localV = boardVersionsRef.current.get(rb.id);
+          const remoteV = typeof (rb as any).version === 'number' ? (rb as any).version : undefined;
+
+          // 远端版本明确更新 → 采用远端
+          if (typeof remoteV === 'number' && typeof localV === 'number' && remoteV > localV) {
+            boardVersionsRef.current.set(rb.id, remoteV);
+            mergedBoards.push(rb);
+            continue;
+          }
+          // 版本相同或本地更新 → 保留本地（内容差异由后续 patch 提交）
+          mergedBoards.push(lb);
+          continue;
+        }
+
+        // 旧通道（patch 未启用）：保持原有的时间戳比较逻辑
         const remoteTime = new Date(rb.updatedAt || 0).getTime();
         const localTime = new Date(lb.updatedAt || 0).getTime();
         // 远端更新（或时间相同但内容不同）则采用远端，否则保留本地
@@ -913,8 +1001,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'APPLY_EXTERNAL_STATE', payload: merged });
     } catch (err) {
       console.warn('[Realtime] 重新拉取失败:', err);
+    } finally {
+      refetchingRef.current = false;
     }
-  }, [dispatch, setBoardVersion]);
+  }, [dispatch, hasPendingPatch]);
+  // 说明：setBoardVersion 通过 ref 间接使用（boardVersionsRef），
+  // 不放进依赖可避免每次渲染重建 refetchFromServer（会导致 Realtime 反复重订阅）。
 
 
   // ===== 初始化 BroadcastChannel（跨标签页实时同步）=====
@@ -1057,8 +1149,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         const serverHasData = (boards?.length > 0) || (users?.length > 0);
         // 本地备份是否存在尚未同步到服务器的改动
         const hasPendingLocal = !!backup && backup.pending === true;
-        // 服务器是否已有有效的背景设置（有值才算有效）
-        const serverHasAppearance = (v: unknown) => typeof v === 'string' && v.length > 0;
         // 是否为「默认兜底色」——它不是用户设置的背景，而是代码里的兜底值。
         // 2026-11-05 事故：本地备份里的背景被写成 #f5f5f7 后，上一版逻辑把它
         // 当成「有效背景」，于是 hasPendingLocal 时会把它推回云端，导致每次
@@ -1496,12 +1586,35 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
     })();
 
-    // 3. 其他端修改后，用 refetch 拿到的新版本号更新基准
-    const onConflict = () => {
-      // 冲突时主动放弃本地排队项，避免在旧状态上继续叠加
+    // 3. 版本冲突后的处理
+    //    【修复 2026-11-11】原实现会清空整个 outbox —— 等于把用户所有
+    //    未提交改动全部丢弃（线上「修改内容被自动删除」的直接原因之一）。
+    //    现在改为：只重新提交「冲突看板」的排队项（用最新 baseVersion），
+    //    其他看板的待提交项完全不动。
+    const onConflict = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail || {};
+      const boardId: string | undefined = detail.boardId;
+
       void (async () => {
-        const pending = await outboxListAll();
-        for (const e of pending) await outboxDequeue(e.id);
+        try {
+          const pending = await outboxListAll();
+          const targets = boardId
+            ? pending.filter(e => e.boardId === boardId)
+            : pending;
+
+          // 用最新的 baseVersion 重新提交，保留用户改动而不是丢弃
+          for (const entry of targets) {
+            const fresh: OutboxEntry = {
+              ...entry,
+              baseVersion: boardVersionsRef.current.get(entry.boardId) ?? entry.baseVersion,
+              attempts: 0,
+            };
+            await outboxEnqueue(fresh);
+            await flushPatchEntry(fresh);
+          }
+        } catch (e) {
+          console.warn('[patch] 冲突后重试失败:', e);
+        }
       })();
     };
     window.addEventListener('trello:patch-conflict', onConflict);

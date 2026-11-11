@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { session, response } = guard();
+  const { response } = guard();
   if (response) return response;
 
   const admin = getAdminClient();

@@ -508,19 +508,9 @@ function readBackup(): CrmModules | null {
   }
 }
 
-// ===== Supabase 行 <-> 模块 映射（与 boards 表同构）=====
-interface CrmModuleRow {
-  id: string;
-  name: string;
-  name_en: string;
-  emoji: string;
-  color: string;
-  data: { stages?: CrmStage[]; fields?: CrmField[]; contacts?: CrmContact[] };
-  order: number;
-  created_at: string;
-  updated_at: string;
-}
-
+// ===== Supabase 行 → 模块 映射 =====
+// 说明：写入方向（moduleToRow / CrmModuleRow）已在 v2.4.0 移除 ——
+// CRM 写入改由 /api/crm/modules 的服务端 RPC 处理，前端不再拼装数据库行。
 function rowToModule(r: any): CrmModule {
   return {
     id: r.id,
@@ -533,20 +523,6 @@ function rowToModule(r: any): CrmModule {
     contacts: r.data?.contacts || [],
     createdAt: r.created_at || new Date().toISOString(),
     updatedAt: r.updated_at || new Date().toISOString(),
-  };
-}
-
-function moduleToRow(m: CrmModule, order: number): CrmModuleRow {
-  return {
-    id: m.id,
-    name: m.name,
-    name_en: m.nameEn,
-    emoji: m.emoji,
-    color: m.color,
-    data: { stages: m.stages, fields: m.fields, contacts: m.contacts },
-    order,
-    created_at: m.createdAt,
-    updated_at: m.updatedAt,
   };
 }
 

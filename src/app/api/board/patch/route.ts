@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabaseAdmin';
+import { getSession } from '@/lib/auth/session';
 
 /**
  * POST /api/board/patch
@@ -61,6 +62,18 @@ function bad(status: number, code: string, message: string, extra?: Record<strin
 }
 
 export async function POST(request: NextRequest) {
+  // ---- 0. 鉴权（审计 C3：写接口必须校验会话）----
+  // 注意：这里用「软校验 + 开关」策略 —— 若 SESSION_ENFORCE_WRITE=true 才强制。
+  // 默认强制。若前端 Cookie 未就绪，会返回 401，客户端据此保留本地改动
+  // 并重试（而不是丢弃）。
+  const session = getSession();
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, code: 'UNAUTHORIZED', message: '会话已失效，请重新登录' },
+      { status: 401 },
+    );
+  }
+
   // ---- 1. 请求体积与格式校验（先做，快速失败）----
   const raw = await request.text();
   if (raw.length > MAX_PATCH_BYTES) {

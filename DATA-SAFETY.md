@@ -4,6 +4,36 @@
 
 ## 版本历史
 
+### v2.4.0（2026-11-11）—— 修复「保存后自动回滚」事故
+
+**线上现象**：看板挪动卡片或添加文字后，约 3 秒自动跳回原样，修改内容丢失。
+
+**根因（三个叠加）**
+
+| # | 根因 | 说明 |
+|---|---|---|
+| 1 | **patch 在途时 refetch 用旧数据覆盖本地** | 用户改动 → 发出 patch → Realtime 800ms 防抖触发 refetch → 拉回「修改前」的云端数据 → 按时间戳比较后覆盖本地 state → UI 回滚。patch 随后成功，但已无本地改动可应用 |
+| 2 | **时间戳比较不可靠** | 本地 `updatedAt` 是浏览器时钟，云端是数据库时钟。二者相等或偏差时会误判「远端更新」 |
+| 3 | **冲突时清空整个 outbox** | `trello:patch-conflict` 监听器把所有待提交改动全部丢弃 |
+
+**修复**
+
+| 修复项 | 文件 |
+|---|---|
+| 新增 `pendingPatchCountRef`：有未确认 patch 时**禁止 refetch 覆盖本地** | `BoardContext.tsx` |
+| refetch 合并改用 **version 号**判断，不再依赖客户端时钟 | `BoardContext.tsx` |
+| 移除「合并前无脑覆盖版本号」的错误逻辑 | `BoardContext.tsx` |
+| 冲突时改为**用最新 baseVersion 重新提交**，不再丢弃用户改动 | `BoardContext.tsx` |
+| 新增 `UNAUTHORIZED` 分支：会话失效时保留改动并提示登录 | `BoardContext.tsx` |
+| 增加 `refetchingRef` 并发保护 | `BoardContext.tsx` |
+| **补上 `/api/board/patch` 鉴权**（此前完全未鉴权） | `api/board/patch/route.ts` |
+| `submitPatch` 补 `credentials: 'same-origin'` | `patch/client.ts` |
+| `Board` 类型增加 `version` 字段 | `types/index.ts` |
+
+**冗余清理**：移除 `moduleToRow`、`CrmModuleRow`（CRM 写入已改服务端）、`historyTableAvailableRef`、2 处未使用变量。
+
+**验证**：回归测试 16/16 通过（含「patch 在途时 refetch 不回滚」关键场景）；`tsc --noUnusedLocals` 全仓零告警；构建通过。
+
 ### v2.3.0（2026-11-11）—— 身份认证与写入安全重构
 
 本次为安全架构级改造，对应白盒审计报告的 P0/P1/P1.5：
