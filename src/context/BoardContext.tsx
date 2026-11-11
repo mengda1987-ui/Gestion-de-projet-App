@@ -299,6 +299,16 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const appearanceDirtyRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  /**
+   * 同步状态（v2.4.2）：直接把「改动有没有落库」显示在界面上。
+   * 用户不必打开 Console 才能判断保存是否成功。
+   */
+  const [syncState, setSyncState] = useState<{
+    kind: 'idle' | 'pending' | 'error';
+    label: string;
+    detail?: string;
+  }>({ kind: 'idle', label: '已同步' });
+
   // 当前用户的最新值（供 doSave 等稳定回调读取，避免 hook 依赖抖动）
   const currentUserRef = useRef<User | null>(null);
   useEffect(() => {
@@ -441,6 +451,12 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       await outboxDequeue(entry.id);
       bumpPending(entry.boardId, -1);
       lastPatchNoticeRef.current = '';
+      // 状态指示：确认落库（v2.4.2）
+      setSyncState({
+        kind: 'idle',
+        label: '已保存 v' + result.version,
+        detail: `数据库已确认：version=${result.version}, 卡片数=${result.cards}`,
+      });
       // 最近一次 patch 已确认落库：允许后续 refetch 覆盖本地
       return;
     }
@@ -494,9 +510,29 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 会话失效（Cookie 过期/未携带）。
         // 【重要】绝不能丢弃改动：保留在 outbox 中，登录后自动重放。
         // 只是提示用户重新登录，不改 pending 计数（改动仍未落库）。
+        setSyncState({ kind: 'error', label: '未保存：登录失效', detail: '请重新登录后再试' });
         if (lastPatchNoticeRef.current !== 'AUTH') {
           lastPatchNoticeRef.current = 'AUTH';
           setSaveError('登录状态已失效，改动已保存在本地。请重新登录后自动同步。');
+        }
+        return;
+      }
+      case 'ENDPOINT_MISSING': {
+        // 后端接口不存在（通常是 Vercel 未部署 API 路由）。
+        // 重试无意义；但改动保留在 outbox，部署修复后可重放。
+        // 递减 pending，避免同步被永久冻结（否则所有后续同步都停止）。
+        bumpPending(entry.boardId, -1);
+        setSyncState({ kind: 'error', label: '未保存：接口不存在', detail: '后端未部署' });
+        if (lastPatchNoticeRef.current !== 'ENDPOINT_MISSING') {
+          lastPatchNoticeRef.current = 'ENDPOINT_MISSING';
+          setSaveError(
+            '⚠️ 保存接口不可用（后端未部署），改动只存在本机，刷新会丢失！' +
+            '请联系管理员部署后端后重试。',
+          );
+          console.error(
+            '[patch] 致命：/api/board/patch 不存在。' +
+            '当前所有编辑都不会写入数据库，刷新即丢失。',
+          );
         }
         return;
       }
@@ -507,6 +543,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         await outboxEnqueue({ ...entry, attempts: entry.attempts + 1 });
         if (entry.attempts + 1 >= 5) {
           setSaveError('网络异常，改动已暂存本地，恢复连接后会自动重试。');
+          setSyncState({ kind: 'error', label: '未保存：网络异常', detail: '正在重试…' });
         }
         const delay = backoffDelay(entry.attempts + 1);
         setTimeout(() => {
@@ -542,6 +579,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       // 标记该看板有未确认改动：在此之前禁止 refetch 用云端数据覆盖本地
       // （否则会重现「拖拽后 3 秒自动跳回」的保存回滚 bug）
       bumpPending(boardId, +1);
+      setSyncState({ kind: 'pending', label: '保存中…', detail: '正在写入数据库' });
 
       const prev = patchQueueRef.current.get(boardId) ?? Promise.resolve();
       const next = prev
@@ -1753,6 +1791,35 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
             >
               ✕
             </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 同步状态指示器：让用户直接看到「改动是否真的落库」，
+          不必打开 Console 猜。v2.4.2 新增。 */}
+      {state._loaded && state.currentUser && createPortal(
+        <div
+          className="fixed bottom-3 left-4 z-[99998] select-none pointer-events-none"
+          title={syncState.detail}
+        >
+          <div
+            className={
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-sm backdrop-blur ' +
+              (syncState.kind === 'error'
+                ? 'bg-red-500/90 text-white'
+                : syncState.kind === 'pending'
+                ? 'bg-amber-500/90 text-white'
+                : 'bg-emerald-500/85 text-white')
+            }
+          >
+            <span
+              className={
+                'w-1.5 h-1.5 rounded-full bg-white ' +
+                (syncState.kind === 'pending' ? 'animate-pulse' : '')
+              }
+            />
+            {syncState.label}
           </div>
         </div>,
         document.body

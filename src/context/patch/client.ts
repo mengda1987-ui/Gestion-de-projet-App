@@ -25,7 +25,14 @@ export interface PatchConflict {
 
 export interface PatchRejected {
   ok: false;
-  code: 'BAD_PATCH' | 'NOT_FOUND' | 'DESTRUCTIVE_WRITE_BLOCKED' | 'UNAUTHORIZED' | 'DISABLED' | 'ERROR';
+  code:
+    | 'BAD_PATCH'
+    | 'NOT_FOUND'
+    | 'DESTRUCTIVE_WRITE_BLOCKED'
+    | 'UNAUTHORIZED'
+    | 'DISABLED'
+    | 'ENDPOINT_MISSING'
+    | 'ERROR';
   message?: string;
   before?: number;
   after?: number;
@@ -34,6 +41,12 @@ export interface PatchRejected {
 export type PatchResult = PatchSuccess | PatchConflict | PatchRejected;
 
 const ENDPOINT = '/api/board/patch';
+
+/**
+ * 诊断：记录「接口根本不存在」这类致命部署问题。
+ * 一旦 404，说明后端没部署 —— 继续重试毫无意义，必须明确告知用户。
+ */
+let endpointMissingLogged = false;
 
 /** 是否启用了 patch 通道 */
 export function isPatchRpcEnabled(): boolean {
@@ -88,6 +101,28 @@ export async function submitPatch(
     });
 
     const body = await res.json().catch(() => null);
+
+    // 【关键】404 / 405 表示「接口根本不存在」——通常是后端未部署。
+    // 旧实现把它当作网络错误无限重试，导致：
+    //   1. 改动永远落不了库，却看起来"还在同步中"
+    //   2. 用户刷新后改动彻底消失（outbox 重放仍然 404）
+    // 这里必须明确返回不可重试的错误码。
+    if (res.status === 404 || res.status === 405) {
+      if (!endpointMissingLogged) {
+        endpointMissingLogged = true;
+        console.error(
+          `[patch] ❌ ${ENDPOINT} 返回 ${res.status}：接口不存在。\n` +
+          '   极可能是后端未部署（Vercel 只发布了前端静态产物）。\n' +
+          '   请确认部署包含 src/app/api/** 目录，再重新部署。\n' +
+          '   —— 在此之前所有改动都不会写入数据库。',
+        );
+      }
+      return {
+        ok: false,
+        code: 'ENDPOINT_MISSING',
+        message: `接口 ${ENDPOINT} 不存在（HTTP ${res.status}），后端可能未部署`,
+      };
+    }
 
     if (!res.ok && !body) {
       return { ok: false, code: 'ERROR', message: `HTTP ${res.status}` };
