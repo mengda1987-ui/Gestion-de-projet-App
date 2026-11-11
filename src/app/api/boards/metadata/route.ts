@@ -89,7 +89,12 @@ export async function PATCH(request: NextRequest) {
 
     if (Object.keys(patch).length === 0) continue;
 
-    const { error } = await admin.from('boards').update(patch).eq('id', b.id);
+    // 【安全】只更新「未删除」的看板，避免元数据同步把软删除的看板复活
+    const { error } = await admin
+      .from('boards')
+      .update(patch)
+      .eq('id', b.id)
+      .or('is_deleted.is.null,is_deleted.eq.false');
     if (error) {
       console.warn('[boards/metadata] 更新失败:', b.id, error.message);
     } else {

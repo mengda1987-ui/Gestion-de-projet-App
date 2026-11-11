@@ -191,6 +191,8 @@ function rowsToBackupData(usersData: any[], boardsData: any[], settingsData: any
     updatedAt: b.updated_at || new Date().toISOString(),
     // 乐观锁版本号：仅用于前端合并判断，不参与持久化内容比较
     version: typeof b.version === 'number' ? b.version : 0,
+    // 软删除标记：必须保留，否则加载时会把已删除的看板重新显示出来
+    isDeleted: b.is_deleted === true,
   } as Board));
 
   const wsSettings = settingsData || {};
@@ -495,17 +497,24 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         );
         return;
       case 'BAD_PATCH':
+        // 结构性错误：重试无意义，丢弃（数据仍在本地备份里）
+        await outboxDequeue(entry.id);
+        bumpPending(entry.boardId, -1);
+        console.warn('[patch] 被服务端拒绝:', entry.id, result.message);
+        return;
       case 'NOT_FOUND': {
-        // 看板在云端不存在（本地新建但未落库，或已被他人删除）。
-        //
-        // 【修复】原实现直接丢弃改动。现在改为：先尝试在云端创建该看板，
-        // 创建成功后把这条 patch 重新提交一次，确保用户的改动不丢。
+        // 看板在云端不存在（本地新建但未落库，或已被删除）。
         bumpPending(entry.boardId, -1);
         await outboxDequeue(entry.id);
 
+        // 【关键】若是用户主动删除的看板，绝不能补建 ——
+        // 否则会出现「删掉了、刷新又回来」的复活现象。
+        if (deletedBoardIdsRef.current.has(entry.boardId)) {
+          return;
+        }
+
         const board = latestSnapshotRef.current?.boards?.find(b => b.id === entry.boardId);
         if (!board) {
-          setSyncState({ kind: 'error', label: '未保存：看板不存在', detail: entry.boardId });
           return;
         }
 
@@ -989,7 +998,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
       const [{ data: boardsData }, membersRows] = await Promise.race([
         Promise.all([
-          supabase.from('boards').select('*'),
+          // 【修复】必须排除软删除的看板，否则「删掉的看板刷新后又出现」
+          supabase.from('boards').select('*').or('is_deleted.is.null,is_deleted.eq.false'),
           fetchMembersForLoad(),
         ]),
         timeout,
@@ -1265,7 +1275,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
         const [{ data: boardsData }, membersRows] = await Promise.race([
           Promise.all([
-            supabase.from('boards').select('*'),
+            // 【修复】排除软删除的看板（同上）
+            supabase.from('boards').select('*').or('is_deleted.is.null,is_deleted.eq.false'),
             fetchMembersForLoad(),
           ]),
           timeout,
@@ -1645,8 +1656,82 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   }, [dispatch, patchActive, enqueuePatch]);
 
   const trackedDispatch = useCallback((action: Action) => {
+    if (action.type === 'CREATE_BOARD') {
+      // 【关键修复】patch 通道启用后 doSave 不再执行，
+      // 新建看板必须直接调服务端，否则刷新后看板消失
+      // （这正是「看板不存在」报错的来源之一）。
+      const { title, background } = action.payload;
+      // 用 reducer 预演拿到新看板 id，保证本地/云端 id 一致
+      let newBoardId = '';
+      try {
+        const next = baseReducer(state, action);
+        newBoardId = next.board?.id || next.currentBoardId || '';
+      } catch {}
+
+      if (newBoardId) {
+        setSyncState({ kind: 'pending', label: '正在创建看板…' });
+        void (async () => {
+          try {
+            const res = await fetch('/api/boards', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ action: 'create', id: newBoardId, title, background }),
+            });
+            if (res.ok) {
+              boardVersionsRef.current.set(newBoardId, 0);
+              setSyncState({ kind: 'idle', label: '看板已创建', detail: newBoardId });
+              console.info('[boards] 云端创建成功:', newBoardId);
+            } else {
+              const body = await res.json().catch(() => null);
+              console.warn('[boards] 创建失败:', res.status, body);
+              setSyncState({
+                kind: 'error',
+                label: '看板未同步',
+                detail: `HTTP ${res.status} ${body?.error || ''}`,
+              });
+            }
+          } catch (e: any) {
+            console.warn('[boards] 创建请求异常:', e?.message);
+            setSyncState({ kind: 'error', label: '看板未同步', detail: e?.message });
+          }
+        })();
+      }
+      dispatch(action);
+      return;
+    }
+
     if (action.type === 'DELETE_BOARD') {
       deletedBoardIdsRef.current.add(action.payload);
+      // 【关键修复】patch 通道启用时 doSave 不再执行，
+      // 删除请求必须直接发出，否则「删掉的看板刷新后又回来」。
+      const boardId = action.payload;
+      setSyncState({ kind: 'pending', label: '正在删除…' });
+      void (async () => {
+        try {
+          const res = await fetch(`/api/boards?id=${encodeURIComponent(boardId)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          });
+          if (res.ok || res.status === 404) {
+            deletedBoardIdsRef.current.delete(boardId);
+            boardVersionsRef.current.delete(boardId);
+            setSyncState({ kind: 'idle', label: '已删除', detail: boardId });
+            console.info('[boards] 云端删除成功:', boardId);
+          } else {
+            const body = await res.json().catch(() => null);
+            console.warn('[boards] 删除失败:', res.status, body);
+            setSyncState({
+              kind: 'error',
+              label: '删除未同步',
+              detail: `HTTP ${res.status} ${body?.error || ''}`,
+            });
+          }
+        } catch (e: any) {
+          console.warn('[boards] 删除请求异常:', e?.message);
+          setSyncState({ kind: 'error', label: '删除未同步', detail: e?.message });
+        }
+      })();
     } else if (action.type === 'DELETE_USER') {
       deletedUserIdsRef.current.add(action.payload.userId);
     } else if (

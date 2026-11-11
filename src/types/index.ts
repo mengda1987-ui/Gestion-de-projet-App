@@ -162,6 +162,8 @@ export interface Board {
   order?: number;
   /** 云端乐观锁版本号（仅用于合并判断，不参与内容比较） */
   version?: number;
+  /** 软删除标记（true 表示已在云端删除，不应再显示） */
+  isDeleted?: boolean;
 }
 
 export type ViewMode = 'board' | 'table' | 'gantt' | 'mindmap' | 'summary';
