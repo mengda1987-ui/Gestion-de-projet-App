@@ -102,14 +102,20 @@ export async function submitPatch(
 
     const body = await res.json().catch(() => null);
 
-    // 【关键】404 / 405 表示「接口根本不存在」——通常是后端未部署。
+    // ---- 业务错误：NOT_FOUND 也走 404，但语义完全不同 ----
+    // 【严重 bug 修复】原实现把「看板不存在」的 404 和「接口不存在」的 404
+    // 混为一谈，导致前端误判为「后端未部署」并丢弃用户改动。
+    // 这里必须通过响应体的 code 区分，而不是只看 HTTP 状态码。
+    const bodyCode = (body as any)?.code;
+    if (bodyCode === 'NOT_FOUND') {
+      return { ok: false, code: 'NOT_FOUND', message: (body as any)?.message };
+    }
+
+    // 【关键】404 / 405 且响应体没有业务 code，才是「接口真的不存在」。
     // 旧实现把它当作网络错误无限重试，导致：
     //   1. 改动永远落不了库，却看起来"还在同步中"
     //   2. 用户刷新后改动彻底消失（outbox 重放仍然 404）
-    // 这里必须明确返回不可重试的错误码。
-    //
-    // v2.4.3：把「实际请求的完整 URL」和响应体一并带出，便于精确定位。
-    if (res.status === 404 || res.status === 405) {
+    if ((res.status === 404 || res.status === 405) && !bodyCode) {
       let absUrl = ENDPOINT;
       try { absUrl = new URL(ENDPOINT, window.location.origin).toString(); } catch {}
       // 把响应体也读出来（Vercel 的 404 会返回 HTML，能据此判断是路由缺失还是别的）

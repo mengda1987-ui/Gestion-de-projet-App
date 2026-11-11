@@ -429,6 +429,9 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     boardVersionsRef.current.set(boardId, version);
   }, []);
 
+  // 用于在 flushPatchEntry 内部重试（避免 enqueuePatch ↔ flushPatchEntry 循环依赖）
+  const enqueuePatchRef = useRef<((boardId: string, payload: BoardPatchPayload) => Promise<void>) | null>(null);
+
   /** 把一条 entry 提交到服务端，处理冲突与失败 */
   const flushPatchEntry = useCallback(async (entry: OutboxEntry): Promise<void> => {
     if (!patchActive()) {
@@ -492,12 +495,48 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         );
         return;
       case 'BAD_PATCH':
-      case 'NOT_FOUND':
-        // 结构性错误：重试无意义，丢弃并提示（数据仍在本地备份里）
-        await outboxDequeue(entry.id);
+      case 'NOT_FOUND': {
+        // 看板在云端不存在（本地新建但未落库，或已被他人删除）。
+        //
+        // 【修复】原实现直接丢弃改动。现在改为：先尝试在云端创建该看板，
+        // 创建成功后把这条 patch 重新提交一次，确保用户的改动不丢。
         bumpPending(entry.boardId, -1);
-        console.warn('[patch] 被服务端拒绝:', entry.id, result.code, result.message);
+        await outboxDequeue(entry.id);
+
+        const board = latestSnapshotRef.current?.boards?.find(b => b.id === entry.boardId);
+        if (!board) {
+          setSyncState({ kind: 'error', label: '未保存：看板不存在', detail: entry.boardId });
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/boards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              action: 'create',
+              title: board.title || '未命名看板',
+              background: board.background,
+              // 复用本地 id，保证后续 patch 能对上
+              id: board.id,
+            }),
+          });
+          if (!res.ok) {
+            console.warn('[patch] 补建看板失败:', res.status);
+            setSyncState({ kind: 'error', label: '未保存：看板不存在', detail: '补建失败' });
+            return;
+          }
+          console.info('[patch] 已补建云端看板，重新提交改动:', entry.boardId);
+          // 重置版本基准后重试一次
+          boardVersionsRef.current.set(entry.boardId, 0);
+          await enqueuePatchRef.current?.(entry.boardId, entry.payload);
+        } catch (e: any) {
+          console.warn('[patch] 补建看板异常:', e?.message);
+          setSyncState({ kind: 'error', label: '未保存：看板不存在', detail: '补建异常' });
+        }
         return;
+      }
       case 'DISABLED': {
         // service_role 未配置或通道未开启：整体退回旧通道，避免改动丢失
         patchBrokenRef.current = true;
@@ -527,6 +566,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           label: '未保存：接口不存在',
           detail: result.message || '/api/board/patch 返回 404/405',
         });
+        // 同时弹出横幅：这种情况改动会丢，必须让用户看见
+        setSaveError('保存接口不可用，改动未写入数据库（刷新会丢失）。详情见左下角红点。');
         if (lastPatchNoticeRef.current !== 'ENDPOINT_MISSING') {
           lastPatchNoticeRef.current = 'ENDPOINT_MISSING';
           setSaveError(
@@ -593,6 +634,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     },
     [patchActive, flushPatchEntry, bumpPending],
   );
+
+  // 让 flushPatchEntry 能在 NOT_FOUND 补建看板后重新入队
+  useEffect(() => {
+    enqueuePatchRef.current = enqueuePatch;
+  }, [enqueuePatch]);
 
 
   // ===== 保存到 Supabase（增量保存：只写真正变化的看板，避免整表覆盖）=====
@@ -1809,21 +1855,20 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         document.body
       )}
 
-      {/* 同步状态指示器：让用户直接看到「改动是否真的落库」，
-          不必打开 Console 猜。v2.4.2 新增。 */}
-      {state._loaded && state.currentUser && createPortal(
+      {/* 同步状态指示器：只在「有异常」或「正在保存」时显示，
+          已同步时自动隐藏，避免干扰界面。
+          注意：不再依赖 currentUser —— 登录态异常时更需要看到它。v2.4.4 */}
+      {state._loaded && syncState.kind !== 'idle' && createPortal(
         <div
-          className="fixed bottom-3 left-4 z-[99998] select-none pointer-events-none"
+          className="fixed bottom-3 left-4 z-[99998] select-none"
           title={syncState.detail}
         >
           <div
             className={
-              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-sm backdrop-blur ' +
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-md backdrop-blur ' +
               (syncState.kind === 'error'
-                ? 'bg-red-500/90 text-white'
-                : syncState.kind === 'pending'
-                ? 'bg-amber-500/90 text-white'
-                : 'bg-emerald-500/85 text-white')
+                ? 'bg-red-600/95 text-white cursor-help'
+                : 'bg-amber-500/95 text-white')
             }
           >
             <span

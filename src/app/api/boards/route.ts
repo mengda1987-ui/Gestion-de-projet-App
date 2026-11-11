@@ -61,6 +61,41 @@ export async function POST(request: NextRequest) {
   const background =
     typeof body?.background === 'string' ? body.background.slice(0, 4096) : '#f5f5f7';
 
+  // 支持「补建」：调用方指定 id 时，用该 id 插入（用于本地新建但云端缺失的看板）
+  const requestedId = typeof body?.id === 'string' ? body.id : '';
+  if (requestedId && UUID_RE.test(requestedId)) {
+    const { data: existing } = await admin
+      .from('boards')
+      .select('id')
+      .eq('id', requestedId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      // 已存在：幂等返回
+      return NextResponse.json({ ok: true, board: { id: requestedId }, existed: true });
+    }
+
+    const { data: inserted, error: insErr } = await admin
+      .from('boards')
+      .insert({
+        id: requestedId,
+        title,
+        background,
+        data: { columns: [], mindmap: [] },
+        labels: [],
+        version: 0,
+        updated_by: session!.uid,
+      })
+      .select('*')
+      .single();
+
+    if (insErr) {
+      console.error('[boards] 按 id 补建失败:', insErr.message);
+      return err(500, 'ERROR', insErr.message);
+    }
+    return NextResponse.json({ ok: true, board: inserted }, { status: 201 });
+  }
+
   const { data, error } = await admin.rpc('create_board', {
     p_title: title,
     p_background: background,
