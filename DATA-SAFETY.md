@@ -4,6 +4,30 @@
 
 ## 版本历史
 
+### v2.5.0（2026-11-11）—— 移动端同步专项修复（4 大疑点）
+
+**线上现象**：手机端与电脑端内容长期不一致；锁屏/切后台后再打开看不到最新数据。
+
+| 疑点 | 排查结论 | 修复 |
+|---|---|---|
+| **1. 本地缓存污染** | `pendingSaveRef` 只在 `doSave` 成功时清 false，patch 模式下 `doSave` 不执行 → pending 永久 true → `useLocal` 恒真 → 本地陈旧缓存永久优先于云端 | pending 交还 patch 队列维护；`useLocal` 不再因 pending 采信本地；新增 `MAX_BACKUP_AGE_MS`（6h）过期失效 |
+| **2. 唤醒不重连** | `visibilitychange` 只用于保存、**切回前台不 refetch**；Realtime 频道无状态回调、断线不重建 | 新增 `onResume`（visibilitychange / focus / online / pageshow-BFCache）；订阅带状态回调 + `rebuildChannel()`；唤醒强制 `forceRefetch` 并补交 outbox |
+| **3. Outbox 卡死** | Promise 链遇异常停在 rejected，后续 patch 永不执行；fetch 无超时，iOS 挂起后永久等待 | 队列 `.then(ok, fail)` 双分支 + 20s 超时；force refetch 遇并发改为排队等待而非静默跳过 |
+| **4. Cookie 失效** | 配置本身正确（Secure/HttpOnly/lax），但 7 天固定过期 → 手机端频繁被踢 → 写请求 401 | 新增**滑动续期**：剩余不足一半时自动延长 |
+
+**实测（iPhone UA + CDP 模拟切后台/回前台/网络恢复）**
+
+```
+[realtime] 频道断开: CLOSED — 将在唤醒时重连
+[resume] 回到前台，执行远端重校验: visibilitychange
+[resume] 回到前台，执行远端重校验: online
+回前台后：GET boards?select=*&or=(is_deleted.is.null,...) 200
+          GET api/members 200 / workspace_settings 200
+online 后：同样四个请求 200
+```
+
+回归测试 30/30 通过。
+
 ### v2.4.2（2026-11-11）—— 同步状态可视化 + 404 不再静默重试
 
 **背景**：v2.4.0/2.4.1 的「保存回滚」修复难以从界面判断是否生效，

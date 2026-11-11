@@ -130,7 +130,23 @@ export function clearSession(): void {
 /** 读取当前会话（未登录返回 null） */
 export function getSession(): SessionPayload | null {
   try {
-    return decodeSession(cookies().get(SESSION_COOKIE)?.value);
+    const s = decodeSession(cookies().get(SESSION_COOKIE)?.value);
+    if (!s) return null;
+
+    // 【移动端修复】滑动续期。
+    // iOS Safari 对 Cookie 的清理比桌面激进，加上手机端可能连续数天不打开，
+    // 7 天固定过期会让用户频繁被踢下线（写请求随即 401）。
+    // 这里在剩余有效期不足一半时自动续期，延长会话。
+    const now = Math.floor(Date.now() / 1000);
+    const remaining = s.exp - now;
+    if (remaining > 0 && remaining < DEFAULT_TTL_SECONDS / 2) {
+      try {
+        createSession({ ...s, iat: now, exp: now + DEFAULT_TTL_SECONDS });
+      } catch {
+        // 续期失败不影响本次鉴权
+      }
+    }
+    return s;
   } catch {
     return null;
   }

@@ -37,6 +37,12 @@ import {
 import type { User, Board } from '@/types';
 
 const BACKUP_KEY = 'trello_local_backup_v1';
+/**
+ * 本地备份的最大可信年龄。
+ * 超过这个时间仍未同步的本地快照，视为「陈旧缓存」，
+ * 启动时不再用它覆盖云端数据（移动端长期离线/失败后常见）。
+ */
+const MAX_BACKUP_AGE_MS = 6 * 60 * 60 * 1000; // 6 小时
 const SYNC_CHANNEL = 'trello-sync-channel';
 
 interface BackupData {
@@ -345,6 +351,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const pendingPatchFirstSeenRef = useRef<Map<string, number>>(new Map());
   // 正在进行中的 refetch（避免并发拉取互相覆盖）
   const refetchingRef = useRef(false);
+  // Realtime 订阅状态（移动端唤醒时据此判断是否需要重建频道）
+  const realtimeStatusRef = useRef<string>('');
+  const realtimeBrokenRef = useRef(false);
+  /**
+   * 「强制重校验」标记：回到前台时置位，让 refetchFromServer 跳过 pending 保护。
+   * 原因：用户主动回到前台，必须立刻看到云端最新状态；
+   * 本地未提交改动依然在 outbox 里，随后会补交，不会丢。
+   */
+  const forceRefetchRef = useRef(false);
 
   const bumpPending = useCallback((boardId: string, delta: number) => {
     const cur = pendingPatchCountRef.current.get(boardId) ?? 0;
@@ -444,11 +459,16 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
     let result: PatchResult;
     try {
-      result = await submitEntry(entry);
+      // 【移动端修复】加超时：iOS 切后台时 fetch 可能永久挂起，
+      // 不设超时会让队列永远卡在这一条。
+      result = await Promise.race([
+        submitEntry(entry),
+        new Promise<PatchResult>((resolve) =>
+          setTimeout(() => resolve({ ok: false, code: 'ERROR', message: 'timeout' }), 20000),
+        ),
+      ]);
     } catch (e: any) {
       result = { ok: false, code: 'ERROR', message: e?.message };
-    } finally {
-      // 注意：pending 计数在下面各分支统一处理（成功/失败都要减）
     }
 
     if (result.ok) {
@@ -637,8 +657,17 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
 
       const prev = patchQueueRef.current.get(boardId) ?? Promise.resolve();
       const next = prev
-        .then(() => flushPatchEntry(entry))
-        .catch(err => console.warn('[patch] 提交异常:', err));
+        // 【移动端修复】队列必须「失败也不阻塞」。
+        // 原实现若前一条 entry 在 flushPatchEntry 内部抛出未捕获异常，
+        // 整个 Promise 链会停在 rejected 状态，后续所有 patch 永远不执行
+        // —— 手机端表现为"改了不同步、怎么等都没用"。
+        .then(
+          () => flushPatchEntry(entry),
+          () => flushPatchEntry(entry), // 前一条失败也继续处理本条
+        )
+        .catch(err => {
+          console.warn('[patch] 提交异常（不阻塞后续）:', err);
+        });
       patchQueueRef.current.set(boardId, next);
     },
     [patchActive, flushPatchEntry, bumpPending],
@@ -983,10 +1012,24 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ===== 从服务器重新拉取，并在内容变化时应用到 state（跨用户实时同步）=====
-  const refetchFromServer = useCallback(async () => {
+  const refetchFromServer = useCallback(async (opts?: { force?: boolean }) => {
     if (!loadedRef.current) return;
-    // 防止并发 refetch 互相覆盖（后到的请求可能基于更早的读，写回时覆盖新数据）
-    if (refetchingRef.current) return;
+
+    const force = opts?.force === true || forceRefetchRef.current;
+    if (opts?.force) forceRefetchRef.current = false;
+
+    // 防止并发 refetch 互相覆盖（后到的请求可能基于更早的读，写回时覆盖新数据）。
+    // 【移动端修复】普通请求遇到并发直接跳过即可；
+    // 但 force（回到前台）必须排队等待前一次完成后再执行一次，
+    // 否则"唤醒时正好有轮询在跑"就会导致本次唤醒被静默忽略。
+    if (refetchingRef.current) {
+      if (!force) return;
+      // 最多等待 3 秒，避免死等
+      for (let i = 0; i < 30 && refetchingRef.current; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (refetchingRef.current) return;
+    }
     refetchingRef.current = true;
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1098,8 +1141,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 注意：这里【不判断 patchEnabledRef】。
         // 即使灰度开关没生效（构建时未注入），只要本地有未确认改动，
         // 也必须保护 —— 否则开关一旦失效就退回"必回滚"状态。
+        //
+        // 例外：force=true（用户主动回到前台）时不保护，
+        // 必须立刻呈现云端最新状态；本地改动仍在 outbox 中随后补交。
         // ================================================================
-        if (hasFreshPendingPatch(rb.id)) {
+        if (!force && hasFreshPendingPatch(rb.id)) {
           mergedBoards.push(lb);
           continue;
         }
@@ -1174,6 +1220,23 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       refetchingRef.current = false;
     }
   }, [dispatch, hasFreshPendingPatch]);
+
+  /**
+   * 【移动端】强制远端全量重校验。
+   * 与 refetchFromServer 的区别：无视 pending 保护，必定应用云端最新数据。
+   * 用于：回到前台 / 网络恢复 / BFCache 恢复 / 手动刷新。
+   */
+  const forceRefetch = useCallback(
+    async (_reason: string) => {
+      forceRefetchRef.current = true;
+      try {
+        await refetchFromServer({ force: true });
+      } finally {
+        forceRefetchRef.current = false;
+      }
+    },
+    [refetchFromServer],
+  );
   // 说明：setBoardVersion 通过 ref 间接使用（boardVersionsRef），
   // 不放进依赖可避免每次渲染重建 refetchFromServer（会导致 Realtime 反复重订阅）。
 
@@ -1236,12 +1299,108 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }, 800);
     };
 
-    const channel = supabase
+    let channel = supabase
       .channel('board-realtime-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, scheduleRefetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, scheduleRefetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'workspace_settings' }, scheduleRefetch)
-      .subscribe();
+      .subscribe((status) => {
+        realtimeStatusRef.current = status;
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[realtime] 频道断开:', status, '— 将在唤醒时重连');
+          realtimeBrokenRef.current = true;
+        } else if (status === 'SUBSCRIBED') {
+          realtimeBrokenRef.current = false;
+        }
+      });
+
+    /**
+     * 【移动端核心修复】重建 Realtime 频道。
+     *
+     * iOS Safari / Android Chrome 在切后台、锁屏后会由系统挂起 WebSocket，
+     * 回到前台时连接往往已经死掉但不会自动恢复 —— 于是手机端永远收不到更新。
+     */
+    const rebuildChannel = () => {
+      try { supabase.removeChannel(channel); } catch {}
+      channel = supabase
+        .channel('board-realtime-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, scheduleRefetch)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, scheduleRefetch)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'workspace_settings' }, scheduleRefetch)
+        .subscribe((status) => {
+          realtimeStatusRef.current = status;
+          if (status === 'SUBSCRIBED') {
+            realtimeBrokenRef.current = false;
+            console.info('[realtime] 频道已重新订阅');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            realtimeBrokenRef.current = true;
+          }
+        });
+    };
+
+    /**
+     * 【移动端核心修复】回到前台时强制执行一次「远端全量重校验」。
+     *
+     * 触发场景：visibilitychange → visible、window focus、网络恢复、BFCache 恢复。
+     * 行为：
+     *   1) 若频道已断开/状态未知 → 重建频道
+     *   2) 强制 refetchFromServer（绕过 pending 保护，因为这是用户主动回到前台，
+     *      需要立刻看到最新状态；本地未提交改动仍在 outbox 中会继续补交）
+     *   3) 做一次「本地缓存失活」判断：备份过旧则清空 pending 标记
+     */
+    let lastResumeAt = 0;
+    const onResume = (reason: string) => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      // 防抖：多个事件（visibility + focus + pageshow）可能连续触发
+      if (now - lastResumeAt < 800) return;
+      lastResumeAt = now;
+
+      console.info('[resume] 回到前台，执行远端重校验:', reason);
+
+      if (realtimeBrokenRef.current || realtimeStatusRef.current !== 'SUBSCRIBED') {
+        rebuildChannel();
+      }
+
+      // 强制同步：先拉云端最新，再尝试补交本地未提交项
+      void (async () => {
+        try {
+          await forceRefetch(reason);
+        } catch (e) {
+          console.warn('[resume] 强制同步失败:', e);
+        }
+        try {
+          const pending = await outboxListAll();
+          if (pending.length > 0) {
+            console.info(`[resume] 补交 ${pending.length} 条未提交改动`);
+            for (const entry of pending) {
+              await flushPatchEntry({
+                ...entry,
+                baseVersion: boardVersionsRef.current.get(entry.boardId) ?? entry.baseVersion,
+                attempts: 0,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[resume] 补交失败:', e);
+        }
+      })();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onResume('visibilitychange');
+    };
+    const onFocus = () => onResume('focus');
+    const onOnline = () => onResume('online');
+    const onPageShow = (e: PageTransitionEvent) => {
+      // BFCache 恢复（iOS 上非常常见）
+      if (e.persisted) onResume('pageshow(bfcache)');
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('pageshow', onPageShow as any);
 
     // 兜底轮询：即使 Realtime 未在 Supabase 后台开启，也能保证多用户最终一致
     // 注意：有未确认 patch 时跳过本轮，避免用云端旧数据覆盖本地改动
@@ -1254,11 +1413,15 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (timer) clearTimeout(timer);
       clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('pageshow', onPageShow as any);
       supabase.removeChannel(channel);
     };
     // hasAnyFreshPending 依赖 ref，本身稳定；不放入依赖避免 Realtime 反复重订阅
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refetchFromServer]);
+  }, [refetchFromServer, forceRefetch]);
 
 
   // ===== 加载数据：本地备份与 Supabase 比较，取较新者，防止旧数据覆盖 =====
@@ -1377,12 +1540,30 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         // 因此这里必须把"读不到设置"和"服务器确实没有背景"区分开。
         const settingsLoaded = settingsData !== null && settingsData !== undefined;
 
-        // 采用本地备份的条件：有未同步改动；或服务器为空但本地有历史数据（恢复）。
-        // 例外：若背景设置读取失败（settingsLoaded=false），不做任何本地降级决策，
-        // 保持现状按服务器数据渲染，避免误判覆盖。
+        // 采用本地备份的条件：服务器为空但本地有历史数据（恢复场景）。
+        //
+        // 【修复 2026-11-11】原条件包含 hasPendingLocal，
+        // 意味着「只要本地有未同步标记就拒绝云端数据」。
+        // 移动端一次弱网失败就会让 pending 长期为 true，
+        // 于是手机永远显示陈旧缓存、与电脑端长期不一致。
+        //
+        // 正确策略：
+        //   - 服务器有数据 → 一律以服务器为准（本地未提交改动由 outbox/queue 负责补交，
+        //     不需要靠"整份本地快照覆盖云端视图"来实现）
+        //   - 服务器为空且本地有历史 → 才用本地恢复
+        //   - 本地备份超过 MAX_BACKUP_AGE_MS 视为过期，不再采信
+        const backupAge = backup?.savedAt ? Date.now() - new Date(backup.savedAt).getTime() : Infinity;
+        const backupFresh = backupAge < MAX_BACKUP_AGE_MS;
         const useLocal = settingsLoaded && (
-          hasPendingLocal || (!serverHasData && !!backup && (backup.boards?.length > 0))
+          (!serverHasData && !!backup && (backup.boards?.length > 0) && backupFresh)
         );
+        if (hasPendingLocal && !useLocal) {
+          // 本地有未同步标记但服务器有数据：以服务器为准渲染，
+          // 未提交改动依然保留在 outbox 里继续重试，不会被丢弃。
+          console.info(
+            '[load] 服务器有数据，采用云端为准（本地 pending 交由队列补交）',
+          );
+        }
 
         // 背景设置读取失败时，禁止本轮任何写回（否则会用兜底浅灰覆盖云端背景）
         if (!settingsLoaded) {
@@ -1455,9 +1636,11 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
         latestSnapshotRef.current = dataToUse;
 
         // 始终将当前加载结果落本地，作为离线兜底镜像。
-        // 注意：pending 必须同时满足「背景设置读取成功」，否则本轮数据里的背景是兜底值，
-        // 一旦被标记为已同步（pending:false），本地真实内容就再也不会被补传。
-        const keepPending = hasPendingLocal || !settingsLoaded;
+        //
+        // 【修复 2026-11-11】pending 现在只表示「确实还有未提交的写操作」，
+        // 不再因为「服务器有数据」而永久保持 true。
+        // 未提交改动由 outbox（IndexedDB）独立维护，与这份快照解耦。
+        const keepPending = !patchActive() ? (hasPendingLocal || !settingsLoaded) : false;
         try {
           window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...dataToUse, savedAt, pending: keepPending }));
         } catch {}
@@ -1561,6 +1744,8 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
       }
     }
     loadData();
+    // patchActive 基于 ref，本身稳定，不放入依赖避免重复拉取
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, enqueueSave, restoreSession]);
 
   // ===== 持久化：内容变化时立即落本地 + 广播 + 串行保存 =====
@@ -1578,10 +1763,20 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     latestSnapshotRef.current = data;
     const savedAt = new Date().toISOString();
 
-    // 1. 本地兜底（标记为未同步，保存成功后再清除）
-    pendingSaveRef.current = true;
+    // 1. 本地兜底（标记为未同步）
+    //
+    // 【修复 2026-11-11】原实现在 patch 模式下仍把 pending 置 true，
+    // 而清除 pending 的代码只在 doSave 成功里（patch 模式下 doSave 不执行）
+    // → pending 永远为 true → 下次启动 hasPendingLocal 恒真
+    // → useLocal=true → 本地陈旧缓存永久优先于云端
+    // 这正是「手机端长期与电脑端不一致」的根因之一。
+    // 现在：patch 模式下由 patch 队列自己维护 pending，这里不设置。
+    pendingSaveRef.current = !patchActive();
     try {
-      window.localStorage.setItem(BACKUP_KEY, JSON.stringify({ ...data, savedAt, pending: true }));
+      window.localStorage.setItem(
+        BACKUP_KEY,
+        JSON.stringify({ ...data, savedAt, pending: pendingSaveRef.current }),
+      );
     } catch {}
 
     // 2. 广播给其他标签页
