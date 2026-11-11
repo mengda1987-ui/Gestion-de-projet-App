@@ -154,6 +154,21 @@ export async function POST(request: NextRequest) {
 
     const r = data as any;
     if (r?.ok === true) {
+      // 若包含看板顶层扩展字段（emoji / iconBg / iconImage / visibleTo / order），
+      // 同步写入 boards 表对应列，保证刷新后这些字段不丢失
+      if (cleanPatch.data && typeof cleanPatch.data === 'object') {
+        const metaCols = cleanPatch.data as Record<string, unknown>;
+        if (Object.keys(metaCols).length > 0) {
+          const { error: metaErr } = await admin
+            .from('boards')
+            .update(metaCols)
+            .eq('id', boardId)
+            .or('is_deleted.is.null,is_deleted.eq.false');
+          if (metaErr) {
+            console.warn('[board/patch] 看板扩展字段同步失败:', metaErr.message);
+          }
+        }
+      }
       const okBody = { ok: true, version: r.version, cards: r.cards, entryId };
       if (idemKey) markProcessed(idemKey, okBody);
       return NextResponse.json(okBody);

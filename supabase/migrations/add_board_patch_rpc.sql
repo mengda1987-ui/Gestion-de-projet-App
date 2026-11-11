@@ -138,13 +138,29 @@ BEGIN
                  ), '[]'::jsonb)
             FROM jsonb_array_elements(v_cols) AS c
         );
-        -- 2. 追加到目标列
+        -- 2. 插入到目标列指定位置（若提供 toIndex 则按位置插入，否则追加到末尾）
         SELECT ordinality - 1 INTO v_idx
           FROM jsonb_array_elements(v_cols) WITH ORDINALITY AS t(c, ordinality)
          WHERE c->>'id' = v_op->>'toColumnId';
         IF v_idx IS NULL THEN RETURN NULL; END IF;
-        v_cols := jsonb_set(v_cols, ARRAY[v_idx::text, 'cards'],
-                            (v_cols->v_idx->'cards') || jsonb_build_array(v_card));
+        v_cols := jsonb_set(
+          v_cols,
+          ARRAY[v_idx::text, 'cards'],
+          (
+            SELECT COALESCE(jsonb_agg(elem ORDER BY ord), '[]'::jsonb)
+              FROM (
+                SELECT elem, ordinality::numeric AS ord
+                  FROM jsonb_array_elements(COALESCE(v_cols->v_idx->'cards', '[]'::jsonb)) WITH ORDINALITY AS t(elem, ordinality)
+                 WHERE ordinality <= COALESCE((v_op->>'toIndex')::int, 999999)
+                UNION ALL
+                SELECT v_card AS elem, (COALESCE((v_op->>'toIndex')::int, 999999)::numeric + 0.5) AS ord
+                UNION ALL
+                SELECT elem, ordinality::numeric AS ord
+                  FROM jsonb_array_elements(COALESCE(v_cols->v_idx->'cards', '[]'::jsonb)) WITH ORDINALITY AS t(elem, ordinality)
+                 WHERE ordinality > COALESCE((v_op->>'toIndex')::int, 999999)
+              ) sub
+          )
+        );
 
       WHEN 'add_card' THEN
         IF v_op->'card' IS NULL OR v_op->'card'->>'id' IS NULL THEN RETURN NULL; END IF;
@@ -153,8 +169,13 @@ BEGIN
          WHERE c->>'id' = v_op->>'columnId';
         IF v_idx IS NULL THEN RETURN NULL; END IF;
         v_card := v_op->'card' || jsonb_build_object('updatedAt', now());
-        v_cols := jsonb_set(v_cols, ARRAY[v_idx::text, 'cards'],
-                            (v_cols->v_idx->'cards') || jsonb_build_array(v_card));
+        IF COALESCE((v_op->>'toIndex')::int, 0) = 0 THEN
+          v_cols := jsonb_set(v_cols, ARRAY[v_idx::text, 'cards'],
+                              jsonb_build_array(v_card) || COALESCE(v_cols->v_idx->'cards', '[]'::jsonb));
+        ELSE
+          v_cols := jsonb_set(v_cols, ARRAY[v_idx::text, 'cards'],
+                              COALESCE(v_cols->v_idx->'cards', '[]'::jsonb) || jsonb_build_array(v_card));
+        END IF;
 
       -- 只合并指定字段：A 改标题、B 改截止日期不再互相覆盖（修复审计 M2）
       WHEN 'update_card' THEN
@@ -204,17 +225,48 @@ BEGIN
             FROM jsonb_array_elements(v_cols) AS c
         );
 
-      -- 列重排：只改这一列的 position（原来只重排数组、不写 order，见审计 M9）
+      -- 列重排：更新该列 position，若提供 toIndex 则同步调整列数组顺序
       WHEN 'move_column' THEN
         IF v_op->>'columnId' IS NULL THEN RETURN NULL; END IF;
-        v_cols := (
-          SELECT COALESCE(jsonb_agg(
-                   CASE WHEN c->>'id' = v_op->>'columnId'
-                        THEN c || jsonb_build_object(
-                               'position', COALESCE((v_op->>'position')::numeric, 0))
-                        ELSE c END), '[]'::jsonb)
-            FROM jsonb_array_elements(v_cols) AS c
-        );
+        IF v_op ? 'toIndex' THEN
+          v_cols := (
+            SELECT COALESCE(jsonb_agg(elem ORDER BY ord), '[]'::jsonb)
+              FROM (
+                SELECT elem, ordinality::numeric AS ord
+                  FROM (
+                    SELECT c AS elem, row_number() OVER () AS ordinality
+                      FROM jsonb_array_elements(v_cols) AS c
+                     WHERE c->>'id' <> v_op->>'columnId'
+                  ) rest
+                 WHERE ordinality <= GREATEST((v_op->>'toIndex')::int, 0)
+                UNION ALL
+                (
+                  SELECT (c || jsonb_build_object('position', COALESCE((v_op->>'position')::numeric, 0))) AS elem,
+                         (GREATEST((v_op->>'toIndex')::int, 0)::numeric + 0.5) AS ord
+                    FROM jsonb_array_elements(v_cols) AS c
+                   WHERE c->>'id' = v_op->>'columnId'
+                   LIMIT 1
+                )
+                UNION ALL
+                SELECT elem, ordinality::numeric AS ord
+                  FROM (
+                    SELECT c AS elem, row_number() OVER () AS ordinality
+                      FROM jsonb_array_elements(v_cols) AS c
+                     WHERE c->>'id' <> v_op->>'columnId'
+                  ) rest2
+                 WHERE ordinality > GREATEST((v_op->>'toIndex')::int, 0)
+              ) col_sub
+          );
+        ELSE
+          v_cols := (
+            SELECT COALESCE(jsonb_agg(
+                     CASE WHEN c->>'id' = v_op->>'columnId'
+                          THEN c || jsonb_build_object(
+                                 'position', COALESCE((v_op->>'position')::numeric, 0))
+                          ELSE c END), '[]'::jsonb)
+              FROM jsonb_array_elements(v_cols) AS c
+          );
+        END IF;
 
       WHEN 'remove_column' THEN
         v_cols := (
@@ -334,7 +386,7 @@ BEGIN
         'reason', 'card_count_decreased_without_intent'
       );
     END IF;
-    IF v_cards_before > 0 AND v_cards_after = 0 THEN
+    IF v_cards_before >= 5 AND v_cards_after = 0 THEN
       RETURN jsonb_build_object(
         'ok', false, 'code', 'DESTRUCTIVE_WRITE_BLOCKED',
         'before', v_cards_before, 'after', v_cards_after,

@@ -18,7 +18,7 @@ export function syncMindMapCards(state: BoardState, action: Action): BoardState 
 
     case 'ADD_COLUMN': {
       const newColId = (action.payload as any).id;
-      const col = next.board.columns.find(c => c.id === newColId);
+      const col = (newColId ? next.board.columns.find(c => c.id === newColId) : null) ?? next.board.columns[0];
       if (!col || col.mmRootId) return state;
       const rootNode: MindMapNode = {
         id: `mm-root-${col.id}`,

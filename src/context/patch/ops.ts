@@ -13,13 +13,13 @@ import type { Board } from '@/types';
 
 /** 与 supabase/migrations/add_board_patch_rpc.sql 中的 op 一一对应 */
 export type BoardPatchOp =
-  | { op: 'move_card'; cardId: string; toColumnId: string; position: number }
-  | { op: 'add_card'; columnId: string; card: Record<string, unknown> }
+  | { op: 'move_card'; cardId: string; toColumnId: string; position: number; toIndex?: number }
+  | { op: 'add_card'; columnId: string; card: Record<string, unknown>; toIndex?: number }
   | { op: 'update_card'; cardId: string; fields: Record<string, unknown> }
   | { op: 'remove_card'; cardId: string }
   | { op: 'add_column'; column: Record<string, unknown> }
   | { op: 'update_column'; columnId: string; fields: Record<string, unknown> }
-  | { op: 'move_column'; columnId: string; position: number }
+  | { op: 'move_column'; columnId: string; position: number; toIndex?: number }
   | { op: 'remove_column'; columnId: string }
   | { op: 'upsert_mm_node'; node: Record<string, unknown> }
   | { op: 'update_mm_node'; nodeId: string; fields: Record<string, unknown> }
@@ -54,8 +54,10 @@ export function positionForIndex(
   const posOf = (i: number): number | null => {
     const s = siblings[i];
     if (!s) return null;
-    const p = typeof s.position === 'number' ? s.position : s.order;
-    return typeof p === 'number' && isFinite(p) ? p : null;
+    if (typeof s.position === 'number' && isFinite(s.position)) {
+      return s.position;
+    }
+    return (i + 1) * POSITION_STEP;
   };
 
   const prev = index > 0 ? posOf(index - 1) : null;
@@ -71,7 +73,7 @@ export function positionForIndex(
 type AnyCard = { id: string; [key: string]: any };
 type AnyColumn = { id: string; cards: AnyCard[]; [key: string]: any };
 
-/** 是否是「与持久化无关」的纯 UI action */
+/** 是否是「与持久化无关」的纯 UI 或独立通道 action */
 export function isLocalOnlyAction(action: Action): boolean {
   switch (action.type) {
     case 'SET_CURRENT_USER':
@@ -88,7 +90,6 @@ export function isLocalOnlyAction(action: Action): boolean {
     case 'UPDATE_USER':
     case 'ADD_USER':
     case 'DELETE_USER':
-    case 'CLEAR_ALL_MM_POSITIONS':
       return true;
     default:
       return false;
@@ -96,14 +97,60 @@ export function isLocalOnlyAction(action: Action): boolean {
 }
 
 /**
- * 把一次 UI Action 翻译成 patch。
- * 返回 null 表示「与持久化无关」，调用方应直接跳过、不产生网络请求。
- *
- * board 必须是 **reducer 处理之后** 的看板（见 BoardContext 的 queuePatchForAction）。
+ * 对比前后 mindmap 列表，把 syncMindMapCards 中间件联动产生的节点增删改并入 ops。
  */
-export function actionToPatch(action: Action, board: Board): BoardPatchPayload | null {
+function appendMindmapDiffOps(
+  ops: BoardPatchOp[],
+  beforeBoard?: Board,
+  afterBoard?: Board,
+): void {
+  if (!beforeBoard || !afterBoard) return;
+  const beforeMap = new Map((beforeBoard.mindmap || []).map(n => [n.id, n]));
+  const afterMap = new Map((afterBoard.mindmap || []).map(n => [n.id, n]));
+  const existingOpTargets = new Set(
+    ops.flatMap(o => {
+      if (o.op === 'upsert_mm_node') return [String((o.node as any)?.id || '')];
+      if (o.op === 'update_mm_node' || o.op === 'remove_mm_node') return [o.nodeId];
+      return [];
+    }),
+  );
+
+  for (const [id, node] of afterMap) {
+    if (existingOpTargets.has(id)) continue;
+    const prev = beforeMap.get(id);
+    if (!prev || JSON.stringify(prev) !== JSON.stringify(node)) {
+      ops.push({ op: 'upsert_mm_node', node: node as unknown as Record<string, unknown> });
+    }
+  }
+  for (const [id] of beforeMap) {
+    if (existingOpTargets.has(id)) continue;
+    if (!afterMap.has(id)) {
+      ops.push({ op: 'remove_mm_node', nodeId: id });
+    }
+  }
+}
+
+/**
+ * 把一次 UI Action 翻译成 patch。
+ * 返回 null 表示「与看板内容持久化无关」，调用方应直接跳过、不产生网络请求。
+ *
+ * board 必须是 **reducer 处理之后** 的看板，boardBefore 为可选的处理前看板（用于补齐联动 diff）。
+ */
+export function actionToPatch(
+  action: Action,
+  board: Board,
+  boardBefore?: Board,
+): BoardPatchPayload | null {
   const columns = (board.columns || []) as unknown as AnyColumn[];
   const allCards = columns.flatMap(c => c.cards || []);
+
+  const withMindmapDiff = (payload: BoardPatchPayload | null): BoardPatchPayload | null => {
+    if (!payload) return null;
+    if (boardBefore) {
+      appendMindmapDiffOps(payload.ops, boardBefore, board);
+    }
+    return payload;
+  };
 
   switch (action.type) {
     // ===== 看板级元数据（不动 columns/mindmap）=====
@@ -159,14 +206,27 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
           l.id === action.payload.labelId ? { ...l, ...action.payload.updates } : l),
       };
 
-    case 'DELETE_LABEL':
-      return { ops: [], labels: (board.labels || []).filter(l => l.id !== action.payload.labelId) };
+    case 'DELETE_LABEL': {
+      const ops: BoardPatchOp[] = [];
+      if (boardBefore) {
+        const beforeCards = new Map(
+          (boardBefore.columns || []).flatMap(c => c.cards || []).map(c => [c.id, c]),
+        );
+        for (const card of allCards) {
+          const prev = beforeCards.get(card.id);
+          if (prev && (prev.labels || []).includes(action.payload.labelId)) {
+            ops.push({ op: 'update_card', cardId: card.id, fields: { labels: card.labels } });
+          }
+        }
+      }
+      return { ops, labels: (board.labels || []).filter(l => l.id !== action.payload.labelId) };
+    }
 
     // ===== 列 =====
     case 'ADD_COLUMN': {
-      const col = columns.find(c => c.id === action.payload.id);
+      const col = (action.payload.id ? columns.find(c => c.id === action.payload.id) : null) ?? columns[0];
       if (!col) return null;
-      return {
+      return withMindmapDiff({
         ops: [{
           op: 'add_column',
           column: {
@@ -177,29 +237,28 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
             cards: col.cards || [],
           },
         }],
-      };
+      });
     }
 
     case 'UPDATE_COLUMN':
-      return {
+      return withMindmapDiff({
         ops: [{
           op: 'update_column',
           columnId: action.payload.columnId,
           fields: action.payload.updates as Record<string, unknown>,
         }],
-      };
+      });
 
     case 'ARCHIVE_COLUMN': {
       const col = columns.find(c => c.id === action.payload.columnId);
       if (!col) return null;
-      return { ops: [{ op: 'update_column', columnId: col.id, fields: { archived: !col.archived } }] };
+      return { ops: [{ op: 'update_column', columnId: col.id, fields: { archived: Boolean(col.archived) } }] };
     }
 
     case 'DELETE_COLUMN':
-      return { ops: [{ op: 'remove_column', columnId: action.payload.columnId }] };
+      return withMindmapDiff({ ops: [{ op: 'remove_column', columnId: action.payload.columnId }] });
 
     case 'REORDER_COLUMNS': {
-      // reducer 已重排数组：目标位置上的列即被移动的列（审计 M9：这里会写 position）
       const moved = columns[action.payload.toIndex];
       if (!moved) return null;
       const others = columns.filter(c => c.id !== moved.id);
@@ -208,6 +267,7 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
           op: 'move_column',
           columnId: moved.id,
           position: positionForIndex(others, action.payload.toIndex),
+          toIndex: action.payload.toIndex,
         }],
       };
     }
@@ -219,14 +279,15 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
       const moved = target?.cards?.[action.payload.toIndex];
       if (!target || !moved) return null;
       const siblings = target.cards.filter(c => c.id !== moved.id);
-      return {
+      return withMindmapDiff({
         ops: [{
           op: 'move_card',
           cardId: moved.id,
           toColumnId: target.id,
           position: positionForIndex(siblings, action.payload.toIndex),
+          toIndex: action.payload.toIndex,
         }],
-      };
+      });
     }
 
     case 'REORDER_CARDS': {
@@ -240,38 +301,60 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
           cardId: moved.id,
           toColumnId: col.id,
           position: positionForIndex(siblings, action.payload.toIndex),
+          toIndex: action.payload.toIndex,
         }],
       };
     }
 
     case 'ADD_CARD': {
       const col = columns.find(c => c.id === action.payload.columnId);
-      const card = col?.cards?.[0]; // reducer 插入到最前面
+      const card = col?.cards?.[0];
       if (!col || !card) return null;
-      return { ops: [{ op: 'add_card', columnId: col.id, card: card as Record<string, unknown> }] };
+      return withMindmapDiff({
+        ops: [{
+          op: 'add_card',
+          columnId: col.id,
+          card: card as Record<string, unknown>,
+          toIndex: 0,
+        }],
+      });
+    }
+
+    case 'DUPLICATE_CARD': {
+      for (const col of columns) {
+        const idx = col.cards.findIndex(c => c.id === action.payload.cardId);
+        if (idx !== -1) {
+          const dupCard = col.cards[col.cards.length - 1];
+          if (!dupCard || dupCard.id === action.payload.cardId) return null;
+          return withMindmapDiff({
+            ops: [{
+              op: 'add_card',
+              columnId: col.id,
+              card: dupCard as Record<string, unknown>,
+              toIndex: col.cards.length - 1,
+            }],
+          });
+        }
+      }
+      return null;
     }
 
     case 'UPDATE_CARD':
-      // 只发变化字段：A 改标题、B 改日期互不覆盖（审计 M2）
-      return {
+      return withMindmapDiff({
         ops: [{
           op: 'update_card',
           cardId: action.payload.cardId,
           fields: action.payload.updates as Record<string, unknown>,
         }],
-      };
+      });
 
     case 'DELETE_CARD':
-      // 【关键修复 2026-11-11】原实现发的是 update_card + {deleted:true}，
-      // 但 RPC 的 update_card 只会「写一个字段」，并不会移除卡片。
-      // 而前端 reducer 是真删除 → 云端仍留有卡片 → 下次拉取「删掉的卡片又回来」。
-      // 正确做法：用 RPC 支持的 remove_card，真正从列里移除。
-      return { ops: [{ op: 'remove_card', cardId: action.payload.cardId }] };
+      return withMindmapDiff({ ops: [{ op: 'remove_card', cardId: action.payload.cardId }] });
 
     case 'ARCHIVE_CARD': {
       const card = allCards.find(c => c.id === action.payload.cardId);
       if (!card) return null;
-      return { ops: [{ op: 'update_card', cardId: card.id, fields: { archived: !card.archived } }] };
+      return { ops: [{ op: 'update_card', cardId: card.id, fields: { archived: Boolean(card.archived) } }] };
     }
 
     case 'CYCLE_CARD_STATUS': {
@@ -300,10 +383,10 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
       if (!card) return null;
       const fields = pickCardPatchFields(action, card);
       if (!fields) return null;
-      return { ops: [{ op: 'update_card', cardId, fields }] };
+      return withMindmapDiff({ ops: [{ op: 'update_card', cardId, fields }] });
     }
 
-    // ===== 心智图 =====
+    // ===== 心智图及批量导入/转换 =====
     case 'ADD_MINDMAP_NODE': {
       const nodes = board.mindmap || [];
       const node = nodes[nodes.length - 1];
@@ -311,17 +394,87 @@ export function actionToPatch(action: Action, board: Board): BoardPatchPayload |
       return { ops: [{ op: 'upsert_mm_node', node: node as unknown as Record<string, unknown> }] };
     }
 
-    case 'UPDATE_MINDMAP_NODE':
-      return {
-        ops: [{
-          op: 'update_mm_node',
-          nodeId: action.payload.nodeId,
-          fields: action.payload.updates as Record<string, unknown>,
-        }],
-      };
+    case 'UPDATE_MINDMAP_NODE': {
+      const ops: BoardPatchOp[] = [{
+        op: 'update_mm_node',
+        nodeId: action.payload.nodeId,
+        fields: action.payload.updates as Record<string, unknown>,
+      }];
+      if (boardBefore && action.payload.updates.text !== undefined) {
+        for (const card of allCards) {
+          if (card.mmNodeId === action.payload.nodeId) {
+            ops.push({ op: 'update_card', cardId: card.id, fields: { title: card.title } });
+          } else if (
+            (card.checklists || []).some((cl: any) =>
+              (cl.items || []).some((it: any) => it.mmNodeId === action.payload.nodeId),
+            )
+          ) {
+            ops.push({ op: 'update_card', cardId: card.id, fields: { checklists: card.checklists } });
+          }
+        }
+      }
+      return { ops };
+    }
 
-    case 'DELETE_MINDMAP_NODE':
-      return { ops: [{ op: 'remove_mm_node', nodeId: action.payload.nodeId }] };
+    case 'DELETE_MINDMAP_NODE': {
+      const ops: BoardPatchOp[] = [];
+      if (boardBefore) {
+        appendMindmapDiffOps(ops, boardBefore, board);
+        const afterCardIds = new Set(allCards.map(c => c.id));
+        for (const col of boardBefore.columns || []) {
+          for (const prevCard of col.cards || []) {
+            if (!afterCardIds.has(prevCard.id)) {
+              ops.push({ op: 'remove_card', cardId: prevCard.id });
+            } else {
+              const curCard = allCards.find(c => c.id === prevCard.id);
+              if (curCard && JSON.stringify(curCard.checklists) !== JSON.stringify(prevCard.checklists)) {
+                ops.push({ op: 'update_card', cardId: curCard.id, fields: { checklists: curCard.checklists } });
+              }
+            }
+          }
+        }
+      } else {
+        ops.push({ op: 'remove_mm_node', nodeId: action.payload.nodeId });
+      }
+      return ops.length > 0 ? { ops } : null;
+    }
+
+    case 'IMPORT_AI_RESULT':
+    case 'CONVERT_MINDMAP_TO_CARDS': {
+      const beforeColIds = new Set((boardBefore?.columns || []).map(c => c.id));
+      const ops: BoardPatchOp[] = [];
+      for (const col of columns) {
+        if (!beforeColIds.has(col.id)) {
+          ops.push({
+            op: 'add_column',
+            column: {
+              id: col.id,
+              title: col.title,
+              archived: col.archived ?? false,
+              position: typeof col.order === 'number' ? col.order : 0,
+              cards: col.cards || [],
+            },
+          });
+        }
+      }
+      appendMindmapDiffOps(ops, boardBefore, board);
+      return ops.length > 0 ? { ops } : null;
+    }
+
+    case 'CLEAR_ALL_MM_POSITIONS': {
+      const ops: BoardPatchOp[] = [];
+      for (const col of columns) {
+        ops.push({ op: 'update_column', columnId: col.id, fields: { mmPosition: null } });
+        for (const card of col.cards || []) {
+          ops.push({
+            op: 'update_card',
+            cardId: card.id,
+            fields: { mmPosition: null, checklists: card.checklists },
+          });
+        }
+      }
+      return ops.length > 0 ? { ops } : null;
+    }
 
     default:
       return null;
@@ -336,7 +489,7 @@ function pickCardPatchFields(action: Action, card: AnyCard): Record<string, unkn
     case 'TOGGLE_CARD_ASSIGNEE':
       return { assignees: card.assignees };
     case 'TOGGLE_CARD_CONTACT':
-      return { contacts: card.contacts };
+      return { linkedContacts: card.linkedContacts ?? [] };
     case 'SET_COVER_IMAGE':
       return { coverImage: card.coverImage ?? null };
     case 'ADD_ATTACHMENT':
