@@ -37,7 +37,7 @@ async function test(){
  const patch={submitEntry:async entry=>{
   sent.push(entry);
   if(fail)return {ok:false,code:'ERROR'};
-  if(conflict){conflict=false;version++;cloud.board={...cloud.board,version};cloud.boards=[cloud.board];return {ok:false,code:'VERSION_CONFLICT',currentVersion:version};}
+  if(conflict){conflict=false;version++;return {ok:false,code:'VERSION_CONFLICT',currentVersion:version};}
   cloud.board={...applyEntityOps(cloud.board,entry.payload.ops),version:++version};cloud.boards=[cloud.board];return {ok:true,version,cards:1};
  }};
  const mod={exports:{}};
@@ -52,17 +52,21 @@ async function test(){
  hook.dispatchWithSync({type:'ADD_CHECKLIST',payload:{cardId:card,id:'checklist',name:'Tasks'}});
  hook.dispatchWithSync({type:'ADD_CHECKLIST_ITEM',payload:{cardId:card,checklistId:'checklist',text:'One',itemId:'item'}});
  await hook.drainOutbox();await tick();await hook.drainOutbox();
+ assert.equal(sent[1].baseVersion,1,'retry must use the server version even when refetch returns a stale snapshot');
  assert.equal(cloud.board.columns[0].cards[0].checklists[0].items.length,1);
  assert.equal((await outbox.listAll(uid)).length,0);
  fail=true;hook.dispatchWithSync({type:'UPDATE_CARD',payload:{cardId:card,updates:{description:'Offline retained'}}});
  await hook.drainOutbox();assert.equal((await outbox.listAll(uid)).length,1);
- fail=false;await hook.drainOutbox();assert.equal(cloud.board.columns[0].cards[0].description,'Offline retained');
+  const failedView=render();assert.equal(failedView.syncState.kind,'error');assert.match(failedView.syncState.detail,/ERROR/);assert.match(failedView.syncState.detail,/本地改动已保留/);assert.match(failedView.syncState.detail,/5 秒后自动重试/);
+  fail=false;const attemptsBeforeBackoff=sent.length;await hook.drainOutbox();assert.equal(sent.length,attemptsBeforeBackoff);assert.equal((await outbox.listAll(uid)).length,1);
+  await new Promise(resolve=>setTimeout(resolve,5200));await hook.drainOutbox();assert.equal(cloud.board.columns[0].cards[0].description,'Offline retained');
  assert.equal((await outbox.listAll(uid)).length,0);
  const hiddenEntry={id:crypto.randomUUID(),accountId:crypto.randomUUID(),boardId:'other',baseVersion:0,payload:{ops:[]},createdAt:1,attempts:0};
  await outbox.enqueue(hiddenEntry);assert.equal((await outbox.listAll(uid)).length,0);assert.equal((await outbox.listAll(hiddenEntry.accountId)).length,1);
  await outbox.dequeue(hiddenEntry.id);
  hook.dispatchWithSync({type:'SET_CURRENT_USER',payload:null});
  assert.equal(state.currentUser,null);assert.equal(state.boards.length,0);
+ const logoutEffect=effects.find(f=>f.toString().includes('pending.current.clear()'));assert.ok(logoutEffect);logoutEffect();
  for(const r of refs)if(r?.current && typeof r.current==='object' && typeof r.current.hasRef==='function')clearTimeout(r.current);
  console.log('PASS real synchronization hook: consecutive actions, conflict replay, offline retention/retry, account-isolated queue and logout reset');
 }

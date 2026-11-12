@@ -19,6 +19,10 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
   const pending = useRef(new Map<string, OutboxEntry>());
   const durable = useRef(new Map<string, Promise<boolean>>());
   const versions = useRef(new Map<string, number>());
+  const retryCounts = useRef(new Map<string, number>());
+  const retryAfter = useRef(new Map<string, number>());
+  const retryDetails = useRef(new Map<string, string>());
+  const retryTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const running = useRef<Promise<void> | null>(null);
   const fetching = useRef<Promise<void> | null>(null);
   const refetchAgain = useRef(false);
@@ -110,10 +114,14 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
         if (epoch !== generation.current) return;
         if (entry.accountId !== account.current || entry.kind === 'crm' || !pending.current.has(entry.id)) continue;
         if (blocked.has(entry.boardId)) continue;
+        const retryAt = retryAfter.current.get(entry.boardId) ?? 0;
+        if (retryAt > Date.now()) { blocked.add(entry.boardId); continue; }
+        retryAfter.current.delete(entry.boardId);
         const saved = durable.current.get(entry.id);
         if (saved && !(await saved)) setSaveError('浏览器存储不可用：改动仅暂存内存，请勿关闭页面。');
         setSyncState({ kind: 'pending', label: '保存中…' });
         let accepted = false;
+        let failureDetail = '';
         for (let retry = 0; retry < 3; retry++) {
           const baseVersion = versions.current.get(entry.boardId) ?? entry.baseVersion;
           const current = { ...entry, baseVersion, attempts: entry.attempts + 1 };
@@ -141,6 +149,12 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
             if (epoch !== generation.current) return;
             pending.current.delete(entry.id); durable.current.delete(entry.id);
             if (typeof result.version === 'number') versions.current.set(entry.boardId, result.version);
+            retryCounts.current.delete(entry.boardId);
+            retryAfter.current.delete(entry.boardId);
+            retryDetails.current.delete(entry.boardId);
+            const retryTimer = retryTimers.current.get(entry.boardId);
+            if (retryTimer) clearTimeout(retryTimer);
+            retryTimers.current.delete(entry.boardId);
             mutationRevision.current++;
             accepted = true;
             announce();
@@ -148,17 +162,48 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
             break;
           }
           if (result.code === 'VERSION_CONFLICT') {
+            const serverVersion = typeof result.currentVersion === 'number' ? result.currentVersion : undefined;
+            failureDetail = serverVersion === undefined
+              ? '版本冲突：云端版本暂不可用，本地改动已保留'
+              : `版本冲突：云端当前版本 ${serverVersion}，本地改动已保留`;
             await refetch();
+            // The conflict response is authoritative; a snapshot can lag behind it.
+            if (serverVersion !== undefined) versions.current.set(entry.boardId, serverVersion);
             continue;
           }
-          setSyncState({ kind: 'error', label: '未同步：改动已保留', detail: result.message || result.code || result.error });
+          failureDetail = result.message || result.code || result.error || '云端未确认写入';
           setSaveError('同步未完成，改动保留在本机，恢复连接或重新登录后重试。');
           blocked.add(entry.boardId);
           break; // block this board only; independent boards can continue syncing
         }
-        if (!accepted) { blocked.add(entry.boardId); setSyncState({ kind: 'error', label: '存在未同步改动' }); }
+        if (!accepted) {
+          blocked.add(entry.boardId);
+          const failures = (retryCounts.current.get(entry.boardId) ?? 0) + 1;
+          retryCounts.current.set(entry.boardId, failures);
+          const delay = Math.min(5000 * 2 ** (failures - 1), 5 * 60 * 1000);
+          const detail = failureDetail || retryDetails.current.get(entry.boardId) || '云端未确认写入；本地改动已保留';
+          retryAfter.current.set(entry.boardId, Date.now() + delay);
+          retryDetails.current.set(entry.boardId, detail);
+          const previousTimer = retryTimers.current.get(entry.boardId);
+          if (previousTimer) clearTimeout(previousTimer);
+          const timer = setTimeout(() => {
+            retryTimers.current.delete(entry.boardId);
+            retryAfter.current.delete(entry.boardId);
+            if (epoch === generation.current) void drainOutbox();
+          }, delay);
+          retryTimers.current.set(entry.boardId, timer);
+          setSyncState({ kind: 'error', label: '存在未同步改动', detail: `${detail}；本地改动已保留，${Math.ceil(delay / 1000)} 秒后自动重试` });
+        }
       }
       if (!pending.current.size) { setSaveError(null); setSyncState({ kind: 'idle', label: '已同步' }); }
+      else {
+        const deferred = [...pending.current.values()].find(e => retryAfter.current.has(e.boardId));
+        if (deferred) {
+          const boardId = deferred.boardId;
+          const remaining = Math.max(0, (retryAfter.current.get(boardId) ?? Date.now()) - Date.now());
+          setSyncState({ kind: 'error', label: '存在未同步改动', detail: `${retryDetails.current.get(boardId) || '云端未确认写入'}；本地改动已保留，${Math.ceil(remaining / 1000)} 秒后自动重试` });
+        }
+      }
     })();
     running.current = task;
     try { await task; } catch (err) { setSaveError('同步队列已保留：' + String(err)); } finally { if (running.current === task) running.current = null; }
@@ -220,6 +265,10 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
   }, [apply]);
   useEffect(() => {
     const uid = state.currentUser?.id || '';
+    const timers = retryTimers.current;
+    const retryTimes = retryAfter.current;
+    for (const timer of timers.values()) clearTimeout(timer);
+    timers.clear(); retryTimes.clear(); retryDetails.current.clear(); retryCounts.current.clear();
     generation.current++;
     ready.current = false;
     account.current = uid; pending.current.clear(); durable.current.clear(); versions.current.clear();
@@ -235,6 +284,10 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
       ready.current = true;
       void drainOutbox();
     })();
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear(); retryTimes.clear();
+    };
   }, [state.currentUser?.id, apply, overlay, drainOutbox]);
   useEffect(() => {
     const resume = () => { if (document.visibilityState === 'visible') void drainOutbox().then(refetch); };
