@@ -98,6 +98,8 @@ assert.doesNotThrow(() => validateEntity(mappedNullIconBoard, 'board'), 'in-memo
 const uiAddAction = normalizeAction({ type: 'ADD_CARD', payload: { columnId: 'col-live-1', card: { id: 'card-ui-1', title: '1' } } });
 const uiAddCardState = boardReducer({ ...state, board: mappedNullIconBoard, boards: [mappedNullIconBoard] }, uiAddAction);
 const uiWireOps = JSON.parse(JSON.stringify(actionToPatch(uiAddAction, uiAddCardState.board, mappedNullIconBoard).ops));
+const uiAddCardInsert = uiWireOps.find(op => op.op === 'insert' && op.path[2] === 'cards');
+assert.deepEqual(uiAddCardInsert.value.linkedContacts, [], 'ADD_CARD must serialize omitted linkedContacts as an empty string array, not null');
 assert.doesNotThrow(() => validateOps(uiWireOps, 'board', { uid: state.currentUser.id, role: 'admin' }, mappedNullIconBoard));
 const uiCandidate = applyEntityOps(mappedNullIconBoard, uiWireOps);
 assert.doesNotThrow(() => validateEntity(uiCandidate, 'board'), 'resulting board after real UI ADD_CARD on mapBoardRow board must pass validateEntity without JSON.stringify');
@@ -206,7 +208,16 @@ if (process.argv.includes('--database')) {
     await db.exec('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE PUBLICATION supabase_realtime;');
     const sql = fs.readFileSync(path.join(root, 'supabase/migrations/202611120001_sync_security_v3.sql'), 'utf8');
     await db.exec(sql); await db.exec(sql);
+    const oldDbCardResult = await db.query("SELECT public._valid_entity_v3($1::jsonb, 'board') AS valid", [JSON.stringify(uiCandidate)]);
+    assert.equal(oldDbCardResult.rows[0].valid, false, 'actual ADD_CARD result on a legacy board is rejected by migration 001');
+    assert.deepEqual(uiAddCardInsert.value.linkedContacts, [], 'the actual new-card wire payload includes linkedContacts as an empty array');
+    const legacySqlCard = uiCandidate.columns.flatMap(column => column.cards).find(card => Object.hasOwn(card, 'deleted') || Object.hasOwn(card, 'urgent'));
+    assert.ok(legacySqlCard, 'ADD_CARD keeps existing legacy card fields in the resulting board');
+    assert.equal(Object.hasOwn(legacySqlCard, 'deleted'), true, 'migration 001 rejects the existing card deleted field');
+    assert.equal(Object.hasOwn(legacySqlCard, 'urgent'), true, 'migration 001 rejects the existing card urgent field');
     await db.exec(iconMigration);
+    const compatibleDbCardResult = await db.query("SELECT public._valid_entity_v3($1::jsonb, 'board') AS valid", [JSON.stringify(uiCandidate)]);
+    assert.equal(compatibleDbCardResult.rows[0].valid, true, 'actual ADD_CARD result on a legacy board passes the compatibility migration');
     const validLargeIconBoard = { id: 'board-large-icon', title: 'Test', iconImage: legacyIcon, columns: [], labels: [], mindmap: [] };
     const largeIconSqlResult = await db.query("SELECT public._valid_entity_v3($1::jsonb, 'board') AS valid", [JSON.stringify(validLargeIconBoard)]);
     assert.equal(largeIconSqlResult.rows[0].valid, true, 'SQL validator accepts board icon above 1 MiB');

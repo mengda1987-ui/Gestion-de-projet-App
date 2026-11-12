@@ -50,7 +50,9 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         dueDate: action.payload.card.dueDate,
         startDate: action.payload.card.startDate,
         visibleTo: action.payload.card.visibleTo,
-        linkedContacts: action.payload.card.linkedContacts,
+        // SQL v3 requires linkedContacts to be a string array; do not let
+        // JSON serialization turn an omitted value into a rejected null.
+        linkedContacts: action.payload.card.linkedContacts || [],
         mmNodeId: action.payload.card.mmNodeId,
         status: 'todo',
         archived: false,
