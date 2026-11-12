@@ -85,7 +85,7 @@ export function route(handler: (request: NextRequest, user: SessionPayload) => P
 const allowed: Record<string, string[]> = {
   board: ['title', 'background', 'emoji', 'iconBg', 'iconImage', 'visibleTo', 'order', 'columns', 'labels', 'mindmap'],
   column: ['title', 'order', 'position', 'archived', 'visibleTo', 'mmRootId', 'mmPosition', 'cards'],
-  card: ['title', 'description', 'coverImage', 'labels', 'assignees', 'dueDate', 'startDate', 'status', 'completed', 'archived', 'order', 'position', 'mmNodeId', 'mmPosition', 'visibleTo', 'linkedContacts', 'checklists', 'comments', 'attachments'],
+  card: ['title', 'description', 'coverImage', 'labels', 'assignees', 'dueDate', 'startDate', 'status', 'completed', 'archived', 'deleted', 'order', 'position', 'mmNodeId', 'mmPosition', 'visibleTo', 'linkedContacts', 'checklists', 'comments', 'attachments'],
   checklist: ['name', 'items'], item: ['text', 'completed', 'dueDate', 'mmNodeId', 'mmPosition'],
   comment: ['userId', 'text'], attachment: ['name', 'url', 'type', 'size', 'uploadedAt'],
   label: ['name', 'color'], node: ['text', 'description', 'parentId', 'color', 'collapsed', 'order'],
@@ -104,7 +104,7 @@ function fieldValue(key: string, v: any, entity: string): void {
   }
   if (arrays.has(key)) { if (!Array.isArray(v) || !v.every(x => typeof x === 'string' && x.length <= 200)) invalid('must be an array of strings'); return; }
   if (['order', 'size', 'position'].includes(key)) { if (typeof v !== 'number' || !Number.isFinite(v) || (key === 'size' && v < 0)) invalid('must be a valid number'); return; }
-  if (['archived', 'completed', 'collapsed'].includes(key)) { if (typeof v !== 'boolean') invalid('must be a boolean'); return; }
+  if (['archived', 'completed', 'collapsed', 'deleted'].includes(key)) { if (typeof v !== 'boolean') invalid('must be a boolean'); return; }
   if (key === 'mmPosition') { if (!v || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) invalid('must contain finite numeric x and y coordinates'); return; }
   if (key === 'customFields') { if (!v || Array.isArray(v) || typeof v !== 'object' || !Object.values(v).every(x => typeof x === 'string')) invalid('must be an object of strings'); return; }
   if (typeof v !== 'string' || v.length > (['url', 'coverImage', 'iconImage', 'background'].includes(key) ? 1024 * 1024 : 100000)) invalid('must be a string within the allowed length');

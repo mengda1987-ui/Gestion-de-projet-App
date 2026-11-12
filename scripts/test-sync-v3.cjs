@@ -58,18 +58,26 @@ apply(addColumnAction);
 const addColumnPatch = actionToPatch(addColumnAction, state.board, beforeAddColumn);
 assert.ok(addColumnPatch.ops.some(op => op.op === 'insert' && op.path.join('.') === 'columns'));
 const col = state.board.columns[0].id;
-const addCardAction = normalizeAction({ type: 'ADD_CARD', payload: { columnId: col, card: { title: 'Task', coverImage: null, dueDate: null, startDate: null, visibleTo: [], linkedContacts: [], mmPosition: null } } });
+const addCardAction = normalizeAction({ type: 'ADD_CARD', payload: { columnId: col, card: { title: 'Task', deleted: false, coverImage: null, dueDate: null, startDate: null, visibleTo: [], linkedContacts: [], mmPosition: null } } });
 const beforeAddCard = state.board;
 apply(addCardAction);
 const addCardPatch = actionToPatch(addCardAction, state.board, beforeAddCard);
 assert.ok(addCardPatch.ops.some(op => op.op === 'insert' && op.path.join('.') === `columns.${col}.cards`));
+const addCardInsert = addCardPatch.ops.find(op => op.op === 'insert' && op.path.join('.') === `columns.${col}.cards`);
+assert.equal(Object.hasOwn(state.board.columns.find(c => c.id === col).cards[0], 'deleted'), false, 'ADD_CARD reducer must not persist legacy deleted flag');
+assert.equal(Object.hasOwn(addCardInsert.value, 'deleted'), false, 'ADD_CARD patch must omit legacy deleted flag');
+const legacyAddCardPatch = JSON.parse(JSON.stringify(addCardPatch.ops));
+legacyAddCardPatch.find(op => op.op === 'insert' && op.path.join('.') === `columns.${col}.cards`).value.deleted = false;
+assert.doesNotThrow(() => validateOps(legacyAddCardPatch, 'board', { uid: state.currentUser.id, role: 'admin' }, beforeAddCard), 'backend must accept queued boolean deleted flag');
 const card = state.board.columns[0].cards[0].id;
-const updateCardAction = normalizeAction({ type: 'UPDATE_CARD', payload: { cardId: card, updates: { description: 'Updated', coverImage: null, dueDate: null, startDate: null, visibleTo: null, linkedContacts: [], completed: true } } });
+const updateCardAction = normalizeAction({ type: 'UPDATE_CARD', payload: { cardId: card, updates: { description: 'Updated', coverImage: null, dueDate: null, startDate: null, visibleTo: null, linkedContacts: [], completed: true, deleted: false } } });
 const beforeUpdateCard = state.board;
 apply(updateCardAction);
 const updateCardPatch = actionToPatch(updateCardAction, state.board, beforeUpdateCard);
 assert.ok(updateCardPatch.ops.length > 0, 'UPDATE_CARD must produce frontend operations');
+assert.equal(updateCardPatch.ops.some(op => op.op === 'set' && op.path.at(-1) === 'deleted'), false, 'UPDATE_CARD patch must omit legacy deleted field');
 assert.doesNotThrow(() => validateOps(JSON.parse(JSON.stringify(updateCardPatch.ops)), 'board', { uid: state.currentUser.id, role: 'admin' }, beforeUpdateCard));
+assert.doesNotThrow(() => validateOps([{ op: 'set', path: ['columns', col, 'cards', card, 'deleted'], value: false }], 'board', { uid: state.currentUser.id, role: 'admin' }, beforeUpdateCard), 'backend must accept legacy boolean deleted update');
 assert.throws(
   () => validateEntity({ id: 'bad-card', title: 'Bad', description: '', labels: [], assignees: [], checklists: [], comments: [], attachments: [], status: 'todo', archived: false, order: 'first' }, 'card'),
   error => error.code === 'INVALID_FIELD' && /card\.order/.test(error.message),

@@ -72,10 +72,14 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
     }
 
     case 'UPDATE_CARD': {
+      const updates = { ...action.payload.updates };
+      // Legacy clients may still send this soft-delete transport flag. Card
+      // removal is an explicit DELETE_CARD action, so never persist the flag.
+      delete (updates as Partial<Card> & { deleted?: boolean }).deleted;
       const columns = state.board.columns.map(col => ({
         ...col,
         cards: col.cards.map(c =>
-          c.id === action.payload.cardId ? { ...c, ...action.payload.updates, updatedAt: now } : c
+          c.id === action.payload.cardId ? { ...c, ...updates, updatedAt: now } : c
         ),
       }));
       return { ...state, board: { ...state.board, columns, updatedAt: now } };
