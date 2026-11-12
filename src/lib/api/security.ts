@@ -96,6 +96,9 @@ const allowed: Record<string, string[]> = {
 const child: Record<string, string> = { columns: 'column', cards: 'card', labels: 'label', mindmap: 'node', checklists: 'checklist', items: 'item', comments: 'comment', attachments: 'attachment', stages: 'stage', fields: 'field', contacts: 'contact' };
 const arrays = new Set(['labels', 'assignees', 'linkedContacts', 'visibleTo', 'tags', 'options']);
 const nullable = new Set(['emoji', 'iconBg', 'iconImage', 'coverImage', 'visibleTo', 'linkedContacts', 'dueDate', 'startDate', 'mmNodeId', 'mmRootId', 'mmPosition', 'parentId']);
+// Existing boards may contain larger legacy icon data URLs. New board-patch
+// requests remain bounded by jsonBody's 4 MiB request limit.
+const MAX_ICON_IMAGE_LENGTH = 10 * 1024 * 1024;
 function fieldValue(key: string, v: any, entity: string): void {
   const invalid = (expected: string): never => { throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${entity}.${key} ${expected}`); };
   if (v === null) { if (nullable.has(key) || (key === 'description' && entity === 'node')) return; invalid('cannot be null'); }
@@ -107,7 +110,8 @@ function fieldValue(key: string, v: any, entity: string): void {
   if (['archived', 'completed', 'collapsed', 'deleted'].includes(key)) { if (typeof v !== 'boolean') invalid('must be a boolean'); return; }
   if (key === 'mmPosition') { if (!v || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) invalid('must contain finite numeric x and y coordinates'); return; }
   if (key === 'customFields') { if (!v || Array.isArray(v) || typeof v !== 'object' || !Object.values(v).every(x => typeof x === 'string')) invalid('must be an object of strings'); return; }
-  if (typeof v !== 'string' || v.length > (['url', 'coverImage', 'iconImage', 'background'].includes(key) ? 1024 * 1024 : 100000)) invalid('must be a string within the allowed length');
+  const maxLength = entity === 'board' && key === 'iconImage' ? MAX_ICON_IMAGE_LENGTH : ['url', 'coverImage', 'background'].includes(key) ? 1024 * 1024 : 100000;
+  if (typeof v !== 'string' || v.length > maxLength) invalid('must be a string within the allowed length');
   if (key === 'status' && !['todo', 'in_progress', 'complete'].includes(v)) invalid('has an unsupported status');
   if (key === 'type' && entity === 'field' && !['text','number','date','select'].includes(v)) invalid('has an unsupported field type');
   if (['url', 'coverImage', 'iconImage'].includes(key) && v && !/^(https?:\/\/|data:image\/(png|jpeg|webp|gif);base64,|data:application\/pdf;base64,)/i.test(v)) throw new ApiFailure(400, 'INVALID_URL', `INVALID_URL: ${entity}.${key}`);
