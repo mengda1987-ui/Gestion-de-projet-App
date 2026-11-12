@@ -1,7 +1,7 @@
 import { BoardState, createInitialState } from '../types';
 import { Action } from '../actions';
 import { Board, Label } from '@/types';
-import { generateId } from '@/lib/utils';
+import { actionClock } from '../normalizeAction';
 
 // 背景/外观字段的兜底：payload 来源于 localStorage 旧备份、跨标签页广播或
 // 服务器返回，任一处字段缺失都会把 state 里对应字段写成 undefined，
@@ -35,11 +35,12 @@ function withAppearance<T extends Partial<BoardState>>(
 }
 
 export function boardOpsReducer(state: BoardState, action: Action): BoardState {
+  const { now, generateId } = actionClock(action, 1);
   switch (action.type) {
     case 'LOAD_ALL_DATA': {
       const { users, boards, workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo } = action.payload;
       // Migrate old cards: completed boolean → status
-      const migratedBoards = boards.map((b, idx) => ({
+      const migratedBoards = boards.map((b, idx) => state.boards.includes(b) ? b : ({
         ...b,
         order: b.order ?? idx,
         columns: b.columns.map(col => ({
@@ -68,7 +69,7 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
 
     case 'APPLY_EXTERNAL_STATE': {
       const { users, boards, workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo } = action.payload;
-      const migratedBoards = boards.map((b, idx) => ({
+      const migratedBoards = boards.map((b, idx) => state.boards.includes(b) ? b : ({
         ...b,
         order: b.order ?? idx,
         columns: b.columns.map(col => ({
@@ -82,12 +83,14 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
       const labelMap = new Map<string, Label>();
       migratedBoards.forEach(b => b.labels?.forEach(l => labelMap.set(l.id, l)));
       const boardLabels = Array.from(labelMap.values());
-      const currentBoard = migratedBoards.find(b => b.id === state.currentBoardId) || migratedBoards[0] || state.board;
+      const currentBoard = migratedBoards.find(b => b.id === state.currentBoardId) || migratedBoards[0] || createInitialState().board;
       return withAppearance({
         ...state,
         users,
         boards: migratedBoards,
         board: currentBoard,
+        currentUser: state.currentUser ? users.find(u => u.id === state.currentUser!.id) || state.currentUser : null,
+        currentBoardId: migratedBoards.some(b => b.id === state.currentBoardId) ? state.currentBoardId : '',
         boardLabels,
       }, { workspaceBackground, loginBackground, portalBackground, crmBackground, portalImageOpacity, crmImageOpacity, logo });
     }
@@ -105,18 +108,18 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
     }
 
     case 'UPDATE_BOARD':
-      return { ...state, board: { ...state.board, ...action.payload, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, ...action.payload, updatedAt: now } };
 
     case 'CREATE_BOARD': {
       const maxOrder = state.boards.reduce((max, b) => Math.max(max, b.order ?? 0), -1);
       const newBoard: Board = {
-        id: generateId(),
+        id: action.payload.id || generateId(),
         title: action.payload.title,
         background: action.payload.background,
         columns: [],
         labels: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
         mindmap: [],
         order: maxOrder + 1,
       };
@@ -160,26 +163,26 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
 
     case 'RENAME_BOARD': {
       const renamed = state.boards.map(b =>
-        b.id === action.payload.boardId ? { ...b, title: action.payload.title, updatedAt: new Date().toISOString() } : b
+        b.id === action.payload.boardId ? { ...b, title: action.payload.title, updatedAt: now } : b
       );
       return {
         ...state,
         boards: renamed,
         board: state.board.id === action.payload.boardId
-          ? { ...state.board, title: action.payload.title, updatedAt: new Date().toISOString() }
+          ? { ...state.board, title: action.payload.title, updatedAt: now }
           : state.board,
       };
     }
 
     case 'UPDATE_BOARD_DATA': {
       const updated = state.boards.map(b =>
-        b.id === action.payload.boardId ? { ...b, ...action.payload.updates, updatedAt: new Date().toISOString() } : b
+        b.id === action.payload.boardId ? { ...b, ...action.payload.updates, updatedAt: now } : b
       );
       return {
         ...state,
         boards: updated,
         board: state.board.id === action.payload.boardId
-          ? { ...state.board, ...action.payload.updates, updatedAt: new Date().toISOString() }
+          ? { ...state.board, ...action.payload.updates, updatedAt: now }
           : state.board,
       };
     }
@@ -187,14 +190,14 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
     case 'SET_BOARD_EMOJI': {
       const updatedBoards = state.boards.map(b =>
         b.id === action.payload.boardId
-          ? { ...b, emoji: action.payload.emoji, updatedAt: new Date().toISOString() }
+          ? { ...b, emoji: action.payload.emoji, updatedAt: now }
           : b
       );
       return {
         ...state,
         boards: updatedBoards,
         board: state.board.id === action.payload.boardId
-          ? { ...state.board, emoji: action.payload.emoji, updatedAt: new Date().toISOString() }
+          ? { ...state.board, emoji: action.payload.emoji, updatedAt: now }
           : state.board,
       };
     }
@@ -202,13 +205,13 @@ export function boardOpsReducer(state: BoardState, action: Action): BoardState {
     case 'SET_BOARD_ICON': {
       const { boardId, ...iconFields } = action.payload;
       const updatedBoards = state.boards.map(b =>
-        b.id === boardId ? { ...b, ...iconFields, updatedAt: new Date().toISOString() } : b
+        b.id === boardId ? { ...b, ...iconFields, updatedAt: now } : b
       );
       return {
         ...state,
         boards: updatedBoards,
         board: state.board.id === boardId
-          ? { ...state.board, ...iconFields, updatedAt: new Date().toISOString() }
+          ? { ...state.board, ...iconFields, updatedAt: now }
           : state.board,
       };
     }

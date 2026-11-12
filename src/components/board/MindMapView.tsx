@@ -216,7 +216,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
         });
       });
     return list;
-  }, [board.columns, board.labels]);
+  }, [board.columns, board.labels, currentUser?.id, currentUser?.role]);
 
   const childrenMap = useMemo(() => {
     const m = new Map<string | null, VirtualNode[]>();
@@ -298,7 +298,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       currentY += lr.subtreeHeight + 64;
     }
     return result;
-  }, [nodes, childrenMap, collapsed]);
+  }, [childrenMap, collapsed]);
 
   const { nodesFlat, bbox } = useMemo(() => {
     const flat: LayoutedNode[] = [];
@@ -628,6 +628,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
     };
   };
 
+  const commitNodeDragRef = useRef<() => void>(() => {});
   const commitNodeDrag = () => {
     const d = dragRef.current;
     if (!d) return;
@@ -731,6 +732,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       e.preventDefault();
     }
   };
+  commitNodeDragRef.current = commitNodeDrag;
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
@@ -757,7 +759,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
       setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy });
     };
     const onUp = () => {
-      if (dragRef.current) commitNodeDrag();
+      if (dragRef.current) commitNodeDragRef.current();
       panStart.current = null;
       setIsPanning(false);
     };
@@ -870,7 +872,7 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
 
   const applyAiResult = () => {
     if (!aiResult) return;
-    
+
     broadcastChange({
       type: 'IMPORT_AI_RESULT',
       payload: aiResult,
@@ -1046,11 +1048,11 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
             const isTopDrag = activeDragNodeId === n.node.id;
             const isHover = hoverNodeId === n.node.id;
             const contrastColor = getContrastColor(n.node.color);
-            
+
             // Special todos: white bg, blue text/border (only when no label color)
             const isTodoCard = n.node.kind === 'card' && n.node.status === 'todo' && n.node.color === '#FFFFFF';
             const isItemNode = n.node.kind === 'item';
-            
+
             let zIdx = 100 + n.depth * 10;
             if (isHover) zIdx = 5000 + n.depth * 10;
             if (inDragSubtree) zIdx = 9000;
@@ -1098,8 +1100,8 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
                   className={cn(
                     'w-full h-full rounded-2xl flex items-center justify-center backdrop-blur group transition-colors',
                     // Border logic
-                    isTodoCard 
-                      ? 'border-2 border-[#007AFF]' 
+                    isTodoCard
+                      ? 'border-2 border-[#007AFF]'
                       : isItemNode
                         ? 'border-2 border-emerald-500'
                         : n.node.kind === 'card'
@@ -1118,12 +1120,12 @@ const [aiResult, setAiResult] = useState<{ columns: { title: string; cards: { ti
                     <div
                       className={cn(
                         'font-bold whitespace-normal text-center leading-snug select-none w-full break-words',
-                        isTodoCard 
-                          ? 'text-[#007AFF]' 
+                        isTodoCard
+                          ? 'text-[#007AFF]'
                           : isItemNode
                             ? 'text-[#007AFF]'
-                            : contrastColor === 'black' 
-                              ? 'text-black' 
+                            : contrastColor === 'black'
+                              ? 'text-black'
                               : 'text-white drop-shadow-sm',
                         n.depth === 0 ? 'text-[16px]' : n.depth === 1 ? 'text-[14px]' : 'text-[13px]'
                       )}

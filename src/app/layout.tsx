@@ -5,6 +5,7 @@ import { CrmProvider } from '@/context/CrmContext';
 import { LangProvider } from '@/context/LangContext';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:3000')),
   title: 'Trello Clone - 项目协作看板',
   description: '功能完整的Trello克隆 - 团队项目管理与协作工具',
   manifest: '/manifest.webmanifest',

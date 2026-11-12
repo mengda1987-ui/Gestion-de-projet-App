@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { jsonBody, route } from '@/lib/api/security';
 import { getAdminClient } from '@/lib/supabaseAdmin';
 import { requireSession, getSession } from '@/lib/auth/session';
 import { resolveUserColumns, hasUserColumn, getUserById } from '@/lib/auth/usersSchema';
@@ -58,9 +59,9 @@ function err(status: number, code: string, message?: string) {
 }
 
 /** 把 requireSession/requireAdmin 抛出的异常统一转成响应 */
-function guard(fn: () => any) {
+async function guard(fn: () => any) {
   try {
-    return { session: fn(), response: null as null | NextResponse };
+    return { session: await fn(), response: null as null | NextResponse };
   } catch (e: any) {
     const status = e?.status === 403 ? 403 : 401;
     return { session: null, response: err(status, e?.message || 'UNAUTHORIZED') };
@@ -70,8 +71,8 @@ function guard(fn: () => any) {
 // ---------------------------------------------------------------------------
 // GET：成员列表（公开字段）
 // ---------------------------------------------------------------------------
-export async function GET() {
-  const { response } = guard(requireSession);
+async function GETHandler() {
+  const { response } = await guard(requireSession);
   if (response) return response;
 
   const admin = getAdminClient();
@@ -95,8 +96,8 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 // POST：新建成员（仅 admin）
 // ---------------------------------------------------------------------------
-export async function POST(request: NextRequest) {
-  const { session, response } = guard(requireSession);
+async function POSTHandler(request: NextRequest) {
+  const { session, response } = await guard(requireSession);
   if (response) return response;
   if (session!.role !== 'admin') return err(403, 'FORBIDDEN');
 
@@ -105,11 +106,12 @@ export async function POST(request: NextRequest) {
 
   let body: any;
   try {
-    body = await request.json();
+    body = await jsonBody(request, 2 * 1024 * 1024);
   } catch {
     return err(400, 'BAD_REQUEST');
   }
 
+  if (typeof body?.avatar === 'string' && body.avatar.length > 1024 * 1024) return err(413, 'AVATAR_TOO_LARGE');
   const name = typeof body?.name === 'string' ? body.name.trim() : '';
   const password = typeof body?.password === 'string' ? body.password : '';
 
@@ -144,18 +146,18 @@ export async function POST(request: NextRequest) {
   const row: Record<string, unknown> = {
     name,
     email: typeof body?.email === 'string' ? body.email.trim().slice(0, 200) : '',
-    avatar: typeof body?.avatar === 'string' ? body.avatar.slice(0, 2000) : '',
+    avatar: typeof body?.avatar === 'string' ? body.avatar : '',
     color: typeof body?.color === 'string' ? body.color.slice(0, 32) : '#3B82F6',
     // 角色只能由 admin 在创建时指定，默认 member
     role: body?.role === 'admin' ? 'admin' : 'member',
     lang: body?.lang === 'en' ? 'en' : 'zh',
   };
   if (hasHash) {
-    row.password_hash = hashPassword(password);
+    row.password_hash = await hashPassword(password);
     row.password = null;
   } else {
     // 迁移未执行：退回旧字段（登录时会被识别为需升级）
-    row.password = password;
+    return err(503, 'MIGRATION_REQUIRED', 'Run the v3 migration before writing users');
   }
   if (hasKey) row.name_key = nameKey(normalized);
   if (hasDeleted) row.is_deleted = false;
@@ -178,8 +180,8 @@ export async function POST(request: NextRequest) {
 // ---------------------------------------------------------------------------
 // PATCH：更新成员（本人改自己 / admin 改任意）
 // ---------------------------------------------------------------------------
-export async function PATCH(request: NextRequest) {
-  const { session, response } = guard(requireSession);
+async function PATCHHandler(request: NextRequest) {
+  const { session, response } = await guard(requireSession);
   if (response) return response;
 
   const admin = getAdminClient();
@@ -187,12 +189,14 @@ export async function PATCH(request: NextRequest) {
 
   let body: any;
   try {
-    body = await request.json();
+    body = await jsonBody(request, 2 * 1024 * 1024);
   } catch {
     return err(400, 'BAD_REQUEST');
   }
 
+  if (typeof body?.avatar === 'string' && body.avatar.length > 1024 * 1024) return err(413, 'AVATAR_TOO_LARGE');
   const targetId = typeof body?.id === 'string' ? body.id : session!.uid;
+  if (body.accountId && body.accountId !== session!.uid) return err(401, 'ACCOUNT_CHANGED');
   const isAdmin = session!.role === 'admin';
   const isSelf = targetId === session!.uid;
 
@@ -226,7 +230,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (typeof body?.email === 'string') patch.email = body.email.trim().slice(0, 200);
-  if (typeof body?.avatar === 'string') patch.avatar = body.avatar.slice(0, 2000);
+  if (typeof body?.avatar === 'string') patch.avatar = body.avatar;
   if (typeof body?.color === 'string') patch.color = body.color.slice(0, 32);
   if (body?.lang === 'en' || body?.lang === 'zh') patch.lang = body.lang;
 
@@ -258,10 +262,10 @@ export async function PATCH(request: NextRequest) {
     const mustVerifyOld = isSelf;
     if (mustVerifyOld) {
       const oldPw = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
-      const { ok } = verifyPassword(oldPw, target.password_hash, target.password);
+      const { ok } = await verifyPassword(oldPw, target.password_hash, target.password);
       if (!ok) return err(403, 'INVALID_PASSWORD', '当前密码不正确');
     }
-    patch.password_hash = hashPassword(body.password);
+    patch.password_hash = await hashPassword(body.password);
     patch.password = null; // 清掉历史明文
   }
 
@@ -269,12 +273,9 @@ export async function PATCH(request: NextRequest) {
     return err(400, 'BAD_REQUEST', '没有可更新的字段');
   }
 
-  const { data, error } = await admin
-    .from('users')
-    .update(patch)
-    .eq('id', targetId)
-    .select((await publicSelect(admin)) as any)
-    .single();
+  const { data: result, error } = await admin.rpc('update_member_v3', { p_id: targetId, p_fields: patch, p_actor_id: session!.uid });
+  const data = result?.member;
+  if (result && !result.ok) return err(result.code === 'LAST_ADMIN' ? 409 : 403, result.code);
 
   if (error) {
     console.error('[members] 更新失败:', error.message);
@@ -288,8 +289,8 @@ export async function PATCH(request: NextRequest) {
 // ---------------------------------------------------------------------------
 // DELETE：软删除成员（仅 admin）
 // ---------------------------------------------------------------------------
-export async function DELETE(request: NextRequest) {
-  const { session, response } = guard(requireSession);
+async function DELETEHandler(request: NextRequest) {
+  const { session, response } = await guard(requireSession);
   if (response) return response;
   if (session!.role !== 'admin') return err(403, 'FORBIDDEN');
 
@@ -325,10 +326,8 @@ export async function DELETE(request: NextRequest) {
     return err(409, 'MIGRATION_REQUIRED', '请先执行 lock_down_users_rls.sql 启用软删除');
   }
 
-  const { error } = await admin
-    .from('users')
-    .update({ is_deleted: true })
-    .eq('id', id);
+  const { data: result, error } = await admin.rpc('update_member_v3', { p_id: id, p_fields: { is_deleted: true }, p_actor_id: session!.uid });
+  if (result && !result.ok) return err(result.code === 'LAST_ADMIN' ? 409 : 403, result.code);
 
   if (error) {
     console.error('[members] 删除失败:', error.message);
@@ -341,8 +340,14 @@ export async function DELETE(request: NextRequest) {
 // ---------------------------------------------------------------------------
 // 健康检查：用于前端判断服务端是否就绪（不返回任何敏感信息）
 // ---------------------------------------------------------------------------
-export async function HEAD() {
-  const session = getSession();
+async function HEADHandler() {
+  const session = await getSession();
   return new NextResponse(null, { status: session ? 204 : 401 });
 }
 
+
+export const GET = route(async () => GETHandler());
+export const POST = route(async request => POSTHandler(request));
+export const PATCH = route(async request => PATCHHandler(request));
+export const DELETE = route(async request => DELETEHandler(request));
+export const HEAD = route(async () => HEADHandler());

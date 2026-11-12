@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
-import { clearSession, getSession } from '@/lib/auth/session';
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession, clearSession } from '@/lib/auth/session';
+import { getAdminClient } from '@/lib/supabaseAdmin';
 
 /**
  * POST /api/auth/logout
@@ -11,16 +12,22 @@ import { clearSession, getSession } from '@/lib/auth/session';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
-  const session = getSession();
+export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: 'INVALID_ORIGIN' }, { status: 403 });
+  const session = await getSession();
   try {
+    if (session) {
+      const db = getAdminClient();
+      const { error } = await db!.from('revoked_sessions_v3').upsert({ sid: session.sid, user_id: session.uid, expires_at: new Date(session.exp * 1000).toISOString() });
+      if (error) throw error;
+    }
     clearSession();
-  } catch (e: any) {
-    console.warn('[logout] 清除会话失败:', e?.message);
+    return NextResponse.json({ success: true, hadSession: Boolean(session) });
+  } catch {
+    try { clearSession(); } catch {}
+    return NextResponse.json({ success: false, error: 'LOGOUT_UNAVAILABLE' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
   }
-  return NextResponse.json({ success: true, hadSession: Boolean(session) });
 }
 
-export async function GET() {
-  return POST();
-}
+export async function GET() { return NextResponse.json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 }); }

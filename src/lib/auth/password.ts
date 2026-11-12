@@ -14,7 +14,7 @@
  */
 import {
   randomBytes,
-  scryptSync,
+  scrypt,
   timingSafeEqual,
   createHash,
 } from 'node:crypto';
@@ -29,14 +29,17 @@ const SALT_BYTES = 16;
 const MAXMEM = 128 * N * R * 2;
 
 const PREFIX = 'scrypt';
+function derive(plain: string, salt: Buffer, length: number, options: { N: number; r: number; p: number; maxmem: number }): Promise<Buffer> {
+  return new Promise((resolve, reject) => scrypt(plain, salt, length, options, (err, key) => err ? reject(err) : resolve(key)));
+}
 
 /** 生成口令哈希 */
-export function hashPassword(plain: string): string {
+export async function hashPassword(plain: string): Promise<string> {
   if (typeof plain !== 'string' || plain.length === 0) {
     throw new Error('password must be a non-empty string');
   }
   const salt = randomBytes(SALT_BYTES);
-  const hash = scryptSync(plain.normalize('NFKC'), salt, KEYLEN, {
+  const hash = await derive(plain.normalize('NFKC'), salt, KEYLEN, {
     N, r: R, p: P, maxmem: MAXMEM,
   });
   return [
@@ -52,11 +55,11 @@ export function hashPassword(plain: string): string {
  * @param stored 数据库中的 password_hash（可能为 null）
  * @param legacyPlain 数据库中的旧明文 password（迁移期兼容）
  */
-export function verifyPassword(
+export async function verifyPassword(
   plain: string,
   stored: string | null | undefined,
   legacyPlain: string | null | undefined,
-): { ok: boolean; needsUpgrade: boolean } {
+): Promise<{ ok: boolean; needsUpgrade: boolean }> {
   if (typeof plain !== 'string' || plain.length === 0) {
     return { ok: false, needsUpgrade: false };
   }
@@ -69,7 +72,8 @@ export function verifyPassword(
       const [, n, r, p, saltB64, hashB64] = parts;
       const salt = Buffer.from(saltB64, 'base64');
       const expected = Buffer.from(hashB64, 'base64');
-      const actual = scryptSync(plain.normalize('NFKC'), salt, expected.length, {
+      if (expected.length !== KEYLEN || salt.length !== SALT_BYTES || Number(n) > 65536 || Number(r) > 8 || Number(p) > 4) return { ok: false, needsUpgrade: false };
+      const actual = await derive(plain.normalize('NFKC'), salt, expected.length, {
         N: Number(n), r: Number(r), p: Number(p),
         maxmem: 128 * Number(n) * Number(r) * 2,
       });
@@ -89,11 +93,6 @@ export function verifyPassword(
   }
 
   return { ok: false, needsUpgrade: false };
-}
-
-/** 是否已是 scrypt 哈希（用于判断是否需要迁移） */
-export function isHashed(value: string | null | undefined): boolean {
-  return typeof value === 'string' && value.startsWith(PREFIX + '$');
 }
 
 /** 口令强度校验（服务端强制，不依赖前端） */

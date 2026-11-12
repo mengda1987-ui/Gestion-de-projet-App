@@ -18,6 +18,7 @@
  */
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
+import { getAdminClient } from '@/lib/supabaseAdmin';
 
 export const SESSION_COOKIE = 'trello_session';
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 天
@@ -25,6 +26,7 @@ const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 天
 export interface SessionPayload {
   /** 用户 id */
   uid: string;
+  sessionVersion?: number;
   /** 角色（随会话固定，权限提升需重新登录） */
   role: 'admin' | 'member';
   /** 签发时间（秒） */
@@ -128,10 +130,16 @@ export function clearSession(): void {
 }
 
 /** 读取当前会话（未登录返回 null） */
-export function getSession(): SessionPayload | null {
+export async function getSession(): Promise<SessionPayload | null> {
   try {
     const s = decodeSession(cookies().get(SESSION_COOKIE)?.value);
     if (!s) return null;
+    const db = getAdminClient();
+    if (!db) return null;
+    const { data, error } = await db.from('users').select('id, role, is_deleted, session_version').eq('id', s.uid).maybeSingle();
+    if (error || !data || data.is_deleted || data.role !== s.role || Number(data.session_version) !== (s.sessionVersion ?? 0)) return null;
+    const revoked = await db.from('revoked_sessions_v3').select('sid').eq('sid', s.sid).maybeSingle();
+    if (revoked.error || revoked.data) return null;
 
     // 【移动端修复】滑动续期。
     // iOS Safari 对 Cookie 的清理比桌面激进，加上手机端可能连续数天不打开，
@@ -153,8 +161,8 @@ export function getSession(): SessionPayload | null {
 }
 
 /** API 守卫：必须已登录 */
-export function requireSession(): SessionPayload {
-  const s = getSession();
+export async function requireSession(): Promise<SessionPayload> {
+  const s = await getSession();
   if (!s) {
     const err = new Error('UNAUTHORIZED') as Error & { status?: number };
     err.status = 401;
@@ -164,8 +172,8 @@ export function requireSession(): SessionPayload {
 }
 
 /** API 守卫：必须是管理员 */
-export function requireAdmin(): SessionPayload {
-  const s = requireSession();
+export async function requireAdmin(): Promise<SessionPayload> {
+  const s = await requireSession();
   if (s.role !== 'admin') {
     const err = new Error('FORBIDDEN') as Error & { status?: number };
     err.status = 403;

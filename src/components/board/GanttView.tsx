@@ -90,7 +90,7 @@ export default function GanttView() {
       }
     }
     return all.sort((a, b) => a.column.order - b.column.order || a.startDate.getTime() - b.startDate.getTime());
-  }, [board.columns, filters]);
+  }, [board.columns, filters, currentUser?.id, currentUser?.role]);
 
   const dayCount = zoom === 'day' ? 14 : zoom === 'week' ? 28 : 60;
   const days = useMemo(() => {

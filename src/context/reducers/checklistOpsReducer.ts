@@ -1,8 +1,9 @@
 import { BoardState } from '../types';
 import { Action } from '../actions';
-import { generateId } from '@/lib/utils';
+import { actionClock } from '../normalizeAction';
 
 export function checklistOpsReducer(state: BoardState, action: Action): BoardState {
+  const { now, generateId } = actionClock(action, 3);
   switch (action.type) {
     case 'TOGGLE_CHECKLIST_ITEM': {
       const columns = state.board.columns.map(col => ({
@@ -20,11 +21,11 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
                 ),
               };
             }),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'UPDATE_CHECKLIST_ITEM': {
@@ -43,11 +44,11 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
                 ),
               };
             }),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ADD_CHECKLIST_ITEM': {
@@ -67,11 +68,11 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
                 ],
               };
             }),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ADD_CHECKLIST': {
@@ -85,11 +86,11 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
               ...c.checklists,
               { id: action.payload.id || generateId(), name: action.payload.name, items: [] },
             ],
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'DELETE_CHECKLIST': {
@@ -100,11 +101,11 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
           return {
             ...c,
             checklists: c.checklists.filter(cl => cl.id !== action.payload.checklistId),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'DELETE_CHECKLIST_ITEM': {
@@ -121,7 +122,7 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
                 items: cl.items.filter(item => item.id !== action.payload.itemId),
               };
             }),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
@@ -135,7 +136,7 @@ export function checklistOpsReducer(state: BoardState, action: Action): BoardSta
         );
         return !found;
       });
-      return { ...state, board: { ...state.board, columns, mindmap, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, mindmap, updatedAt: now } };
     }
 
     default:

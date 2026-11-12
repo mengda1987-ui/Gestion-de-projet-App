@@ -1,9 +1,10 @@
 'use client';
+import NextImage from 'next/image';
 
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { Card, User, Label } from '@/types';
-import { useBoard } from '@/context/BoardContext';
+import { useBoardContent } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import { AvatarStack, Avatar } from '@/components/ui/Avatar';
 import { LabelStrip } from '@/components/ui/LabelBadge';
@@ -35,7 +36,7 @@ interface CardItemProps {
 
 function CardItem({ card, onClick, isDragging }: CardItemProps) {
   const { t, lang } = useLang();
-  const { board, users, broadcastChange } = useBoard();
+  const { board, users, broadcastChange } = useBoardContent();
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [statusMenuPos, setStatusMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
@@ -64,21 +65,21 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
   }, [showStatusMenu, showMemberPicker, showCardMenu]);
 
   // 优化：useMemo 缓存派生计算，避免每次渲染重新计算
-  const allChecklistItems = useMemo(() => 
-    card.checklists.flatMap(cl => cl.items), 
+  const allChecklistItems = useMemo(() =>
+    card.checklists.flatMap(cl => cl.items),
     [card.checklists]
   );
-  
-  const checklistProgress = useMemo(() => 
-    calculateChecklistProgress(allChecklistItems), 
+
+  const checklistProgress = useMemo(() =>
+    calculateChecklistProgress(allChecklistItems),
     [allChecklistItems]
   );
-  
-  const rawDueStatus = useMemo(() => 
-    getDueDateStatus(card.dueDate, card.status), 
+
+  const rawDueStatus = useMemo(() =>
+    getDueDateStatus(card.dueDate, card.status),
     [card.dueDate, card.status]
   );
-  
+
   const dueStatus = useMemo(() => rawDueStatus ? {
     ...rawDueStatus,
     label: rawDueStatus.status === 'completed' ? t('date.done')
@@ -86,8 +87,8 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
       : rawDueStatus.status === 'due-soon' ? t('date.soon')
       : rawDueStatus.label
   } : null, [rawDueStatus, t]);
-  
-  const assignees = useMemo(() => 
+
+  const assignees = useMemo(() =>
     card.assignees
       .map((id: string) => users.find((u: User) => u.id === id))
       .filter((u): u is User => u !== undefined),
@@ -129,7 +130,7 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
   };
 
 
-  const checklistDueAlerts = useMemo(() => 
+  const checklistDueAlerts = useMemo(() =>
     allChecklistItems
       .filter(item => !item.completed && item.dueDate)
       .map(item => ({ item, status: getDueDateStatus(item.dueDate!, false) }))
@@ -137,27 +138,27 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
     [allChecklistItems]
   );
 
-  const checklistOverdue = useMemo(() => 
+  const checklistOverdue = useMemo(() =>
     checklistDueAlerts.filter(x => x.status!.status === 'overdue').length,
     [checklistDueAlerts]
   );
-  
-  const checklistDueSoon = useMemo(() => 
+
+  const checklistDueSoon = useMemo(() =>
     checklistDueAlerts.filter(x => x.status!.status === 'dueSoon').length,
     [checklistDueAlerts]
   );
 
-  const isUrgentTodo = useMemo(() => 
+  const isUrgentTodo = useMemo(() =>
     card.status === 'todo' && dueStatus?.status === 'overdue',
     [card.status, dueStatus]
   );
-  
-  const isDueToday = useMemo(() => 
+
+  const isDueToday = useMemo(() =>
     dueStatus?.status === 'due-soon' && card.dueDate && isToday(parseISO(card.dueDate)),
     [dueStatus, card.dueDate]
   );
-  
-  const showRedAlert = useMemo(() => 
+
+  const showRedAlert = useMemo(() =>
     isUrgentTodo || isDueToday,
     [isUrgentTodo, isDueToday]
   );
@@ -308,7 +309,7 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
       {/* Cover Image */}
       {card.coverImage && (
         <div className="h-24 bg-slate-100 dark:bg-slate-700 overflow-hidden relative">
-          <img
+          <NextImage width={1920} height={1080} unoptimized
             src={card.coverImage}
             alt=""
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -431,7 +432,7 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
               </span>
             )}
           </div>
-          
+
           {/* Urgent toggle (hover) + Member avatars (always visible) */}
           <div className="flex items-center gap-1.5 shrink-0">
 
@@ -518,8 +519,8 @@ function CardItem({ card, onClick, isDragging }: CardItemProps) {
 // 只有当 card.id、card.updatedAt、isDragging 变化时才重新渲染
 export default memo(CardItem, (prevProps, nextProps) => {
   return (
-    prevProps.card.id === nextProps.card.id &&
-    prevProps.card.updatedAt === nextProps.card.updatedAt &&
+    prevProps.card === nextProps.card &&
+    prevProps.onClick === nextProps.onClick &&
     prevProps.isDragging === nextProps.isDragging
   );
 });

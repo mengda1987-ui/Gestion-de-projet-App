@@ -1,26 +1,17 @@
 {
   "name": "trello-clone",
   "version": "2.6.0",
-
-
-
-
-
-
-
-
-
   "private": true,
-
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --max-warnings=0",
     "backup": "node scripts/backup-snapshot.mjs",
     "backup:list": "node scripts/restore-snapshot.mjs --list",
     "backup:install": "bash scripts/install-backup-cron.sh",
-    "backup:uninstall": "bash scripts/install-backup-cron.sh --uninstall"
+    "backup:uninstall": "bash scripts/install-backup-cron.sh --uninstall",
+    "test:sync": "node scripts/test-sync-v3.cjs && node scripts/test-sync-hooks.cjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^16.6.0",

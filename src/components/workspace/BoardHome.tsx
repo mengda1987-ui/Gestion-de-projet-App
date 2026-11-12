@@ -1,4 +1,5 @@
 'use client';
+import NextImage from 'next/image';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,7 +17,7 @@ import {
   CheckSquare,
   Clock,
   Users,
-  Image,
+  ImageIcon,
   LogOut,
   Menu,
   Globe,
@@ -107,7 +108,7 @@ export default function BoardHome() {
   const [headerMenuPos, setHeaderMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   // 优化：useMemo 缓存 visibleBoards 过滤和排序，避免每次渲染重新计算
-  const visibleBoards = useMemo(() => 
+  const visibleBoards = useMemo(() =>
     boards
       .filter(b => {
         if (currentUser?.role === 'admin') return true;
@@ -193,7 +194,7 @@ export default function BoardHome() {
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
+      alert(lang === 'zh' ? '图片不能超过 2MB' : 'ImageIcon must be under 2MB');
       e.target.value = '';
       return;
     }
@@ -226,39 +227,39 @@ export default function BoardHome() {
       e.target.value = '';
       return;
     }
-    
+
     // 文件大小检查
     if (file.size > 2 * 1024 * 1024) {
-      alert(lang === 'zh' ? '图片不能超过 2MB' : 'Image must be under 2MB');
+      alert(lang === 'zh' ? '图片不能超过 2MB' : 'ImageIcon must be under 2MB');
       e.target.value = '';
       return;
     }
-    
+
     // 文件类型检查
     if (!file.type.startsWith('image/')) {
       alert(lang === 'zh' ? '请选择图片文件' : 'Please select an image file');
       e.target.value = '';
       return;
     }
-    
+
     setUploadingIconBoard(boardId);
-    
+
     const reader = new FileReader();
     reader.onerror = () => {
       alert(lang === 'zh' ? '图片读取失败' : 'Failed to read image');
       setUploadingIconBoard(null);
       e.target.value = '';
     };
-    
+
     reader.onload = (ev) => {
       const img = new window.Image();
-      
+
       img.onerror = () => {
         alert(lang === 'zh' ? '图片加载失败，请选择有效的图片文件' : 'Failed to load image. Please select a valid image file');
         setUploadingIconBoard(null);
         e.target.value = '';
       };
-      
+
       img.onload = () => {
         try {
           const canvas = document.createElement('canvas');
@@ -266,55 +267,55 @@ export default function BoardHome() {
           const size = Math.min(img.width, img.height);
           const sx = (img.width - size) / 2;
           const sy = (img.height - size) / 2;
-          
+
           // 输出为 128x128，使用高质量缩放
           canvas.width = 128;
           canvas.height = 128;
           const ctx = canvas.getContext('2d', { alpha: true });
-          
+
           if (!ctx) {
             alert(lang === 'zh' ? '浏览器不支持图片处理' : 'Browser does not support image processing');
             setUploadingIconBoard(null);
             e.target.value = '';
             return;
           }
-          
+
           // 启用高质量缩放
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
-          
+
           // 绘制图片
           ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128);
-          
+
           // 转换为 PNG 保持透明度，质量 0.9
           const dataUrl = canvas.toDataURL('image/png', 0.9);
-          
+
           // 获取当前看板信息保持其他属性
           const board = boards.find(b => b.id === boardId);
-          
+
           // 更新看板图标
           dispatch({
             type: 'SET_BOARD_ICON',
-            payload: { 
-              boardId, 
-              iconImage: dataUrl, 
-              emoji: undefined, 
-              iconBg: board?.iconBg 
+            payload: {
+              boardId,
+              iconImage: dataUrl,
+              emoji: undefined,
+              iconBg: board?.iconBg
             },
           });
-          
+
           setUploadingIconBoard(null);
         } catch (err) {
-          console.error('Image processing error:', err);
+          console.error('ImageIcon processing error:', err);
           alert(lang === 'zh' ? '图片处理失败' : 'Failed to process image');
           setUploadingIconBoard(null);
         }
         e.target.value = '';
       };
-      
+
       img.src = ev.target?.result as string;
     };
-    
+
     reader.readAsDataURL(file);
   };
 
@@ -473,7 +474,7 @@ export default function BoardHome() {
                           title={lang === 'zh' ? '更换图标' : 'Change icon'}
                         >
                           {board.iconImage ? (
-                            <img src={board.iconImage} alt="" className="w-full h-full object-cover" />
+                            <NextImage width={1920} height={1080} unoptimized src={board.iconImage} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <span>{actualEmoji}</span>
                           )}
@@ -662,9 +663,9 @@ export default function BoardHome() {
                 disabled={uploadingIconBoard === emojiPickerId}
               />
               <Upload size={13} />
-              {uploadingIconBoard === emojiPickerId 
-                ? (lang === 'zh' ? '上传中...' : 'Uploading...') 
-                : (lang === 'zh' ? '上传图片' : 'Upload Image')
+              {uploadingIconBoard === emojiPickerId
+                ? (lang === 'zh' ? '上传中...' : 'Uploading...')
+                : (lang === 'zh' ? '上传图片' : 'Upload ImageIcon')
               }
             </label>
           </div>
@@ -730,7 +731,7 @@ export default function BoardHome() {
               <div>
                 <h3 className="font-bold text-slate-900 text-lg">{lang === 'zh' ? '看板可见性管理' : 'Board Visibility'}</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {lang === 'zh' ? '设置谁可以看到此看板' : 'Set who can see this board'}: 
+                  {lang === 'zh' ? '设置谁可以看到此看板' : 'Set who can see this board'}:
                   <span className="ml-1 font-semibold text-slate-700">{boards.find(b => b.id === expandedBoardId)?.title}</span>
                 </p>
               </div>
@@ -876,7 +877,7 @@ export default function BoardHome() {
                   onClick={() => { setShowBgPicker(true); setHeaderMenuOpen(false); setHeaderMenuPos(null); }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-700/50 transition-colors mx-1 rounded-xl"
                 >
-                  <Image size={15} className="text-slate-400" />
+                  <ImageIcon size={15} className="text-slate-400" />
                   <span>{lang === 'zh' ? '工作区背景' : 'Background'}</span>
                 </button>
                 <button

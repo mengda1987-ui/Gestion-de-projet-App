@@ -1,9 +1,10 @@
 import { BoardState } from '../types';
 import { Action } from '../actions';
 import { Card, Label, Comment, Attachment } from '@/types';
-import { generateId } from '@/lib/utils';
+import { actionClock } from '../normalizeAction';
 
 export function cardOpsReducer(state: BoardState, action: Action): BoardState {
+  const { now, generateId } = actionClock(action, 2);
   switch (action.type) {
     case 'REORDER_CARDS': {
       const columns = state.board.columns.map(col => {
@@ -13,10 +14,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         const to = Math.max(0, Math.min(action.payload.toIndex, cards.length));
         if (from === to) return col;
         const [removed] = cards.splice(from, 1);
+        if (!removed) return col;
         cards.splice(to, 0, removed);
         return { ...col, cards: cards.map((c, i) => ({ ...c, order: i })) };
       });
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'MOVE_CARD': {
@@ -29,15 +31,15 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
       if (from < 0) return state;
       const [movedCard] = fromCol.cards.splice(from, 1);
       if (!movedCard) return state;
-      toCol.cards.splice(to, 0, { ...movedCard, updatedAt: new Date().toISOString() });
+      toCol.cards.splice(to, 0, { ...movedCard, updatedAt: now });
       columns.forEach(col => {
         col.cards = col.cards.map((c, i) => ({ ...c, order: i }));
       });
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ADD_CARD': {
-      const now = new Date().toISOString();
+
       const newCard: Card = {
         id: action.payload.card.id || generateId(),
         title: action.payload.card.title || '新卡片',
@@ -47,6 +49,9 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         assignees: action.payload.card.assignees || [],
         dueDate: action.payload.card.dueDate,
         startDate: action.payload.card.startDate,
+        visibleTo: action.payload.card.visibleTo,
+        linkedContacts: action.payload.card.linkedContacts,
+        mmNodeId: action.payload.card.mmNodeId,
         status: 'todo',
         archived: false,
         checklists: action.payload.card.checklists || [],
@@ -70,10 +75,10 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
       const columns = state.board.columns.map(col => ({
         ...col,
         cards: col.cards.map(c =>
-          c.id === action.payload.cardId ? { ...c, ...action.payload.updates, updatedAt: new Date().toISOString() } : c
+          c.id === action.payload.cardId ? { ...c, ...action.payload.updates, updatedAt: now } : c
         ),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'DELETE_CARD': {
@@ -81,17 +86,17 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         ...col,
         cards: col.cards.filter(c => c.id !== action.payload.cardId),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ARCHIVE_CARD': {
       const columns = state.board.columns.map(col => ({
         ...col,
         cards: col.cards.map(c =>
-          c.id === action.payload.cardId ? { ...c, archived: !c.archived, updatedAt: new Date().toISOString() } : c
+          c.id === action.payload.cardId ? { ...c, archived: !c.archived, updatedAt: now } : c
         ),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'DUPLICATE_CARD': {
@@ -106,7 +111,7 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         });
       });
       if (!cardToDuplicate || !sourceColumnId) return state;
-      const now = new Date().toISOString();
+
       const dup = cardToDuplicate as Card;
       const duplicated: Card = {
         ...dup,
@@ -138,12 +143,12 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           if (c.id === action.payload.cardId) {
             currentStatus = c.status || 'todo';
             const nextIdx = (statusOrder.indexOf(currentStatus) + 1) % statusOrder.length;
-            return { ...c, status: statusOrder[nextIdx], updatedAt: new Date().toISOString() };
+            return { ...c, status: statusOrder[nextIdx], updatedAt: now };
           }
           return c;
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ADD_LABEL': {
@@ -179,7 +184,7 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         cards: col.cards.map(c => ({
           ...c,
           labels: c.labels.filter(lid => lid !== action.payload.labelId),
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         })),
       }));
       const boards = state.boards.map(b => ({
@@ -190,7 +195,7 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           cards: col.cards.map(c => ({
             ...c,
             labels: c.labels.filter(lid => lid !== action.payload.labelId),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           })),
         })),
       }));
@@ -198,7 +203,7 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         ...state,
         boardLabels,
         boards,
-        board: { ...state.board, labels: boardLabels, columns, updatedAt: new Date().toISOString() },
+        board: { ...state.board, labels: boardLabels, columns, updatedAt: now },
       };
     }
 
@@ -211,11 +216,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           return {
             ...c,
             labels: has ? c.labels.filter(l => l !== action.payload.labelId) : [...c.labels, action.payload.labelId],
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'TOGGLE_CARD_ASSIGNEE': {
@@ -227,11 +232,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           return {
             ...c,
             assignees: has ? c.assignees.filter(u => u !== action.payload.userId) : [...c.assignees, action.payload.userId],
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'TOGGLE_CARD_CONTACT': {
@@ -246,18 +251,18 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
             linkedContacts: has
               ? current.filter(id => id !== action.payload.contactId)
               : [...current, action.payload.contactId],
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ADD_ATTACHMENT': {
       const newAttachment: Attachment = {
         id: generateId(),
         ...action.payload.attachment,
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: now,
       };
       const columns = state.board.columns.map(col => ({
         ...col,
@@ -266,11 +271,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           return {
             ...c,
             attachments: [...c.attachments, newAttachment],
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'DELETE_ATTACHMENT': {
@@ -282,11 +287,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
             ...c,
             attachments: c.attachments.filter(a => a.id !== action.payload.attachmentId),
             coverImage: c.coverImage === c.attachments.find(a => a.id === action.payload.attachmentId)?.url ? undefined : c.coverImage,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'SET_COVER_IMAGE': {
@@ -297,11 +302,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           return {
             ...c,
             coverImage: action.payload.url || undefined,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'ADD_COMMENT': {
@@ -309,7 +314,7 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
         id: generateId(),
         userId: action.payload.userId,
         text: action.payload.text,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       };
       const columns = state.board.columns.map(col => ({
         ...col,
@@ -318,11 +323,11 @@ export function cardOpsReducer(state: BoardState, action: Action): BoardState {
           return {
             ...c,
             comments: [...c.comments, newComment],
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
         }),
       }));
-      return { ...state, board: { ...state.board, columns, updatedAt: new Date().toISOString() } };
+      return { ...state, board: { ...state.board, columns, updatedAt: now } };
     }
 
     case 'UPDATE_USER': {

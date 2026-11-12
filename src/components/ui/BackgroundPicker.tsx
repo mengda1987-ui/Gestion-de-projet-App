@@ -1,4 +1,5 @@
 'use client';
+import NextImage from 'next/image';
 
 import { useState, useRef } from 'react';
 import { useLang } from '@/context/LangContext';
@@ -137,7 +138,7 @@ export default function BackgroundPicker({ current, defaultBg, imageOpacity, onS
         {uploadPreview ? (
           <div className="space-y-2">
             <div className="relative rounded-xl overflow-hidden h-28 border border-slate-200 dark:border-slate-700">
-              <img src={uploadPreview} alt="Preview" className="w-full h-full object-cover" />
+              <NextImage width={1920} height={1080} unoptimized src={uploadPreview} alt="Preview" className="w-full h-full object-cover" />
               <button
                 onClick={() => { setUploadPreview(null); setError(null); }}
                 className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"

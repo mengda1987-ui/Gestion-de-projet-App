@@ -1,215 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAdminClient } from '@/lib/supabaseAdmin';
-import { requireSession, getSession } from '@/lib/auth/session';
-
-/**
- * /api/boards —— 看板的结构性变更（创建 / 重命名 / 软删除 / 排序）
- *
- * 背景（2026-11-11 线上探测实证）：
- *   anon key 直接 POST/PATCH/DELETE /rest/v1/boards → 201/204，
- *   任何人可整板覆盖或删除数据（审计 C1，11-05 事故根因）。
- *
- * 本接口把这些操作收敛到服务端，之后 lock_down_write_rls.sql
- * 撤销 anon 的写权限，数据库层就再无匿名写入口。
- *
- * 看板「内容」的修改（卡片/列/心智图）不走这里，走 /api/board/patch
- * （带版本校验的增量写入）。
- *
- *   POST   /api/boards   { action: 'create', title, background }
- *   PATCH  /api/boards   { action: 'rename', id, title }
- *                        { action: 'reorder', orderedIds: [...] }
- *   DELETE /api/boards?id=<uuid>   软删除
- */
-
+import { NextResponse } from 'next/server';
+import { adminClient, assert, authorizeBoard, jsonBody, route, uuid, ApiFailure } from '@/lib/api/security';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function err(status: number, code: string, message?: string) {
-  return NextResponse.json({ ok: false, error: code, message }, { status });
-}
-
-function guard() {
-  try {
-    return { session: requireSession(), response: null as null | NextResponse };
-  } catch (e: any) {
-    return { session: null, response: err(e?.status === 403 ? 403 : 401, e?.message || 'UNAUTHORIZED') };
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const { session, response } = guard();
-  if (response) return response;
-
-  const admin = getAdminClient();
-  if (!admin) return err(503, 'SERVER_NOT_CONFIGURED');
-
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return err(400, 'BAD_REQUEST');
-  }
-
-  if (body?.action !== 'create') return err(400, 'BAD_REQUEST', '未知 action');
-
-  const title = typeof body?.title === 'string' ? body.title.trim() : '';
-  if (!title) return err(400, 'BAD_REQUEST', '标题不能为空');
-  if (title.length > 200) return err(400, 'BAD_REQUEST', '标题过长');
-
-  const background =
-    typeof body?.background === 'string' ? body.background.slice(0, 4096) : '#f5f5f7';
-
-  // 支持「补建」：调用方指定 id 时，用该 id 插入（用于本地新建但云端缺失的看板）
-  const requestedId = typeof body?.id === 'string' ? body.id : '';
-  if (requestedId && UUID_RE.test(requestedId)) {
-    const { data: existing } = await admin
-      .from('boards')
-      .select('id, is_deleted')
-      .eq('id', requestedId)
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      // 已存在：幂等返回（含已软删除的情况 —— 绝不复活）
-      return NextResponse.json({
-        ok: true,
-        board: { id: requestedId },
-        existed: true,
-        deleted: existing[0]?.is_deleted === true,
-      });
-    }
-
-    // 【防复活】同名看板已被软删除时，拒绝补建。
-    // 场景：用户删掉名为「1」的看板后，旧客户端的 NOT_FOUND 补建逻辑
-    // 会用新的本地 id 再建一条同名的 —— 于是看板"删不掉、越删越多"。
-    if (title) {
-      const { data: sameName } = await admin
-        .from('boards')
-        .select('id, is_deleted')
-        .eq('title', title)
-        .eq('is_deleted', true)
-        .limit(1);
-      if (sameName && sameName.length > 0) {
-        console.info('[boards] 存在同名已删除看板，拒绝补建:', title);
-        return NextResponse.json(
-          { ok: false, error: 'NAME_DELETED', message: '同名看板已被删除，不再重建' },
-          { status: 409 },
-        );
-      }
-    }
-
-    const { data: inserted, error: insErr } = await admin
-      .from('boards')
-      .insert({
-        id: requestedId,
-        title,
-        background,
-        data: { columns: [], mindmap: [] },
-        labels: [],
-        version: 0,
-        updated_by: session!.uid,
-      })
-      .select('*')
-      .single();
-
-    if (insErr) {
-      console.error('[boards] 按 id 补建失败:', insErr.message);
-      return err(500, 'ERROR', insErr.message);
-    }
-    return NextResponse.json({ ok: true, board: inserted }, { status: 201 });
-  }
-
-  const { data, error } = await admin.rpc('create_board', {
-    p_title: title,
-    p_background: background,
-    p_owner: session!.uid,
-  } as any);
-
-  if (error) {
-    console.error('[boards] 创建失败:', error.message);
-    return err(500, 'ERROR', '创建看板失败');
-  }
-  const r = data as any;
-  if (!r?.ok) return err(400, r?.code || 'ERROR');
-
-  return NextResponse.json({ ok: true, board: r.board }, { status: 201 });
-}
-
-export async function PATCH(request: NextRequest) {
-  const { response } = guard();
-  if (response) return response;
-
-  const admin = getAdminClient();
-  if (!admin) return err(503, 'SERVER_NOT_CONFIGURED');
-
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return err(400, 'BAD_REQUEST');
-  }
-
-  // --- 重命名（只改 title，不动 data/version 语义由 RPC 保证）---
-  if (body?.action === 'rename') {
-    const id = typeof body?.id === 'string' ? body.id : '';
-    const title = typeof body?.title === 'string' ? body.title.trim() : '';
-    if (!UUID_RE.test(id)) return err(400, 'BAD_REQUEST', 'id 非法');
-    if (!title) return err(400, 'BAD_REQUEST', '标题不能为空');
-
-    const { error } = await admin
-      .from('boards')
-      .update({ title: title.slice(0, 200) })
-      .eq('id', id);
-
-    if (error) {
-      console.error('[boards] 重命名失败:', error.message);
-      return err(500, 'ERROR');
-    }
-    return NextResponse.json({ ok: true });
-  }
-
-  // --- 排序 ---
-  if (body?.action === 'reorder') {
-    const ids = Array.isArray(body?.orderedIds) ? body.orderedIds : null;
-    if (!ids || ids.some((x: any) => typeof x !== 'string' || !UUID_RE.test(x))) {
-      return err(400, 'BAD_REQUEST', 'orderedIds 非法');
-    }
-    if (ids.length > 500) return err(413, 'BAD_REQUEST', '看板数量过多');
-
-    const { data, error } = await admin.rpc('reorder_boards', { p_ordered_ids: ids } as any);
-    if (error) {
-      console.error('[boards] 排序失败:', error.message);
-      return err(500, 'ERROR');
-    }
-    return NextResponse.json({ ok: true, result: data });
-  }
-
-  return err(400, 'BAD_REQUEST', '未知 action');
-}
-
-export async function DELETE(request: NextRequest) {
-  const { response } = guard();
-  if (response) return response;
-
-  const admin = getAdminClient();
-  if (!admin) return err(503, 'SERVER_NOT_CONFIGURED');
-
-  const id = request.nextUrl.searchParams.get('id') || '';
-  if (!UUID_RE.test(id)) return err(400, 'BAD_REQUEST', 'id 非法');
-
-  // 软删除：保留行与历史快照，可恢复（审计 M7）
-  const { data, error } = await admin.rpc('soft_delete_board_by_id', { p_board_id: id } as any);
-  if (error) {
-    console.error('[boards] 软删除失败:', error.message);
-    return err(500, 'ERROR');
-  }
-  const r = data as any;
-  if (!r?.ok) return err(404, 'NOT_FOUND');
-
-  return NextResponse.json({ ok: true, id });
-}
-
-export async function GET() {
-  return NextResponse.json({ ok: Boolean(getSession()) }, { status: getSession() ? 200 : 401 });
-}
+export const POST = route(async (request, user) => {
+  const b = await jsonBody(request);
+  if (b.accountId !== user.uid) throw new ApiFailure(401, 'ACCOUNT_CHANGED');
+  assert(b.action === 'create' && uuid(b.id) && uuid(b.entryId) && typeof b.title === 'string' && b.title.trim().length > 0 && b.title.length <= 200 && typeof b.background === 'string' && b.background.length <= 1024 * 1024);
+  const { data, error } = await adminClient().rpc('board_structure_v3', { p_action: 'create', p_input: { id: b.id, title: b.title.trim(), background: b.background }, p_actor_id: user.uid, p_entry_id: b.entryId });
+  if (error) throw new ApiFailure(503, 'WRITE_UNAVAILABLE');
+  return NextResponse.json(data, { status: data.ok ? 200 : 409 });
+});
+export const PATCH = route(async (request, user) => {
+  const b = await jsonBody(request);
+  if (b.accountId !== user.uid) throw new ApiFailure(401, 'ACCOUNT_CHANGED');
+  assert(b.action === 'reorder' && Array.isArray(b.orderedIds) && b.orderedIds.length <= 500 && b.orderedIds.every(uuid) && new Set(b.orderedIds).size === b.orderedIds.length && uuid(b.entryId));
+  for (const id of b.orderedIds) await authorizeBoard(id, user, true);
+  const { data, error } = await adminClient().rpc('board_structure_v3', { p_action: 'reorder', p_input: { orderedIds: b.orderedIds }, p_actor_id: user.uid, p_entry_id: b.entryId });
+  if (error) throw new ApiFailure(503, 'WRITE_UNAVAILABLE');
+  return NextResponse.json(data, { status: data.ok ? 200 : 409 });
+});
+export const DELETE = route(async (request, user) => {
+  const b = await jsonBody(request);
+  if (b.accountId !== user.uid) throw new ApiFailure(401, 'ACCOUNT_CHANGED');
+  assert(uuid(b.id) && uuid(b.entryId));
+  if (user.role !== 'admin') throw new ApiFailure(403, 'FORBIDDEN');
+  const { data, error } = await adminClient().rpc('board_structure_v3', { p_action: 'delete', p_input: { id: b.id }, p_actor_id: user.uid, p_entry_id: b.entryId });
+  if (error) throw new ApiFailure(503, 'WRITE_UNAVAILABLE');
+  return NextResponse.json(data, { status: data.ok ? 200 : data.code === 'NOT_FOUND' ? 404 : 409 });
+});
+export const GET = route(async () => NextResponse.json({ ok: true }));

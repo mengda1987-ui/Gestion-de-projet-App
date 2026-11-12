@@ -1,4 +1,5 @@
 'use client';
+import { getBgStyle } from '@/lib/utils';
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -63,22 +64,6 @@ export default function LoginPage() {
     }
   };
 
-  const getBgStyle = (bg: string): React.CSSProperties => {
-    // 防御：与 lib/utils 的 getBgStyle 保持一致，容忍空值避免整页崩溃
-    if (typeof bg !== 'string' || !bg) return { backgroundColor: '#f5f5f7' };
-    if (bg.startsWith('url(') || bg.startsWith('data:')) {
-      return {
-        backgroundImage: bg,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      };
-    }
-    if (bg.startsWith('linear-gradient') || bg.startsWith('radial-gradient')) {
-      return { background: bg };
-    }
-    return { backgroundColor: bg };
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 relative" style={getBgStyle(loginBackground)}>

@@ -21,7 +21,6 @@ interface ContactsViewProps {
   onDelete: (contactId: string) => void;
   // 反查：某个 CRM 联系人在看板里被哪些卡片关联（跨模块打通）
   getLinkedTasks?: (contactId: string) => LinkedTask[];
-  onOpenTask?: (contactId: string) => void;
 }
 
 function stageName(stages: CrmStage[], id: string): string {
@@ -32,7 +31,7 @@ function userName(users: User[], id: string): string {
   return users.find(u => u.id === id)?.name || '—';
 }
 
-export default function ContactsView({ contacts, stages, fields, users, onEdit, onDelete, getLinkedTasks, onOpenTask }: ContactsViewProps) {
+export default function ContactsView({ contacts, stages, fields, users, onEdit, onDelete, getLinkedTasks, }: ContactsViewProps) {
   const { t, lang } = useLang();
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);

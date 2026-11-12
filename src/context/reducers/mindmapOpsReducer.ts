@@ -1,12 +1,13 @@
 import { BoardState } from '../types';
 import { Action } from '../actions';
 import { Card, Column, MindMapNode, Checklist } from '@/types';
-import { generateId } from '@/lib/utils';
+import { actionClock } from '../normalizeAction';
 
 export function mindmapOpsReducer(state: BoardState, action: Action): BoardState {
+  const { now, generateId } = actionClock(action, 5);
   switch (action.type) {
     case 'IMPORT_AI_RESULT': {
-      const now = new Date().toISOString();
+
       const newColumns = [...state.board.columns];
       const newMindmap = [...state.board.mindmap];
 
@@ -107,7 +108,7 @@ export function mindmapOpsReducer(state: BoardState, action: Action): BoardState
       const parentId = action.payload.node.parentId;
       const siblings = state.board.mindmap.filter(n => n.parentId === parentId);
       const maxOrder = siblings.length > 0 ? Math.max(...siblings.map(s => s.order)) : -1;
-      const now = new Date().toISOString();
+
       const node: MindMapNode = {
         id: generateId(),
         text: action.payload.node.text,
@@ -123,7 +124,7 @@ export function mindmapOpsReducer(state: BoardState, action: Action): BoardState
     }
 
     case 'UPDATE_MINDMAP_NODE': {
-      const now = new Date().toISOString();
+
       const mindmap = state.board.mindmap.map(n =>
         n.id === action.payload.nodeId ? { ...n, ...action.payload.updates, updatedAt: now } : n
       );
@@ -139,7 +140,7 @@ export function mindmapOpsReducer(state: BoardState, action: Action): BoardState
       };
       walk(action.payload.nodeId);
       const mindmap = state.board.mindmap.filter(n => !idsToRemove.has(n.id));
-      const now = new Date().toISOString();
+
       return { ...state, board: { ...state.board, mindmap, updatedAt: now } };
     }
 
@@ -147,7 +148,7 @@ export function mindmapOpsReducer(state: BoardState, action: Action): BoardState
       const nodes = state.board.mindmap;
       const root = nodes.find(n => n.id === action.payload.rootNodeId);
       if (!root) return state;
-      const now = new Date().toISOString();
+
       const childrenOf = (id: string) => nodes.filter(n => n.parentId === id).sort((a, b) => a.order - b.order);
       const newColumns: Column[] = [];
       const newCards: { card: Card; columnId: string }[] = [];
@@ -254,7 +255,7 @@ export function mindmapOpsReducer(state: BoardState, action: Action): BoardState
     }
 
     case 'CLEAR_ALL_MM_POSITIONS': {
-      const now = new Date().toISOString();
+
       return {
         ...state,
         board: {

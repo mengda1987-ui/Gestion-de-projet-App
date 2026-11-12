@@ -1,4 +1,29 @@
 .env.local
+# 本地环境变量与私钥；仅允许不含真实凭据的环境变量示例入库。
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# 隔离测试数据库及其运行文件，不属于应用源码。
+/trello-v3-audit-db/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
 node_modules/
 .next/
 .DS_Store

@@ -19,13 +19,13 @@ import {
 } from 'lucide-react';
 
 export default function SummaryView() {
-  const { board, users, filters } = useBoard();
+  const { board, users, filters, currentUser } = useBoard();
   const { t, lang } = useLang();
 
   const stats = useMemo(() => {
     // Collect all non-archived cards from non-archived columns
-    const activeColumns = board.columns.filter(c => !c.archived || filters.showArchived);
-    const allCards = activeColumns.flatMap(c => c.cards).filter(c => !c.archived || filters.showArchived);
+    const activeColumns = board.columns.filter(c => (!c.archived || filters.showArchived) && (currentUser?.role === 'admin' || !c.visibleTo?.length || c.visibleTo.includes(currentUser?.id || '')));
+    const allCards = activeColumns.flatMap(c => c.cards).filter(c => (!c.archived || filters.showArchived) && (currentUser?.role === 'admin' || !c.visibleTo?.length || c.visibleTo.includes(currentUser?.id || '')));
 
     const totalCards = allCards.length;
     const totalLists = activeColumns.length;
@@ -93,7 +93,7 @@ export default function SummaryView() {
       memberStats,
       listStats,
     };
-  }, [board.columns, users, filters.showArchived]);
+  }, [board.columns, users, filters.showArchived, currentUser?.id, currentUser?.role]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">

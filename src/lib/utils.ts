@@ -14,7 +14,7 @@ export function getBgStyle(bg: string): CSSProperties {
   if (typeof bg !== 'string' || !bg) return { backgroundColor: '#f5f5f7' };
   if (bg.startsWith('url(') || bg.startsWith('data:')) {
     return {
-      backgroundImage: bg,
+      backgroundImage: bg.startsWith('data:') ? 'url(' + bg + ')' : bg,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
@@ -83,14 +83,14 @@ export function generateId() {
 export function getContrastColor(hexColor: string): 'black' | 'white' {
   // Remove # if present
   const hex = hexColor.replace('#', '');
-  
+
   // Convert to RGB
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
-  
+
   // Calculate brightness (YIQ formula)
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  
+
   return brightness > 128 ? 'black' : 'white';
 }

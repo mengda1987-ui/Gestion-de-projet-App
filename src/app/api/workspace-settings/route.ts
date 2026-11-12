@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { route, jsonBody, uuid } from '@/lib/api/security';
 import { getAdminClient } from '@/lib/supabaseAdmin';
 import { requireSession } from '@/lib/auth/session';
 
@@ -31,22 +32,23 @@ function err(status: number, code: string, message?: string) {
   return NextResponse.json({ ok: false, error: code, message }, { status });
 }
 
-function guard() {
+async function guard() {
   try {
-    return { session: requireSession(), response: null as null | NextResponse };
+    return { session: await requireSession(), response: null as null | NextResponse };
   } catch (e: any) {
     return { session: null, response: err(e?.status === 403 ? 403 : 401, e?.message || 'UNAUTHORIZED') };
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  const { response } = guard();
+async function PATCHHandler(request: NextRequest) {
+  const { session, response } = await guard();
   if (response) return response;
 
   const admin = getAdminClient();
   if (!admin) return err(503, 'SERVER_NOT_CONFIGURED');
 
-  const raw = await request.text();
+  const parsed = await jsonBody(request, MAX_LEN * 6);
+  const raw = JSON.stringify(parsed);
   if (raw.length > MAX_LEN * 6) return err(413, 'BAD_REQUEST', '请求体过大');
 
   let body: any;
@@ -85,7 +87,9 @@ export async function PATCH(request: NextRequest) {
     return err(400, 'BAD_REQUEST', '没有可更新的字段');
   }
 
-  const { data, error } = await admin.rpc('save_workspace_settings', { p_fields: fields } as any);
+  if (!uuid(body.entryId)) return err(400, 'INVALID_ENTRY_ID');
+  if (body.accountId !== session!.uid) return err(401, 'ACCOUNT_CHANGED');
+  const { data, error } = await admin.rpc('save_settings_v3', { p_fields: fields, p_actor_id: session!.uid, p_entry_id: body.entryId });
   if (error) {
     console.error('[workspace-settings] 保存失败:', error.message);
     return err(500, 'ERROR', '保存失败');
@@ -96,8 +100,8 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({ ok: true, settings: r.settings });
 }
 
-export async function GET() {
-  const { response } = guard();
+async function GETHandler() {
+  const { response } = await guard();
   if (response) return response;
 
   const admin = getAdminClient();
@@ -115,3 +119,6 @@ export async function GET() {
   }
   return NextResponse.json({ ok: true, settings: data });
 }
+
+export const PATCH = route(async (request, user) => user.role === 'admin' ? PATCHHandler(request) : NextResponse.json({ ok: false, code: 'FORBIDDEN' }, { status: 403 }));
+export const GET = route(async () => GETHandler());

@@ -47,7 +47,7 @@ jobs:
       - name: Probe and backup
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # 写到 runner 临时目录，完全不触碰仓库工作树
           BACKUP_DIR: ${{ runner.temp }}/trello-backups
           GUARD_STATE_FILE: .guard-state.json

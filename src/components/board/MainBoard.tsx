@@ -1,6 +1,7 @@
 'use client';
 
 
+import dynamic from 'next/dynamic';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoard } from '@/context/BoardContext';
@@ -28,20 +29,20 @@ import {
   Menu,
   ArrowLeft,
   Archive,
-  Image,
+  ImageIcon,
   Undo2,
   Plus,
   Contact,
 } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn, getBgStyle } from '@/lib/utils';
 import { APP_VERSION_LABEL } from '@/lib/version';
 import { ViewMode, Label, User } from '@/types';
 import BoardView from './BoardView';
 import TableView from './TableView';
-import GanttView from './GanttView';
-import MindMapView from './MindMapView';
-import SummaryView from './SummaryView';
+const GanttView = dynamic(() => import('./GanttView'), { ssr: false });
+const MindMapView = dynamic(() => import('./MindMapView'), { ssr: false });
+const SummaryView = dynamic(() => import('./SummaryView'), { ssr: false });
 import BackgroundPicker from '@/components/ui/BackgroundPicker';
 
 export default function MainBoard() {
@@ -80,22 +81,6 @@ export default function MainBoard() {
   };
 
   // Compute the background CSS style
-  const getBgStyle = (bg: string): React.CSSProperties => {
-    // 防御：与 lib/utils 的 getBgStyle 保持一致，容忍空值避免整页崩溃
-    if (typeof bg !== 'string' || !bg) return { backgroundColor: '#f5f5f7' };
-    if (bg.startsWith('url(') || bg.startsWith('data:')) {
-      return {
-        backgroundImage: bg,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      };
-    }
-    if (bg.startsWith('linear-gradient') || bg.startsWith('radial-gradient')) {
-      return { background: bg };
-    }
-    return { backgroundColor: bg };
-  };
 
   const goToWorkspace = useCallback(() => {
     dispatch({ type: 'SET_CURRENT_BOARD', payload: '' });
@@ -154,7 +139,7 @@ export default function MainBoard() {
       });
     });
     return cards;
-  }, [board.columns]);
+  }, [board]);
 
   const totalArchived = archivedColumns.length + archivedCards.length;
 
@@ -425,7 +410,7 @@ export default function MainBoard() {
                   onClick={() => { setShowBoardBgPicker(true); setShowAppMenu(false); }}
                   className="w-full flex items-center gap-3 px-5 py-3 text-sm text-slate-700 dark:text-white/80 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
                 >
-                  <Image size={18} className="text-slate-500 dark:text-white/70" />
+                  <ImageIcon size={18} className="text-slate-500 dark:text-white/70" />
                   <span>{lang === 'zh' ? '更换看板背景' : 'Change board background'}</span>
                 </button>
               )}

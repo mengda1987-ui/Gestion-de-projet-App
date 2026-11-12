@@ -3,6 +3,8 @@ import { getAdminClient } from '@/lib/supabaseAdmin';
 import { buildPayload, createSession } from '@/lib/auth/session';
 import { hashPassword, verifyPassword, normalizeName, nameKey } from '@/lib/auth/password';
 import { findUserByName } from '@/lib/auth/usersSchema';
+import { jsonBody } from '@/lib/api/security';
+import { createHash } from 'node:crypto';
 
 /**
  * POST /api/auth/login
@@ -26,6 +28,7 @@ const MAX_ATTEMPTS = 10;
 
 function rateLimited(ip: string): boolean {
   const now = Date.now();
+  if (attempts.size > 2000) for (const [key, value] of attempts) if (value.resetAt < now) attempts.delete(key);
   const rec = attempts.get(ip);
   if (!rec || now > rec.resetAt) {
     attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
@@ -67,7 +70,9 @@ export async function POST(request: NextRequest) {
 
   let body: any;
   try {
-    body = await request.json();
+    const origin = request.headers.get('origin');
+    if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: 'INVALID_ORIGIN' }, { status: 403 });
+    body = await jsonBody(request, 8192);
   } catch {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 });
   }
@@ -75,7 +80,7 @@ export async function POST(request: NextRequest) {
   const name = typeof body?.name === 'string' ? body.name : '';
   const password = typeof body?.password === 'string' ? body.password : '';
 
-  if (!name.trim() || !password) {
+  if (!name.trim() || name.length > 200 || !password || password.length > 200) {
     return NextResponse.json({ error: 'Name and password are required' }, { status: 400 });
   }
 
@@ -88,6 +93,10 @@ export async function POST(request: NextRequest) {
   }
 
   const normalized = normalizeName(name);
+  const bucket = createHash('sha256').update(ip + ':' + normalized).digest('hex');
+  const quota = await admin.rpc('consume_api_quota_v3', { p_actor: '00000000-0000-0000-0000-000000000000', p_bucket: 'login:' + bucket, p_limit: 10, p_seconds: 60 });
+  if (quota.error) return NextResponse.json({ error: 'SERVER_NOT_CONFIGURED' }, { status: 503 });
+  if (!quota.data) return NextResponse.json({ error: 'RATE_LIMITED' }, { status: 429 });
   let row: any = null;
 
   try {
@@ -102,7 +111,7 @@ export async function POST(request: NextRequest) {
 
   if (!row || row.is_deleted === true) return fail();
 
-  const { ok, needsUpgrade } = verifyPassword(password, row.password_hash, row.password);
+  const { ok, needsUpgrade } = await verifyPassword(password, row.password_hash, row.password);
   if (!ok) return fail();
 
   // ---- 无感迁移：明文 → scrypt ----
@@ -110,7 +119,7 @@ export async function POST(request: NextRequest) {
     try {
       const { error: upErr } = await admin
         .from('users')
-        .update({ password_hash: hashPassword(password), password: null })
+        .update({ password_hash: await hashPassword(password), password: null })
         .eq('id', row.id);
       if (upErr) {
         console.warn('[login] 口令升级失败（不影响本次登录）:', upErr.message);
@@ -125,7 +134,7 @@ export async function POST(request: NextRequest) {
   // ---- 签发会话 ----
   const role: 'admin' | 'member' = row.role === 'admin' ? 'admin' : 'member';
   try {
-    createSession(buildPayload(row.id, role));
+    createSession({ ...buildPayload(row.id, role), sessionVersion: Number(row.session_version || 0) });
   } catch (e: any) {
     console.error('[login] 会话签发失败（检查 SESSION_SECRET）:', e?.message);
     return NextResponse.json(

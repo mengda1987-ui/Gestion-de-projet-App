@@ -42,16 +42,6 @@ async function request<T>(
   }
 }
 
-/** 成员列表（服务端已剥离口令） */
-export async function fetchMembers(): Promise<{ members: User[] } | null> {
-  const { data, error } = await request<{ members: User[] }>('/api/members');
-  if (error) {
-    if (error.status !== 401) console.warn('[members] 读取失败:', error);
-    return null;
-  }
-  return data;
-}
-
 /** 新建成员（需 admin） */
 export async function createMember(input: {
   name: string;
@@ -91,15 +81,4 @@ export async function deleteMember(id: string) {
   return request<{ success: boolean }>(`/api/members?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
-}
-
-/** 当前会话用户（刷新页面后恢复登录态） */
-export async function fetchMe(): Promise<User | null> {
-  const { data } = await request<{ user: User | null }>('/api/auth/me');
-  return data?.user ?? null;
-}
-
-/** 登出：必须调用服务端清除 HttpOnly Cookie */
-export async function logoutApi(): Promise<void> {
-  await request<{ success: boolean }>('/api/auth/logout', { method: 'POST' });
 }

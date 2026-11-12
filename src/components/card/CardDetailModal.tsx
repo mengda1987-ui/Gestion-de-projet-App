@@ -1,4 +1,5 @@
 'use client';
+import NextImage from 'next/image';
 
 import { useState, useEffect, useRef } from 'react';
 import { Card, Label, User, Checklist, ChecklistItem, Attachment, Comment } from '@/types';
@@ -25,7 +26,7 @@ import {
   ChevronDown,
   Send,
   Upload,
-  Image,
+  ImageIcon,
   Clock,
   Trash,
   Pencil,
@@ -308,14 +309,14 @@ export default function CardDetailModal({
   ];
 
   useEffect(() => {
-    setTitleValue(latestCard.title);
-    setDescValue(latestCard.description);
-  }, [latestCard.title, latestCard.description]);
+    if (!editingTitle) setTitleValue(latestCard.title);
+    if (!editingDesc) setDescValue(latestCard.description);
+  }, [latestCard.title, latestCard.description, editingTitle, editingDesc]);
 
   // Stable onClose reference to avoid re-binding event listeners
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -404,10 +405,10 @@ export default function CardDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full md:max-w-4xl h-full md:h-[90vh] md:rounded-2xl bg-[#f5f5f7] dark:bg-slate-900 shadow-2xl overflow-hidden flex flex-col animate-slide-up md:animate-slide-right border border-slate-200/50 dark:border-slate-700/50"
       >
-        {/* Cover Image or Header */}
+        {/* Cover ImageIcon or Header */}
         {latestCard.coverImage ? (
           <div className="relative h-44 md:h-56 shrink-0">
-            <img
+            <NextImage width={1920} height={1080} unoptimized
               src={latestCard.coverImage}
               alt=""
               className="w-full h-full object-cover"
@@ -934,6 +935,7 @@ export default function CardDetailModal({
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
+                          if (file.size > 700 * 1024 || !/^(image\/(png|jpeg|gif|webp)|application\/pdf)$/.test(file.type)) { alert('请选择 700KB 以内的图片或 PDF'); return; }
                           const reader = new FileReader();
                           reader.onload = () => {
                             const url = reader.result as string;
@@ -959,7 +961,7 @@ export default function CardDetailModal({
 
                   {latestCard.coverImage && (
                     <div className="mb-3 relative rounded-lg overflow-hidden">
-                      <img src={latestCard.coverImage} alt="Cover" className="w-full h-24 object-cover rounded-lg" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                      <NextImage width={1920} height={1080} unoptimized src={latestCard.coverImage} alt="Cover" className="w-full h-24 object-cover rounded-lg" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                       <button
                         onClick={() => broadcastChange({
                           type: 'SET_COVER_IMAGE',
@@ -974,7 +976,7 @@ export default function CardDetailModal({
 
                   {latestCard.attachments.length === 0 ? (
                     <div className="p-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-center gap-2">
-                      <Image size={28} className="text-slate-300 dark:text-slate-600" />
+                      <ImageIcon size={28} className="text-slate-300 dark:text-slate-600" />
                       <p className="text-xs text-slate-400">{t('card.attach.add')}</p>
                     </div>
                   ) : (
@@ -983,9 +985,9 @@ export default function CardDetailModal({
                         <div key={att.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 flex items-start gap-3 group hover:border-sky-300 transition-colors">
                           <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
                             {att.type.startsWith('image/') && att.url ? (
-                              <img src={att.url} alt="" className="w-full h-full object-cover" onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')} />
+                              <NextImage width={1920} height={1080} unoptimized src={att.url} alt="" className="w-full h-full object-cover" onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')} />
                             ) : att.type.startsWith('image/') ? (
-                              <Image size={18} className="text-slate-500" />
+                              <ImageIcon size={18} className="text-slate-500" />
                             ) : (
                               <FileText size={18} className="text-slate-500" />
                             )}

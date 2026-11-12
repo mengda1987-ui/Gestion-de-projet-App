@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { Droppable, Draggable, DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 import { Column, Card as CardType } from '@/types';
 import type { User } from '@/types';
-import { useBoard } from '@/context/BoardContext';
+import { useBoardContent } from '@/context/BoardContext';
 import { useLang } from '@/context/LangContext';
 import CardItem from './CardItem';
 import {
@@ -31,7 +31,7 @@ interface BoardColumnProps {
 
 export default function BoardColumn({ column, isDragging, dragHandleProps, onCardClick }: BoardColumnProps) {
   const { t, lang } = useLang();
-  const { broadcastChange, users, currentUser } = useBoard();
+  const { broadcastChange, users, currentUser } = useBoardContent();
   const [addingCard, setAddingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);
@@ -84,7 +84,7 @@ export default function BoardColumn({ column, isDragging, dragHandleProps, onCar
         {...dragHandleProps}
       >
         <GripVertical size={16} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-        
+
         <div className="flex-1 min-w-0">
           {editingTitle ? (
             <input

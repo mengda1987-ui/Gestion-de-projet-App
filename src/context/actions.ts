@@ -1,7 +1,9 @@
 import { Board, Card, Column, Label, ViewMode, FilterState, User, Attachment, MindMapNode } from '@/types';
 import { BoardState, AppSection } from './types';
 
-export type Action =
+export type Action = ActionBody & { _meta?: { id: string; at: string } };
+
+type ActionBody =
   | { type: 'SET_CURRENT_USER'; payload: User | null }
   | { type: 'SET_APP_SECTION'; payload: AppSection }
   | { type: 'SET_VIEW_MODE'; payload: ViewMode }
@@ -9,7 +11,7 @@ export type Action =
   | { type: 'TOGGLE_DARK_MODE' }
   | { type: 'SET_DARK_MODE'; payload: boolean }
   | { type: 'UPDATE_BOARD'; payload: Partial<Board> }
-  | { type: 'CREATE_BOARD'; payload: { title: string; background: string } }
+  | { type: 'CREATE_BOARD'; payload: { title: string; background: string; id?: string } }
   | { type: 'SET_CURRENT_BOARD'; payload: string }
   | { type: 'DELETE_BOARD'; payload: string }
   | { type: 'RENAME_BOARD'; payload: { boardId: string; title: string } }

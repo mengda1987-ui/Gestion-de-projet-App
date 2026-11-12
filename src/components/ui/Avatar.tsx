@@ -1,4 +1,5 @@
 'use client';
+import NextImage from 'next/image';
 
 import { User } from '@/types';
 import { cn } from '@/lib/utils';
@@ -39,7 +40,7 @@ export function Avatar({ user, size = 'md', showOnline, online, className, onCli
         style={{ backgroundColor: user.color }}
       >
         {user.avatar ? (
-          <img
+          <NextImage width={1920} height={1080} unoptimized
             src={user.avatar}
             alt={user.name}
             className="w-full h-full object-cover"

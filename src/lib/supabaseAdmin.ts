@@ -18,15 +18,11 @@ export function getAdminClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  if (cached && cachedKey === key) return cached;
+  if (cached && cachedKey === url + key) return cached;
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (url, init) => fetch(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) }) },
   });
-  cachedKey = key;
+  cachedKey = url + key;
   return cached;
-}
-
-/** 是否已配置 service_role（用于健康检查与降级判断） */
-export function isAdminConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }

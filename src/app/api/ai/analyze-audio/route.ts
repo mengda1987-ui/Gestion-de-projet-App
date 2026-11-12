@@ -1,3 +1,4 @@
+import { route, ApiFailure, adminClient } from '@/lib/api/security';
 import { NextRequest, NextResponse } from 'next/server';
 import { deepMaskSensitiveData } from '@/lib/dataMasking';
 
@@ -36,7 +37,7 @@ const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.5-flash'];
 async function getAvailableModels(apiKey: string): Promise<string[]> {
   try {
     const url = `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return [];
     const data = await res.json();
     // Show all models to help diagnose what's available
@@ -48,27 +49,47 @@ async function getAvailableModels(apiKey: string): Promise<string[]> {
   }
 }
 
-export async function GET() {
+export const GET = route(async (_request, user) => {
+  if (user.role !== 'admin') throw new ApiFailure(403, 'FORBIDDEN');
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
   const models = await getAvailableModels(apiKey);
   return NextResponse.json({ availableModels: models });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = route(async (request: NextRequest, user) => {
+  const { data: allowed, error } = await adminClient().rpc('consume_api_quota_v3', { p_actor: user.uid, p_bucket: 'audio', p_limit: 10, p_seconds: 3600 });
+  if (error) throw new ApiFailure(503, 'QUOTA_UNAVAILABLE');
+  if (!allowed) throw new ApiFailure(429, 'RATE_LIMITED');
+  if (Number(request.headers.get('content-length') || 0) > 4 * 1024 * 1024) throw new ApiFailure(413, 'AUDIO_TOO_LARGE');
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
     }
 
-    const formData = await request.formData();
+    const reader = request.body?.getReader();
+    if (!reader) throw new ApiFailure(400, 'EMPTY_BODY');
+    const parts: Uint8Array[] = []; let bytes = 0;
+    const timeout = AbortSignal.timeout(15000);
+    timeout.addEventListener('abort', () => { void reader.cancel().catch(() => {}); }, { once: true });
+    while (true) {
+      if (timeout.aborted) { await reader.cancel(); throw new ApiFailure(408, 'REQUEST_TIMEOUT'); }
+      const { done, value } = await reader.read();
+      if (done) { if (timeout.aborted) throw new ApiFailure(408, 'REQUEST_TIMEOUT'); break; }
+      bytes += value.byteLength;
+      if (bytes > 4 * 1024 * 1024) { await reader.cancel(); throw new ApiFailure(413, 'AUDIO_TOO_LARGE'); }
+      parts.push(value);
+    }
+    const raw = new Uint8Array(bytes); let offset = 0; for (const part of parts) { raw.set(part, offset); offset += part.length; }
+    const formData = await new Response(raw, { headers: { 'Content-Type': request.headers.get('content-type') || '' } }).formData();
     const audioFile = formData.get('audio') as File | null;
     const lang = (formData.get('lang') as string) || 'zh';
-    if (!audioFile) {
+    if (!(audioFile instanceof File)) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
+    if (audioFile.size > 3 * 1024 * 1024 || !/^(audio\/|video\/webm)/.test(audioFile.type)) throw new ApiFailure(413, 'INVALID_AUDIO');
     const langInstruction = lang === 'fr'
       ? '\n\nIMPORTANT: The output MUST be in French. All titles and items should be in French.'
       : '\n\nIMPORTANT: The output MUST be in Chinese. All titles and items should be in Chinese.';
@@ -90,11 +111,12 @@ export async function POST(request: NextRequest) {
     let lastErrorText = '';
     let rawText: string | null = null;
 
-    for (const modelName of modelsToTry) {
+    for (const modelName of modelsToTry.slice(0, 2)) {
       try {
         const url = `${BASE_URL}/${modelName}:generateContent?key=${apiKey}`;
         const geminiResponse = await fetch(url, {
           method: 'POST',
+          signal: AbortSignal.timeout(20000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{
@@ -140,6 +162,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Invalid response structure: missing columns array');
     }
 
+    if (parsed.columns.length > 10 || !parsed.columns.every((c: any) => c && typeof c.title === 'string' && Array.isArray(c.cards) && c.cards.length <= 20 && c.cards.every((v: any) => v && typeof v.title === 'string' && Array.isArray(v.items) && v.items.length <= 50 && v.items.every((t: any) => typeof t === 'string')))) throw new ApiFailure(502, 'INVALID_AI_RESPONSE');
     const sanitized = {
       columns: parsed.columns.map((col: any) => ({
         title: String(col.title || 'Untitled').slice(0, 60),
@@ -152,10 +175,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(deepMaskSensitiveData(sanitized));
   } catch (error: any) {
+    if (error instanceof ApiFailure) throw error;
     console.error('Audio analysis error:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
-}
+});

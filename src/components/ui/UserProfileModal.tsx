@@ -1,4 +1,5 @@
 'use client';
+import NextImage from 'next/image';
 
 import { useState, useEffect } from 'react';
 import { useBoard } from '@/context/BoardContext';
@@ -135,18 +136,12 @@ export default function UserProfileModal({ onClose }: UserProfileModalProps) {
       updates.avatar = form.avatar.trim();
     }
 
-    broadcastChange({
-      type: 'UPDATE_USER',
-      payload: { userId: currentUser.id, updates },
-    });
-
-    setTimeout(() => {
-      setSaving(false);
-      setSaved(true);
-      setRawAvatar(null);
-      setUploadScale(100);
-      setTimeout(() => setSaved(false), 1500);
-    }, 300);
+    const { data, error } = await updateMember({ id: currentUser.id, ...updates });
+    setSaving(false);
+    if (error || !data) { alert(error?.message || '保存失败'); return; }
+    broadcastChange({ type: 'APPLY_REMOTE_UPDATE', payload: { currentUser: data.member } });
+    setSaved(true); setRawAvatar(null); setUploadScale(100);
+    setTimeout(() => setSaved(false), 1500);
   };
 
   const handlePasswordChange = async () => {
@@ -220,7 +215,7 @@ export default function UserProfileModal({ onClose }: UserProfileModalProps) {
             style={{ boxShadow: `0 8px 24px ${form.color}40` }}
           >
             {form.avatar ? (
-              <img
+              <NextImage width={1920} height={1080} unoptimized
                 src={form.avatar}
                 alt={form.name}
                 className="w-full h-full object-cover"
@@ -422,7 +417,7 @@ export default function UserProfileModal({ onClose }: UserProfileModalProps) {
                     )}
                     title={p.name}
                   >
-                    <img
+                    <NextImage width={1920} height={1080} unoptimized
                       src={url}
                       alt={p.name}
                       className="w-full h-full object-cover"

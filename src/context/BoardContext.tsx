@@ -13,6 +13,7 @@ import { mindmapOpsReducer } from './reducers/mindmapOpsReducer';
 import { syncMindMapCards } from './middlewares/mindmapSync';
 import { syncBoardInList } from './middlewares/boardListSync';
 import { useBoardSync } from './sync/useBoardSync';
+import { normalizeAction } from './normalizeAction';
 
 interface BoardContextType {
   state: BoardState;
@@ -23,7 +24,11 @@ interface BoardContextType {
   logout: () => Promise<void>;
 }
 
-const BoardContext = createContext<BoardContextType | undefined>(undefined);
+type Commands = Omit<BoardContextType, 'state'>;
+const BoardStateContext = createContext<BoardState | undefined>(undefined);
+const BoardCommandsContext = createContext<Commands | undefined>(undefined);
+type Content = Pick<BoardState, 'board' | 'users' | 'currentUser'>;
+const BoardContentContext = createContext<Content | undefined>(undefined);
 
 function baseReducer(state: BoardState, action: Action): BoardState {
   let newState = state;
@@ -52,8 +57,8 @@ function baseReducer(state: BoardState, action: Action): BoardState {
 export function boardReducer(state: BoardState, action: Action): BoardState {
   const skipSync = (action as any)._skipSync === true;
   let newState = baseReducer(state, action);
-  if (!skipSync) newState = syncMindMapCards(newState, action);
-  if (action.type !== 'SET_BOARDS_ORDER' && action.type !== 'REORDER_BOARDS') {
+  if (!skipSync && state.currentUser?.role === 'admin') newState = syncMindMapCards(state, newState, action);
+  if (newState.board !== state.board && action.type !== 'SET_BOARDS_ORDER' && action.type !== 'REORDER_BOARDS') {
     newState = syncBoardInList(newState);
   }
   return newState;
@@ -61,24 +66,6 @@ export function boardReducer(state: BoardState, action: Action): BoardState {
 
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, rawDispatch] = useReducer(boardReducer, null, createInitialState);
-
-  const restoreSession = useCallback(async () => {
-    try {
-      const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
-      if (!res.ok) return;
-      const body = await res.json();
-      const me = body?.user;
-      if (!me) return;
-      rawDispatch({ type: 'SET_CURRENT_USER', payload: me });
-      if (me.lang === 'zh' || me.lang === 'en') {
-        try {
-          window.localStorage.setItem('trello-clone.lang', me.lang);
-        } catch {}
-      }
-    } catch (e) {
-      console.warn('[auth] 会话恢复失败:', e);
-    }
-  }, []);
 
   const {
     dispatchWithSync,
@@ -90,7 +77,6 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     state,
     rawDispatch,
     reducer: boardReducer,
-    onRestoreSession: restoreSession,
   });
 
   const broadcastChange = useCallback(
@@ -103,26 +89,29 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await drainOutbox();
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout(15000) });
+      if (!response.ok && response.status !== 401) throw new Error('Logout failed');
     } catch (e) {
       console.warn('[logout] 服务端登出失败:', e);
+      setSaveError('退出失败，请检查网络后重试。');
+      return;
     }
-    dispatchWithSync({ type: 'SET_CURRENT_USER', payload: null });
-  }, [drainOutbox, dispatchWithSync]);
+    dispatchWithSync(normalizeAction({ type: 'SET_CURRENT_USER', payload: null }));
+  }, [drainOutbox, dispatchWithSync, setSaveError]);
 
   const contextValue = React.useMemo(
     () => ({
-      state,
       dispatch: dispatchWithSync,
       broadcastChange,
       saveError,
       logout,
     }),
-    [state, dispatchWithSync, broadcastChange, saveError, logout],
+    [dispatchWithSync, broadcastChange, saveError, logout],
   );
+  const contentValue = React.useMemo(() => ({ board: state.board, users: state.users, currentUser: state.currentUser }), [state.board, state.users, state.currentUser]);
 
   return (
-    <BoardContext.Provider value={contextValue}>
+    <BoardCommandsContext.Provider value={contextValue}><BoardStateContext.Provider value={state}><BoardContentContext.Provider value={contentValue}>
       {children}
       {saveError &&
         createPortal(
@@ -166,14 +155,25 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
           </div>,
           document.body,
         )}
-    </BoardContext.Provider>
+    </BoardContentContext.Provider></BoardStateContext.Provider></BoardCommandsContext.Provider>
   );
 }
 
-export function useBoardContext() {
-  const context = useContext(BoardContext);
-  if (!context) throw new Error('useBoardContext must be used within BoardProvider');
-  return context;
+export function useBoardState() {
+  const state = useContext(BoardStateContext);
+  if (!state) throw new Error('BoardProvider missing');
+  return state;
+}
+function useCommands() {
+  const commands = useContext(BoardCommandsContext);
+  if (!commands) throw new Error('BoardProvider missing');
+  return commands;
+}
+function useBoardContext() { return { state: useBoardState(), ...useCommands() }; }
+export function useBoardContent() {
+  const content = useContext(BoardContentContext);
+  if (!content) throw new Error('BoardProvider missing');
+  return { ...content, ...useCommands() };
 }
 
 export function useBoard() {
@@ -216,16 +216,4 @@ export function useBoard() {
     logout,
     findCard,
   };
-}
-
-export function useBoardState() {
-  return useBoardContext().state;
-}
-
-export function useBoardDispatch() {
-  return useBoardContext().dispatch;
-}
-
-export function useBroadcastChange() {
-  return useBoardContext().broadcastChange;
 }

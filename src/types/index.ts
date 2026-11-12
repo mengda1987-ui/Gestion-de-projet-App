@@ -86,6 +86,7 @@ export interface CrmContact {
 }
 
 export interface CrmModule {
+  version?: number;
   id: string; // 板块唯一 ID
   name: string; // 中文名
   nameEn: string; // 英文名

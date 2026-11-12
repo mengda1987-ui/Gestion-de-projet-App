@@ -2,14 +2,12 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CrmModules, CrmModule, CrmStage, CrmField, CrmContact, CrmFieldType } from '@/types';
-import { generateId } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
+import { CrmModules, CrmModule, CrmStage, CrmField, CrmContact } from '@/types';
+import { useBoardState } from './BoardContext';
+import { diffEntities, applyEntityOps } from './patch/delta';
+import { enqueue, dequeue, listAll, newEntryId, type OutboxEntry } from './patch/outbox';
+import { subscribeSync } from '@/lib/syncEvents';
 
-const BACKUP_KEY = 'trello_crm_backup_v2';
-const SYNC_CHANNEL = 'trello-crm-sync-channel';
-// 记住用户上次停留的板块，避免刷新或状态重建后被弹回第一个模块
-const ACTIVE_MODULE_KEY = 'trello_crm_active_module';
 
 export type CrmView = 'contacts' | 'pipeline';
 
@@ -20,7 +18,8 @@ interface CrmState {
   _loaded: boolean;
 }
 
-type CrmAction =
+type CrmAction = CrmActionBody & { at?: string };
+type CrmActionBody =
   | { type: 'CRM_LOAD'; payload: CrmModules }
   | { type: 'CRM_SET_MODULE'; payload: string }
   | { type: 'CRM_SET_VIEW'; payload: CrmView }
@@ -40,281 +39,8 @@ type CrmAction =
   | { type: 'CRM_DELETE_FIELD'; payload: { moduleId: string; fieldId: string } }
   | { type: 'CRM_REORDER_FIELDS'; payload: { moduleId: string; fields: CrmField[] } };
 
-function field(name: string, type: CrmFieldType, options?: string[]): CrmField {
-  return { id: generateId(), name, type, ...(options ? { options } : {}) };
-}
-
-function stage(name: string, order: number): CrmStage {
-  return { id: generateId(), name, order };
-}
-
-function makeStages(names: string[]): CrmStage[] {
-  return names.map((name, i) => stage(name, i));
-}
-
-// 根据字段名构建一条联系人的自定义字段值
-function makeContact(
-  fields: CrmField[],
-  name: string,
-  stageId: string,
-  data: Record<string, string>
-): CrmContact {
-  const customFields: Record<string, string> = {};
-  for (const [key, value] of Object.entries(data)) {
-    const id = fields.find(f => f.name === key)?.id;
-    if (id && value) customFields[id] = value;
-  }
-  const now = new Date().toISOString();
-  return {
-    id: generateId(),
-    name,
-    email: '',
-    phone: '',
-    company: '',
-    tags: [],
-    ownerId: '',
-    stageId,
-    notes: '',
-    customFields,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-export function createDefaultCrmModules(): CrmModules {
-  const now = new Date().toISOString();
-
-  // ===== Courses / 课程 =====
-  const coursFields: CrmField[] = [
-    field('ID Contact', 'text'),
-    field("Date d'ajout", 'date'),
-    field('Nom parent', 'text'),
-    field('Prénom parent', 'text'),
-    field('Titre parent', 'text'),
-    field('Nom élève', 'text'),
-    field('Prénom élève', 'text'),
-    field('Titre', 'text'),
-    field('Age élève', 'number'),
-    field('Nom établissement', 'text'),
-    field('Type établissement', 'text'),
-    field('Pays', 'text'),
-    field('Ville', 'text'),
-    field('Fuseau horaire', 'text'),
-    field('Adresse postale', 'text'),
-    field('ID Wechat parent', 'text'),
-    field('ID Wechat enfant', 'text'),
-    field('Mail parent', 'text'),
-    field('Mail enfant', 'text'),
-    field('Langue parlée à la maison', 'text'),
-    field('Créneaux horaires disponibles', 'text'),
-    field('Besoins', 'text'),
-    field('Niveau', 'text'),
-    field('Statut lead', 'select', ['1er contact pris', '1er entretien fait', 'Inscrit', 'Perdu']),
-  ];
-  const coursStages = makeStages(['1er contact pris', '1er entretien fait', 'Inscrit', 'Perdu']);
-
-  // ===== Trips / 旅行 =====
-  const voyageFields: CrmField[] = [
-    field('ID Contact', 'text'),
-    field("Date d'ajout", 'date'),
-    field('ID Etablissement', 'text'),
-    field('Pays', 'text'),
-    field('Ville', 'text'),
-    field('Adresse', 'text'),
-    field('Nom contact', 'text'),
-    field('Prénom contact', 'text'),
-    field('Titre contact', 'text'),
-    field('Fonction contact', 'text'),
-    field('Mail contact', 'text'),
-    field('ID Wechat contact', 'text'),
-    field('Fuseau horaire', 'text'),
-    field('Besoins', 'text'),
-    field("Niveau d'engagement", 'select', ['Chaud', 'Neutre', 'Résistant']),
-    field('Actions', 'text'),
-  ];
-  const voyageStages = makeStages(['Nouveau', 'Qualifié', 'Devis envoyé', 'Gagné', 'Perdu']);
-  const voyageContacts: CrmContact[] = [
-    makeContact(voyageFields, 'Hui Mingyang', voyageStages[0].id, {
-      'Nom contact': 'Hui',
-      'Prénom contact': 'Mingyang',
-      "Niveau d'engagement": 'Chaud',
-      'Actions': 'Appel pour faire un point sur les voyages',
-    }),
-  ];
-
-  // ===== Projects / 项目 =====
-  const projetFields: CrmField[] = [
-    field('ID Projet', 'text'),
-    field('Nom Projet', 'text'),
-    field('ID Etablissement', 'text'),
-    field('Etablissement', 'text'),
-    field('ID Responsable Voyage', 'text'),
-    field('Nom Responsable Voyage', 'text'),
-    field('ID Autre Contact', 'text'),
-    field('Nom Autre Contact', 'text'),
-    field('Dates Voyage', 'text'),
-    field('Effectif Estimé', 'number'),
-    field('Prix Estimé', 'text'),
-    field('Budget Total Voyage', 'text'),
-    field('Etape Cycle de Vente', 'select', [
-      'Projet validé par le responsable',
-      'Projet validé par le n+1',
-      'Inscriptions reçues',
-    ]),
-    field('Statut Projet', 'select', ['En cours', 'Gagné', 'Perdu', 'Reporté']),
-    field('Action', 'text'),
-  ];
-  const projetStages = makeStages(['En cours', 'Gagné', 'Perdu', 'Reporté']);
-
-  const projetRows: Array<{ name: string; data: Record<string, string> }> = [
-    {
-      name: 'Voyage Chine Les Chartreux 2026',
-      data: {
-        'Nom Projet': 'Voyage Chine Les Chartreux 2026',
-        'Etablissement': 'Les Chartreux',
-        'Nom Responsable Voyage': 'Vincent Li',
-        'Nom Autre Contact': 'Arthur Gouhier',
-        'Dates Voyage': '16 au 24 octobre 2026',
-        'Effectif Estimé': '20',
-        'Prix Estimé': '800,00 €',
-        'Budget Total Voyage': '16 000,00 €',
-      },
-    },
-    {
-      name: 'Voyage France',
-      data: {
-        'Nom Projet': 'Voyage France',
-        'Etablissement': 'Keystone',
-        'Nom Responsable Voyage': 'Yanjun',
-        'Dates Voyage': 'octobre 2027',
-        'Action': 'Envoi devis à Yanjun',
-      },
-    },
-    {
-      name: 'Voyage UK',
-      data: {
-        'Nom Projet': 'Voyage UK',
-        'Etablissement': 'Keystone',
-        'Nom Responsable Voyage': '??',
-        'Action': 'Demande Sarah + autre prof pour voyage cette année',
-      },
-    },
-    {
-      name: 'Voyage Allemagne',
-      data: {
-        'Nom Projet': 'Voyage Allemagne',
-        'Etablissement': 'Keystone',
-        'Nom Responsable Voyage': 'Tingting',
-        'Action': "Parler à Tingting de l'Allemagne",
-      },
-    },
-    {
-      name: 'Voyage Italie',
-      data: {
-        'Nom Projet': 'Voyage Italie',
-        'Etablissement': 'Keystone',
-        'Nom Responsable Voyage': 'Yanjun',
-        'Action': 'Envoi devis à Yanjun',
-      },
-    },
-    {
-      name: 'Voyage Allemagne',
-      data: {
-        'Nom Projet': 'Voyage Allemagne',
-        'Etablissement': 'Shanghai Waiguoyu',
-        'Nom Responsable Voyage': "Prof d'allemand",
-        'Action': "Trouver échange scolaire en Allemagne : Sophie Santini, Lena, école partenaire des Chartreux, pote de Houli",
-      },
-    },
-    {
-      name: 'Voyage France',
-      data: {
-        'Nom Projet': 'Voyage France',
-        'Etablissement': 'Shanghai Waiguoyu',
-        'Nom Responsable Voyage': 'M. Chen',
-        'Action': 'Reprise contact M. Chen et Mme Hui',
-      },
-    },
-    {
-      name: 'Voyage Italie',
-      data: {
-        'Nom Projet': 'Voyage Italie',
-        'Etablissement': 'Hangzhou Jack Ma',
-        'Nom Responsable Voyage': "Prof d'art",
-        'Action': 'Relance avec catalogue',
-      },
-    },
-    {
-      name: 'Voyage France',
-      data: {
-        'Nom Projet': 'Voyage France',
-        'Etablissement': 'Shenyang',
-        'Action': 'Relance avec propale été Chartreux internat',
-      },
-    },
-    {
-      name: 'Voyage France',
-      data: {
-        'Nom Projet': 'Voyage France',
-        'Etablissement': 'Haidian Waiguoyu',
-        'Action': 'Pause',
-      },
-    },
-    {
-      name: 'Voyage Chine',
-      data: {
-        'Nom Projet': 'Voyage Chine',
-        'Etablissement': 'Ecole de Wuhan',
-        'Action': "Trouver échange scolaire en Allemagne : Sophie Santini, Lena, école partenaire des Chartreux, pote de Houli",
-      },
-    },
-  ];
-  const projetContacts: CrmContact[] = projetRows.map(row =>
-    makeContact(projetFields, row.name, projetStages[0].id, row.data)
-  );
-
-  return [
-    {
-      id: 'cours',
-      name: '课程',
-      nameEn: 'Courses',
-      emoji: '🎓',
-      color: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)',
-      stages: coursStages,
-      fields: coursFields,
-      contacts: [],
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'voyages',
-      name: '旅行',
-      nameEn: 'Trips',
-      emoji: '✈️',
-      color: 'linear-gradient(135deg, #10b981 0%, #14b8a6 100%)',
-      stages: voyageStages,
-      fields: voyageFields,
-      contacts: voyageContacts,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'projets',
-      name: '项目',
-      nameEn: 'Projects',
-      emoji: '🚀',
-      color: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
-      stages: projetStages,
-      fields: projetFields,
-      contacts: projetContacts,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ];
-}
-
 function createInitialCrmState(): CrmState {
-  const modules = createDefaultCrmModules();
+  const modules: CrmModules = [];
   return {
     modules,
     activeModuleId: modules[0]?.id || '',
@@ -340,18 +66,7 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
       // 保留用户当前选中的板块，不要因为后台刷新/轮询就把视图弹回第一个模块。
       // 仅在两种情况下才需要切换：1) 首次加载；2) 当前选中的模块已不存在（被删除）。
       const stillExists = action.payload.some(m => m.id === state.activeModuleId);
-      let nextActive = stillExists ? state.activeModuleId : (action.payload[0]?.id || '');
-
-      // 双保险：若内存中的选择已丢失，尝试从上次记住的板块恢复，
-      // 避免"添加联系人后被弹回第一个板块"这类问题，即使 state 被重建也能回到原位。
-      if (!stillExists && state.activeModuleId === '') {
-        try {
-          const remembered = window.localStorage.getItem(ACTIVE_MODULE_KEY);
-          if (remembered && action.payload.some(m => m.id === remembered)) {
-            nextActive = remembered;
-          }
-        } catch {}
-      }
+      const nextActive = stillExists ? state.activeModuleId : (action.payload[0]?.id || '');
 
       return {
         ...state,
@@ -382,15 +97,15 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
         nameEn,
         emoji,
         color,
-        updatedAt: new Date().toISOString(),
+        updatedAt: action.at || '1970-01-01T00:00:00.000Z',
       }));
     }
 
     case 'CRM_DELETE_MODULE': {
       const remaining = state.modules.filter(m => m.id !== action.payload);
-      if (remaining.length === 0) return state;
+
       const activeModuleId =
-        state.activeModuleId === action.payload ? remaining[0].id : state.activeModuleId;
+        state.activeModuleId === action.payload ? remaining[0]?.id || '' : state.activeModuleId;
       return { ...state, modules: remaining, activeModuleId };
     }
 
@@ -398,7 +113,7 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return updateModule(state, action.payload.moduleId, m => ({
         ...m,
         contacts: [...m.contacts, action.payload.contact],
-        updatedAt: new Date().toISOString(),
+        updatedAt: action.at || '1970-01-01T00:00:00.000Z',
       }));
 
     case 'CRM_UPDATE_CONTACT':
@@ -406,7 +121,7 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
         ...m,
         contacts: m.contacts.map(c =>
           c.id === action.payload.contactId
-            ? { ...c, ...action.payload.updates, updatedAt: new Date().toISOString() }
+            ? { ...c, ...action.payload.updates, updatedAt: action.at || '1970-01-01T00:00:00.000Z' }
             : c
         ),
       }));
@@ -422,7 +137,7 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
         ...m,
         contacts: m.contacts.map(c =>
           c.id === action.payload.contactId
-            ? { ...c, stageId: action.payload.stageId, updatedAt: new Date().toISOString() }
+            ? { ...c, stageId: action.payload.stageId, updatedAt: action.at || '1970-01-01T00:00:00.000Z' }
             : c
         ),
       }));
@@ -487,466 +202,123 @@ function crmReducer(state: CrmState, action: CrmAction): CrmState {
   }
 }
 
-interface CrmContextType {
-  state: CrmState;
-  dispatch: React.Dispatch<CrmAction>;
-  saveError: string | null;
-}
-
+interface CrmContextType { state: CrmState; dispatch: React.Dispatch<CrmAction>; saveError: string | null; ensureLoaded: () => void }
 const CrmContext = createContext<CrmContextType | undefined>(undefined);
-
-function readBackup(): CrmModules | null {
-  try {
-    if (typeof window === 'undefined') return null;
-    const raw = window.localStorage.getItem(BACKUP_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    return parsed as CrmModules;
-  } catch {
-    return null;
-  }
-}
-
-// ===== Supabase 行 → 模块 映射 =====
-// 说明：写入方向（moduleToRow / CrmModuleRow）已在 v2.4.0 移除 ——
-// CRM 写入改由 /api/crm/modules 的服务端 RPC 处理，前端不再拼装数据库行。
-function rowToModule(r: any): CrmModule {
-  return {
-    id: r.id,
-    name: r.name || '',
-    nameEn: r.name_en || '',
-    emoji: r.emoji || '📋',
-    color: r.color || '#007AFF',
-    stages: r.data?.stages || [],
-    fields: r.data?.fields || [],
-    contacts: r.data?.contacts || [],
-    createdAt: r.created_at || new Date().toISOString(),
-    updatedAt: r.updated_at || new Date().toISOString(),
-  };
-}
-
-// 剔除时间戳的稳定键：用于判断模块内容是否真的变化，避免时间差造成回环
-function moduleContentKey(m: any): string {
-  return JSON.stringify(m, (key, value) =>
-    (key === 'createdAt' || key === 'updatedAt') ? undefined : value
-  );
-}
-
-function modulesStableKey(modules: CrmModules): string {
-  return JSON.stringify(
-    modules.map(m => JSON.parse(moduleContentKey(m))),
-  );
-}
-
+function rowToModule(r: any): CrmModule { return { id: r.id, name: r.name, nameEn: r.name_en, emoji: r.emoji, color: r.color, stages: r.data?.stages || [], fields: r.data?.fields || [], contacts: r.data?.contacts || [], createdAt: r.created_at, updatedAt: r.updated_at, version: r.version }; }
 export function CrmProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(crmReducer, null, createInitialCrmState);
+  const boardState = useBoardState();
+  const uid = boardState.currentUser?.id || '';
+  const [state, rawDispatch] = useReducer(crmReducer, undefined, createInitialCrmState);
+  const optimistic = useRef(state);
+  const pending = useRef(new Map<string, OutboxEntry>());
+  const versions = useRef(new Map<string, number>());
+  const epoch = useRef(0);
+  const running = useRef<Promise<void> | null>(null);
+  const refreshing = useRef<Promise<void> | null>(null);
+  const refreshAgain = useRef(false);
+  const mutationRevision = useRef(0);
+  const [active, setActive] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const snapshotRef = useRef<string>('');          // 上次成功保存到服务器的模块快照
-  const lastLocalContentRef = useRef<string>('');
-  const stableContentRef = useRef<string>('');
-  const latestModulesRef = useRef<CrmModules>([]);
-  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const pendingSaveRef = useRef(false);
-  const bcRef = useRef<BroadcastChannel | null>(null);
-  const loadedRef = useRef(false);
-  // Realtime 是否真的能收到推送（决定轮询兜底的快慢）
-  const realtimeOkRef = useRef(false);
-  // 显式删除追踪：只有用户主动删除的模块才会从服务器删除，避免误删他人数据
-  const deletedModuleIdsRef = useRef<Set<string>>(new Set());
-
-  // ===== 保存到服务端（增量：只提交真正有变化的模块）=====
-  // 审计 C1：crm_modules 的写权限将撤销 anon，改走 /api/crm/modules。
-  // 服务端 RPC 会在同一事务内写「变更前快照」，可回溯。
-  const doSave = useCallback(async (modules: CrmModules) => {
-    try {
-      // 0. 显式删除
-      if (deletedModuleIdsRef.current.size > 0) {
-        const ids = Array.from(deletedModuleIdsRef.current);
-        const res = await fetch('/api/crm/modules', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ ids }),
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.error || `HTTP ${res.status}`);
-        }
-        deletedModuleIdsRef.current.clear();
-      }
-
-      // 1. 与上次成功保存的快照比对，只写变化的模块
-      const prevModules: CrmModule[] = snapshotRef.current ? JSON.parse(snapshotRef.current) : [];
-      const prevMap = new Map<string, CrmModule>(prevModules.map(m => [m.id, m]));
-
-      const toSave = modules.filter(m => {
-        const prev = prevMap.get(m.id);
-        if (!prev) return true;
-        return moduleContentKey(prev) !== moduleContentKey(m);
-      });
-
-      if (toSave.length > 0) {
-        const payload = toSave.map(m => ({
-          id: m.id,
-          name: m.name,
-          nameEn: m.nameEn,
-          emoji: m.emoji,
-          color: m.color,
-          order: modules.findIndex(x => x.id === m.id),
-          data: { stages: m.stages, fields: m.fields, contacts: m.contacts },
-        }));
-
-        const res = await fetch('/api/crm/modules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ modules: payload }),
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.error || `HTTP ${res.status}`);
-        }
-      }
-
-      // 保存成功：更新快照
-      snapshotRef.current = JSON.stringify(modules);
-
-      if (JSON.stringify(modules) === lastLocalContentRef.current) {
-        pendingSaveRef.current = false;
-      }
-      setSaveError(null);
-    } catch (err) {
-      console.error('[CRM] 保存到服务器失败:', err);
-      setSaveError('CRM 数据保存失败，已暂存在本地。请检查网络后重试。');
+  const sequence = useRef(0);
+  const apply = useCallback((action: CrmAction) => { optimistic.current = crmReducer(optimistic.current, action); rawDispatch(action); }, []);
+  const ensureLoaded = useCallback(() => { setActive(true); }, []);
+  const fetchModules = useCallback(async () => {
+    const response = await fetch('/api/crm/modules', { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(15000) });
+    const body = await response.json(); if (!response.ok) throw new Error(body.message || body.error || 'CRM unavailable');
+    if (body.accountId !== uid) throw new Error('Account changed');
+    return (body.modules || []).map(rowToModule) as CrmModules;
+  }, [uid]);
+  const refresh = useCallback(async (generation: number) => {
+    if (refreshing.current) { refreshAgain.current = true; return refreshing.current; }
+    const task = (async () => {
+    do {
+    refreshAgain.current = false;
+    const revision = mutationRevision.current;
+    const remote = await fetchModules();
+    if (generation !== epoch.current) return;
+    if (revision !== mutationRevision.current) { refreshAgain.current = true; continue; }
+    for (const m of remote) versions.current.set(m.id, m.version || 0);
+    let merged = remote;
+    for (const e of pending.current.values()) {
+      if (e.input?.action === 'create' && !merged.some(m => m.id === e.boardId)) merged = [...merged, e.input.module];
+      else if (e.input?.action === 'delete') merged = merged.filter(m => m.id !== e.boardId);
+      else merged = merged.map(m => m.id === e.boardId ? applyEntityOps(m, e.payload.ops) : m);
     }
-  }, []);
-
-  const enqueueSave = useCallback((modules: CrmModules) => {
-    saveQueueRef.current = saveQueueRef.current.then(() => doSave(modules)).catch(() => {});
-  }, [doSave]);
-
-  // ===== 从服务器重新拉取，内容变化时应用到 state（跨用户实时同步）=====
-  const refetchFromServer = useCallback(async () => {
-    if (!loadedRef.current) return;
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (!url) return;
-
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
-      );
-
-      const { data: rows } = await Promise.race([
-        supabase.from('crm_modules').select('*').order('order', { ascending: true }),
-        timeout.then(() => { throw new Error('timeout'); }),
-      ]) as any;
-
-      const remote: CrmModules = (rows || []).map(rowToModule);
-
-      // 逐模块合并：以 updatedAt 为准，谁新用谁（与看板策略一致）
-      const localModules = latestModulesRef.current;
-      const localMap = new Map<string, CrmModule>(localModules.map(m => [m.id, m]));
-
-      const merged: CrmModule[] = [];
-      const remoteIds = new Set<string>();
-
-      for (const rm of remote) {
-        remoteIds.add(rm.id);
-        const lm = localMap.get(rm.id);
-        if (!lm) { merged.push(rm); continue; }
-        const remoteTime = new Date(rm.updatedAt || 0).getTime();
-        const localTime = new Date(lm.updatedAt || 0).getTime();
-        if (remoteTime > localTime) {
-          merged.push(rm);
-        } else if (remoteTime === localTime && moduleContentKey(rm) !== moduleContentKey(lm)) {
-          merged.push(rm);
-        } else {
-          merged.push(lm);
-        }
-      }
-
-      // 本地有、远端没有的模块：保留（可能是刚创建还没保存成功）
-      for (const lm of localModules) {
-        if (!remoteIds.has(lm.id)) merged.push(lm);
-      }
-
-      const stable = modulesStableKey(merged);
-      if (stable === stableContentRef.current) return;
-
-      stableContentRef.current = stable;
-      lastLocalContentRef.current = JSON.stringify(merged);
-      latestModulesRef.current = merged;
-      // 注意：这里必须用 merged 而不是 remote。
-      // 若用 remote，本地尚未提交成功的改动会被当作"已保存"写进基线，
-      // 导致 doSave 误判"无变化"而跳过上传，改动就永远丢在本地了。
-      snapshotRef.current = JSON.stringify(merged);
-      try {
-        window.localStorage.setItem(BACKUP_KEY, JSON.stringify(merged));
-      } catch {}
-      dispatch({ type: 'CRM_LOAD', payload: merged });
-    } catch (err) {
-      console.warn('[CRM Realtime] 重新拉取失败:', err);
-    }
-  }, []);
-
-  // ===== 加载数据：本地备份与 Supabase 比较，取较新者 =====
-  useEffect(() => {
-    async function loadData() {
-      const backup = readBackup();
-      try {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        if (!url) throw new Error('No Supabase URL configured');
-
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Supabase request timed out')), 8000)
-        );
-
-        const { data: rows } = await Promise.race([
-          supabase.from('crm_modules').select('*').order('order', { ascending: true }),
-          timeout.then(() => { throw new Error('timeout'); }),
-        ]) as any;
-
-        const remote: CrmModules = (rows || []).map(rowToModule);
-        const serverHasData = remote.length > 0;
-
-        // 服务器为空但本地有数据 -> 用本地并补传（首次迁移，把老数据搬上云）
-        const useLocal = !serverHasData && !!backup && backup.length > 0;
-
-        let dataToUse: CrmModules;
-        if (useLocal && backup) {
-          dataToUse = backup;
-        } else if (serverHasData) {
-          dataToUse = remote;
-        } else {
-          dataToUse = createDefaultCrmModules();
-        }
-
-        dispatch({ type: 'CRM_LOAD', payload: dataToUse });
-        loadedRef.current = true;
-        lastLocalContentRef.current = JSON.stringify(dataToUse);
-        stableContentRef.current = modulesStableKey(dataToUse);
-        latestModulesRef.current = dataToUse;
-        snapshotRef.current = JSON.stringify(serverHasData ? remote : []);
-
+    apply({ type: 'CRM_LOAD', payload: merged });
+    } while (refreshAgain.current && generation === epoch.current);
+    })();
+    refreshing.current = task;
+    try { await task; } finally { if (refreshing.current === task) refreshing.current = null; }
+  }, [apply, fetchModules]);
+  const flush = useCallback(async () => {
+    if (!uid) return;
+    if (running.current) return running.current;
+    const generation = epoch.current;
+    const task = (async () => {
+      const restored = await listAll(uid);
+      if (generation !== epoch.current) return;
+      for (const e of restored) if (e.kind === 'crm' && !pending.current.has(e.id)) pending.current.set(e.id, e);
+      pending.current = new Map([...pending.current].sort(([,a],[,b]) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)));
+      const blocked = new Set<string>();
+      for (const entry of pending.current.values()) {
+        if (generation !== epoch.current) return;
+        if (blocked.has(entry.boardId)) continue;
+        let accepted = false;
         try {
-          window.localStorage.setItem(BACKUP_KEY, JSON.stringify(dataToUse));
-        } catch {}
-
-        // 本地有历史数据但服务器为空：补传到服务器
-        if (useLocal) {
-          pendingSaveRef.current = true;
-          enqueueSave(dataToUse);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const response = await fetch('/api/crm/modules', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15000), body: JSON.stringify({ id: entry.boardId, entryId: entry.id, accountId: uid, baseVersion: versions.current.get(entry.boardId) ?? entry.baseVersion, ops: entry.payload.ops, ...entry.input }) });
+          const body = await response.json();
+          if (generation !== epoch.current) return;
+          if (response.ok && body.ok) { await dequeue(entry.id); pending.current.delete(entry.id); mutationRevision.current++; accepted = true; await refresh(generation); break; }
+          if (body.code === 'VERSION_CONFLICT') { await refresh(generation); continue; }
+          throw new Error(body.message || body.code || body.error || 'CRM synchronization failed');
         }
-      } catch (err) {
-        console.warn('[CRM] 服务器加载失败，使用本地备份:', err);
-        let dataToUse: CrmModules;
-        if (backup && backup.length > 0) {
-          dataToUse = backup;
-          setSaveError('服务器连接失败，已加载本地 CRM 备份数据');
-        } else {
-          dataToUse = createDefaultCrmModules();
-        }
-        dispatch({ type: 'CRM_LOAD', payload: dataToUse });
-        loadedRef.current = true;
-        lastLocalContentRef.current = JSON.stringify(dataToUse);
-        stableContentRef.current = modulesStableKey(dataToUse);
-        latestModulesRef.current = dataToUse;
+        if (!accepted) throw new Error('CRM conflict remains; edits retained locally');
+        } catch (error) { blocked.add(entry.boardId); setSaveError('CRM 未同步，改动已保留：' + String(error)); }
       }
+      if (!pending.current.size) setSaveError(null);
+    })();
+    running.current = task;
+    try { await task; } catch (e) { setSaveError('CRM 未同步，改动已保留：' + String(e)); } finally { if (running.current === task) running.current = null; }
+  }, [uid, refresh]);
+  const dispatch = useCallback((input: CrmAction) => {
+    const action = { ...input, at: new Date().toISOString() } as CrmAction;
+    const before = optimistic.current; apply(action); const after = optimistic.current;
+    if (!uid || ['CRM_LOAD','CRM_SET_MODULE','CRM_SET_VIEW'].includes(action.type)) return;
+    const ids = new Set([...before.modules.map(m => m.id), ...after.modules.map(m => m.id)]);
+    for (const id of ids) {
+      const old = before.modules.find(m => m.id === id), next = after.modules.find(m => m.id === id);
+      if (old === next) continue;
+      const ops = old && next ? diffEntities(old, next) : [];
+      if (old && next && !ops.length) continue;
+      const e: OutboxEntry = { id: newEntryId(), accountId: uid, kind: 'crm', boardId: id, baseVersion: versions.current.get(id) || 0, payload: { ops }, attempts: 0, createdAt: sequence.current = Math.max(Date.now(), sequence.current + 1), input: next ? old ? { action: 'patch' } : { action: 'create', module: next } : { action: 'delete' } };
+      pending.current.set(e.id, e);
+      void enqueue(e).then(saved => { if (!saved) setSaveError('CRM 仅暂存内存，请勿关闭页面。'); return flush(); });
     }
-    loadData();
-  }, [enqueueSave]);
-
-  // ===== 跨标签页实时同步 =====
+  }, [uid, apply, flush]);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (typeof BroadcastChannel === 'undefined') return;
-
-    const bc = new BroadcastChannel(SYNC_CHANNEL);
-    bcRef.current = bc;
-    bc.onmessage = (e: MessageEvent) => {
-      const msg = e.data;
-      if (!msg || msg.kind !== 'full-snapshot' || !Array.isArray(msg.modules)) return;
-      const content = JSON.stringify(msg.modules);
-      if (content === lastLocalContentRef.current) return;
-      lastLocalContentRef.current = content;
-      stableContentRef.current = modulesStableKey(msg.modules);
-      latestModulesRef.current = msg.modules;
-      try {
-        window.localStorage.setItem(BACKUP_KEY, content);
-      } catch {}
-      dispatch({ type: 'CRM_LOAD', payload: msg.modules });
-    };
-
-    return () => {
-      bc.close();
-      bcRef.current = null;
-    };
-  }, []);
-
-  // ===== 订阅 Supabase Realtime：他人保存后实时同步到本端 =====
+    epoch.current++; pending.current.clear(); versions.current.clear(); running.current = null; refreshing.current = null;
+    apply({ type: 'CRM_LOAD', payload: [] });
+  }, [uid, apply]);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!url) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleRefetch = () => {
-      if (timer) clearTimeout(timer);
-      // Realtime 已确认可用时，延迟可以更短（推送已到，只需防抖）
-      timer = setTimeout(() => refetchFromServer(), realtimeOkRef.current ? 200 : 800);
-    };
-
-    const channel = supabase
-      .channel('crm-realtime-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_modules' }, () => {
-        realtimeOkRef.current = true;
-        scheduleRefetch();
-      })
-      .subscribe((status) => {
-        realtimeOkRef.current = status === 'SUBSCRIBED';
-      });
-
-    // 兜底轮询：Realtime 未启用时自动加快到 3 秒（启用时放宽到 15 秒，省流量）
-    const pollMs = () => (realtimeOkRef.current ? 15000 : 3000);
-    let pollId: ReturnType<typeof setInterval>;
-    const startPoll = () => {
-      pollId = setInterval(() => {
-        if (document.visibilityState === 'visible') refetchFromServer();
-      }, pollMs());
-    };
-    startPoll();
-    // 每 20 秒根据 realtime 状态重新校准轮询间隔
-    const recalibrate = setInterval(() => {
-      clearInterval(pollId);
-      startPoll();
-    }, 20000);
-
-    // 切回前台立即同步一次，避免"切走期间别人的改动"要等轮询才出现
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refetchFromServer();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
-
-    return () => {
-      if (timer) clearTimeout(timer);
-      clearInterval(pollId);
-      clearInterval(recalibrate);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onVisible);
-      supabase.removeChannel(channel);
-    };
-  }, [refetchFromServer]);
-
-  // 持久化：内容变化时落本地 + 广播给其他标签页 + 串行保存到服务器
-  useEffect(() => {
-    if (!state._loaded) return;
-    const modules = state.modules;
-    const current = JSON.stringify(modules);
-    if (current === lastLocalContentRef.current) return;
-
-    lastLocalContentRef.current = current;
-    stableContentRef.current = modulesStableKey(modules);
-    latestModulesRef.current = modules;
-
-    // 1. 本地兜底
-    pendingSaveRef.current = true;
-    try {
-      window.localStorage.setItem(BACKUP_KEY, current);
-    } catch (err) {
-      console.error('[CRM] 本地保存失败:', err);
-      setSaveError('CRM 数据保存失败，请检查浏览器存储空间');
-    }
-
-    // 2. 广播给其他标签页
-    try {
-      bcRef.current?.postMessage({ kind: 'full-snapshot', modules });
-    } catch {}
-
-    // 3. 串行保存到 Supabase
-    enqueueSave(modules);
-  }, [state.modules, state._loaded, enqueueSave]);
-
-  // ===== 关页面/切后台时强制 flush，防止数据滞留内存 =====
-  useEffect(() => {
-    const flush = () => {
-      const modules = latestModulesRef.current;
-      if (modules && modules.length > 0) enqueueSave(modules);
-    };
-    window.addEventListener('pagehide', flush);
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') flush();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [enqueueSave]);
-
-  // ===== 包装 dispatch：拦截删除动作，记录被显式删除的模块 ID =====
-  const trackedDispatch = useCallback((action: CrmAction) => {
-    if (action.type === 'CRM_DELETE_MODULE') {
-      deletedModuleIdsRef.current.add(action.payload);
-    }
-    dispatch(action);
-  }, [dispatch]);
-
-  useEffect(() => {
-    if (!saveError) return;
-    const timer = setTimeout(() => setSaveError(null), 8000);
-    return () => clearTimeout(timer);
-  }, [saveError]);
-
-  // 记住当前板块，供下次加载/状态重建时恢复
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!state.activeModuleId) return;
-    try {
-      window.localStorage.setItem(ACTIVE_MODULE_KEY, state.activeModuleId);
-    } catch {}
-  }, [state.activeModuleId]);
-
-  const value = useMemo(() => ({ state, dispatch: trackedDispatch, saveError }), [state, trackedDispatch, saveError]);
-
-  return (
-    <CrmContext.Provider value={value}>
-      {children}
-      {saveError && createPortal(
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[90vw]">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-medium shadow-xl animate-slide-up">
-            <span>{saveError}</span>
-            <button
-              onClick={() => setSaveError(null)}
-              className="shrink-0 px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors text-xs"
-            >
-              ✕
-            </button>
-          </div>
-        </div>,
-        document.body
-      )}
-    </CrmContext.Provider>
-  );
+    if (!uid || !active) return;
+    let cancelled = false; const generation = epoch.current;
+    const resume = async () => { if (cancelled || document.visibilityState === 'hidden') return; await flush(); try { await refresh(generation); } catch (e) { if (!cancelled) setSaveError(String(e)); } };
+    void resume();
+    const interval = setInterval(() => void resume(), 15000);
+    const unsubscribe = subscribeSync(() => { void resume(); });
+    const wake = () => { void resume(); };
+    window.addEventListener('online', wake); window.addEventListener('pageshow', wake); document.addEventListener('visibilitychange', wake);
+    return () => { cancelled = true; clearInterval(interval); unsubscribe(); window.removeEventListener('online', wake); window.removeEventListener('pageshow', wake); document.removeEventListener('visibilitychange', wake); };
+  }, [uid, active, flush, refresh]);
+  const value = useMemo(() => ({ state, dispatch, saveError, ensureLoaded }), [state, dispatch, saveError, ensureLoaded]);
+  return <CrmContext.Provider value={value}>{children}{saveError && createPortal(<div role="alert" className="fixed bottom-6 left-4 z-[100000] max-w-sm rounded-xl bg-red-600 p-3 text-xs text-white">{saveError}</div>, document.body)}</CrmContext.Provider>;
 }
-
 export function useCrm() {
   const context = useContext(CrmContext);
   if (!context) throw new Error('useCrm must be used within CrmProvider');
-  const { state, dispatch, saveError } = context;
+  const { state, dispatch, saveError, ensureLoaded } = context;
+  useEffect(() => { ensureLoaded(); }, [ensureLoaded]);
   const activeModule = state.modules.find(m => m.id === state.activeModuleId) || state.modules[0] || null;
-
-  return {
-    state,
-    dispatch,
-    saveError,
-    modules: state.modules,
-    module: activeModule,
-    activeModuleId: state.activeModuleId,
-    view: state.view,
-    contacts: activeModule?.contacts || [],
-    stages: [...(activeModule?.stages || [])].sort((a, b) => a.order - b.order),
-    fields: activeModule?.fields || [],
-  };
+  return { state, dispatch, saveError, modules: state.modules, module: activeModule, activeModuleId: state.activeModuleId, view: state.view, contacts: activeModule?.contacts || [], stages: [...(activeModule?.stages || [])].sort((a,b) => a.order-b.order), fields: activeModule?.fields || [] };
 }

@@ -11,37 +11,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const BASE_COLUMNS = ['id', 'name', 'email', 'avatar', 'color', 'role', 'lang', 'password'];
-const OPTIONAL_COLUMNS = ['password_hash', 'name_key', 'is_deleted', 'deleted_at'];
-
-let cachedSelect: string | null = null;
-
-async function hasColumn(admin: SupabaseClient, col: string): Promise<boolean> {
-  const { error } = await admin.from('users').select(col).limit(1);
-  return !error;
-}
+const OPTIONAL_COLUMNS = ['password_hash', 'name_key', 'is_deleted', 'deleted_at', 'session_version'];
 
 /** 返回当前实际可用的列（逗号分隔），用于 .select() */
-export async function resolveUserColumns(admin: SupabaseClient): Promise<string> {
-  if (cachedSelect) return cachedSelect;
-
-  const available = [...BASE_COLUMNS];
-  for (const col of OPTIONAL_COLUMNS) {
-    if (await hasColumn(admin, col)) available.push(col);
-  }
-  cachedSelect = available.join(', ');
-  console.info('[users] 可用列:', cachedSelect);
-  return cachedSelect;
+export async function resolveUserColumns(_admin: SupabaseClient): Promise<string> {
+  return [...BASE_COLUMNS, ...OPTIONAL_COLUMNS].join(', ');
 }
 
 /** 某个可选列是否可用（用于分支逻辑，如是否展示软删除过滤） */
 export async function hasUserColumn(admin: SupabaseClient, col: string): Promise<boolean> {
   const select = await resolveUserColumns(admin);
   return select.split(',').map(s => s.trim()).includes(col);
-}
-
-/** 测试/热更新用：清空缓存 */
-export function resetUserColumnCache(): void {
-  cachedSelect = null;
 }
 
 /**

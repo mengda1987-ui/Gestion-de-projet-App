@@ -95,7 +95,7 @@ export default function TableView() {
     });
 
     return result;
-  }, [board.columns, filters, sortField, sortOrder]);
+  }, [board.columns, filters, sortField, sortOrder, currentUser?.id, currentUser?.role]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

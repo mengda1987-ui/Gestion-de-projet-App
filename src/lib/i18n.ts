@@ -771,7 +771,3 @@ export function t(lang: Lang, key: string, vars?: Record<string, string | number
   }
   return s;
 }
-
-export function getDictionary(lang: Lang): Dict {
-  return dictionaries[lang] || dictionaries.zh;
-}
