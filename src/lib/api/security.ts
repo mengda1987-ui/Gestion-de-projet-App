@@ -6,6 +6,13 @@ import type { EntityOp } from '@/context/patch/delta';
 export class ApiFailure extends Error {
   constructor(public status: number, public code: string, message = code) { super(message); }
 }
+export function patchValidationFailure(error: unknown, phase: 'ops' | 'board'): ApiFailure | null {
+  if (!(error instanceof ApiFailure) || error.status !== 400) return null;
+  const detail = phase === 'ops'
+    ? 'Patch operations do not match the board schema; the invalid queue entry has been rejected.'
+    : 'The resulting board does not match the board schema; the invalid queue entry has been rejected.';
+  return new ApiFailure(422, 'BAD_PATCH', `${detail} ${error.message}`);
+}
 export function assert(value: unknown, message = 'BAD_REQUEST'): asserts value {
   if (!value) throw new ApiFailure(400, message);
 }
@@ -90,30 +97,34 @@ const child: Record<string, string> = { columns: 'column', cards: 'card', labels
 const arrays = new Set(['labels', 'assignees', 'linkedContacts', 'visibleTo', 'tags', 'options']);
 const nullable = new Set(['emoji', 'iconBg', 'iconImage', 'coverImage', 'visibleTo', 'linkedContacts', 'dueDate', 'startDate', 'mmNodeId', 'mmRootId', 'mmPosition', 'parentId']);
 function fieldValue(key: string, v: any, entity: string): void {
-  if (v === null) { assert(nullable.has(key) || (key === 'description' && entity === 'node')); return; }
+  const invalid = (expected: string): never => { throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${entity}.${key} ${expected}`); };
+  if (v === null) { if (nullable.has(key) || (key === 'description' && entity === 'node')) return; invalid('cannot be null'); }
   if (child[key] && !(key === 'labels' && entity === 'card')) {
-    assert(Array.isArray(v)); const ids = new Set(); for (const x of v) { validateEntity(x, child[key]); assert(!ids.has(x.id)); ids.add(x.id); } return;
+    if (!Array.isArray(v)) invalid('must be an array'); const ids = new Set(); for (const x of v) { validateEntity(x, child[key]); assert(!ids.has(x.id), 'DUPLICATE_ID'); ids.add(x.id); } return;
   }
-  if (arrays.has(key)) { assert(Array.isArray(v) && v.every(x => typeof x === 'string' && x.length <= 200)); return; }
-  if (['order', 'size', 'position'].includes(key)) { assert(typeof v === 'number' && Number.isFinite(v) && (key !== 'size' || v >= 0)); return; }
-  if (['archived', 'completed', 'collapsed'].includes(key)) { assert(typeof v === 'boolean'); return; }
-  if (key === 'mmPosition') { assert(v && typeof v.x === 'number' && Number.isFinite(v.x) && typeof v.y === 'number' && Number.isFinite(v.y)); return; }
-  if (key === 'customFields') { assert(v && !Array.isArray(v) && typeof v === 'object' && Object.values(v).every(x => typeof x === 'string')); return; }
-  assert(typeof v === 'string' && v.length <= (['url', 'coverImage', 'iconImage', 'background'].includes(key) ? 1024 * 1024 : 100000), `INVALID_FIELD: ${entity}.${key} must be a string`);
-  if (key === 'status') assert(['todo', 'in_progress', 'complete'].includes(v));
-  if (key === 'type' && entity === 'field') assert(['text','number','date','select'].includes(v));
-  if (['url', 'coverImage', 'iconImage'].includes(key)) assert(!v || /^(https?:\/\/|data:image\/(png|jpeg|webp|gif);base64,|data:application\/pdf;base64,)/i.test(v), 'INVALID_URL');
-  if (['dueDate', 'startDate'].includes(key)) assert(Number.isFinite(Date.parse(v)), 'INVALID_DATE');
+  if (arrays.has(key)) { if (!Array.isArray(v) || !v.every(x => typeof x === 'string' && x.length <= 200)) invalid('must be an array of strings'); return; }
+  if (['order', 'size', 'position'].includes(key)) { if (typeof v !== 'number' || !Number.isFinite(v) || (key === 'size' && v < 0)) invalid('must be a valid number'); return; }
+  if (['archived', 'completed', 'collapsed'].includes(key)) { if (typeof v !== 'boolean') invalid('must be a boolean'); return; }
+  if (key === 'mmPosition') { if (!v || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) invalid('must contain finite numeric x and y coordinates'); return; }
+  if (key === 'customFields') { if (!v || Array.isArray(v) || typeof v !== 'object' || !Object.values(v).every(x => typeof x === 'string')) invalid('must be an object of strings'); return; }
+  if (typeof v !== 'string' || v.length > (['url', 'coverImage', 'iconImage', 'background'].includes(key) ? 1024 * 1024 : 100000)) invalid('must be a string within the allowed length');
+  if (key === 'status' && !['todo', 'in_progress', 'complete'].includes(v)) invalid('has an unsupported status');
+  if (key === 'type' && entity === 'field' && !['text','number','date','select'].includes(v)) invalid('has an unsupported field type');
+  if (['url', 'coverImage', 'iconImage'].includes(key) && v && !/^(https?:\/\/|data:image\/(png|jpeg|webp|gif);base64,|data:application\/pdf;base64,)/i.test(v)) throw new ApiFailure(400, 'INVALID_URL', `INVALID_URL: ${entity}.${key}`);
+  if (['dueDate', 'startDate'].includes(key) && !Number.isFinite(Date.parse(v))) throw new ApiFailure(400, 'INVALID_DATE', `INVALID_DATE: ${entity}.${key}`);
 }
 export function validateEntity(v: any, type: string): void {
   assert(v && !Array.isArray(v) && typeof v === 'object' && typeof v.id === 'string' && v.id.length > 0 && v.id.length <= 200);
   for (const [key, value] of Object.entries(v)) {
     if (['id', 'createdAt', 'updatedAt', 'version', 'isDeleted'].includes(key)) continue;
-    assert(allowed[type]?.includes(key), 'INVALID_FIELD'); fieldValue(key, value, type);
+    if (!allowed[type]?.includes(key)) throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${type}.${key} is not allowed`);
+    fieldValue(key, value, type);
   }
   const required: Record<string, string[]> = { column: ['title', 'cards', 'archived', 'order'], card: ['title', 'description', 'labels', 'assignees', 'checklists', 'comments', 'attachments', 'status', 'archived', 'order'], checklist: ['name', 'items'], item: ['text', 'completed'], module: ['name', 'nameEn', 'emoji', 'color', 'contacts', 'stages', 'fields'], contact: ['name', 'email', 'phone', 'company', 'tags', 'ownerId', 'stageId', 'notes', 'customFields'] };
   required.comment = ['userId', 'text']; required.attachment = ['name', 'url', 'type', 'size']; required.label = ['name', 'color']; required.node = ['text', 'parentId', 'color', 'order']; required.stage = ['name', 'order']; required.field = ['name', 'type'];
-  for (const key of required[type] || []) assert(key in v, 'MISSING_FIELD');
+  for (const key of required[type] || []) {
+    if (!(key in v)) throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${type}.${key} is required`);
+  }
   if (type === 'board') {
     const ids = new Set<string>();
     for (const column of v.columns || []) for (const card of column.cards || []) {
@@ -149,7 +160,7 @@ export function validateOps(ops: any, root: 'board' | 'module', user: SessionPay
           assert((op.op === 'set' && typeof op.value === 'string') || op.op === 'unset');
           i++; key = 'customFieldEntry'; value = value?.customFields?.[op.path[i]]; break;
         }
-        assert(allowed[type]?.includes(key), 'INVALID_PATH');
+        if (!allowed[type]?.includes(key)) throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${type}.${key} is not allowed`);
         if (user.role !== 'admin' && ['visibleTo', 'emoji', 'iconBg', 'iconImage'].includes(key)) throw new ApiFailure(403, 'FORBIDDEN');
         const nested = child[key] && !(key === 'labels' && type === 'card');
         if (nested) collection = child[key];

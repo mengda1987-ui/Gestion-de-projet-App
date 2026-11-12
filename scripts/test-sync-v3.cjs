@@ -27,7 +27,9 @@ const { normalizeAction } = load('src/context/normalizeAction.ts');
 const { boardReducer } = load('src/context/BoardContext.tsx');
 const { createInitialState } = load('src/context/types.ts');
 const { diffEntities, applyEntityOps } = load('src/context/patch/delta.ts');
-const { validateEntity, validateOps } = load('src/lib/api/security.ts');
+const { actionToPatch } = load('src/context/patch/ops.ts');
+const { formatPatchError } = load('src/context/patch/client.ts');
+const { ApiFailure, patchValidationFailure, validateEntity, validateOps } = load('src/lib/api/security.ts');
 let state = createInitialState();
 state.currentUser = { id: crypto.randomUUID(), role: 'admin' };
 function apply(action) {
@@ -36,7 +38,8 @@ function apply(action) {
   assert.deepEqual(predicted, actual, action.type + ' must be deterministic');
   if (state.board.id && predicted.board.id === state.board.id) {
     // Match fetch(JSON.stringify(...)): undefined optional fields arrive as null.
-    const ops = JSON.parse(JSON.stringify(diffEntities(state.board, predicted.board)));
+    const payload = actionToPatch(normalized, predicted.board, state.board);
+    const ops = JSON.parse(JSON.stringify(payload?.ops || []));
     const user = { uid: state.currentUser.id, role: state.currentUser.role };
     if (ops.length) validateOps(ops, 'board', user, state.board);
     const result = applyEntityOps(state.board, ops);
@@ -49,10 +52,39 @@ function apply(action) {
   state = predicted;
 }
 apply({ type: 'CREATE_BOARD', payload: { title: 'Test', background: '#fff' } });
-apply({ type: 'ADD_COLUMN', payload: { title: 'List' } });
+const addColumnAction = normalizeAction({ type: 'ADD_COLUMN', payload: { title: 'List' } });
+const beforeAddColumn = state.board;
+apply(addColumnAction);
+const addColumnPatch = actionToPatch(addColumnAction, state.board, beforeAddColumn);
+assert.ok(addColumnPatch.ops.some(op => op.op === 'insert' && op.path.join('.') === 'columns'));
 const col = state.board.columns[0].id;
-apply({ type: 'ADD_CARD', payload: { columnId: col, card: { title: 'Task' } } });
+const addCardAction = normalizeAction({ type: 'ADD_CARD', payload: { columnId: col, card: { title: 'Task', coverImage: null, dueDate: null, startDate: null, visibleTo: [], linkedContacts: [], mmPosition: null } } });
+const beforeAddCard = state.board;
+apply(addCardAction);
+const addCardPatch = actionToPatch(addCardAction, state.board, beforeAddCard);
+assert.ok(addCardPatch.ops.some(op => op.op === 'insert' && op.path.join('.') === `columns.${col}.cards`));
 const card = state.board.columns[0].cards[0].id;
+const updateCardAction = normalizeAction({ type: 'UPDATE_CARD', payload: { cardId: card, updates: { description: 'Updated', coverImage: null, dueDate: null, startDate: null, visibleTo: null, linkedContacts: [], completed: true } } });
+const beforeUpdateCard = state.board;
+apply(updateCardAction);
+const updateCardPatch = actionToPatch(updateCardAction, state.board, beforeUpdateCard);
+assert.ok(updateCardPatch.ops.length > 0, 'UPDATE_CARD must produce frontend operations');
+assert.doesNotThrow(() => validateOps(JSON.parse(JSON.stringify(updateCardPatch.ops)), 'board', { uid: state.currentUser.id, role: 'admin' }, beforeUpdateCard));
+assert.throws(
+  () => validateEntity({ id: 'bad-card', title: 'Bad', description: '', labels: [], assignees: [], checklists: [], comments: [], attachments: [], status: 'todo', archived: false, order: 'first' }, 'card'),
+  error => error.code === 'INVALID_FIELD' && /card\.order/.test(error.message),
+  'invalid order type must report the exact card field',
+);
+assert.throws(
+  () => validateEntity({ id: 'bad-card', title: 'Bad', description: '', labels: [], assignees: [], checklists: [], comments: [], attachments: [], status: 'todo', archived: false, order: 0, unknownField: true }, 'card'),
+  error => error.code === 'INVALID_FIELD' && /card\.unknownField/.test(error.message),
+  'unknown card field must report its exact name',
+);
+const routeFailure = patchValidationFailure(new ApiFailure(400, 'INVALID_FIELD', 'INVALID_FIELD: card.order must be a valid number'), 'ops');
+assert.equal(routeFailure.status, 422);
+assert.equal(routeFailure.code, 'BAD_PATCH');
+assert.match(routeFailure.message, /INVALID_FIELD: card\.order must be a valid number/);
+assert.match(formatPatchError({ message: 'INVALID_FIELD: card.unknown is not allowed', details: { field: 'card.unknown' } }), /INVALID_FIELD: card\.unknown is not allowed.*card\.unknown/);
 apply({ type: 'ADD_CHECKLIST', payload: { cardId: card, name: 'Steps' } });
 const cl = state.board.columns[0].cards[0].checklists[0].id;
 apply({ type: 'ADD_CHECKLIST_ITEM', payload: { cardId: card, checklistId: cl, text: 'Step' } });
@@ -77,7 +109,12 @@ assert.deepEqual(clear, [{ op: 'set', path: ['dueDate'], value: null }]);
 apply({ type: 'ADD_COLUMN', payload: { title: 'Target' } });
 const sourceId = state.board.columns.find(c => c.cards.length).id;
 const targetId = state.board.columns.find(c => !c.cards.length).id;
-apply({ type: 'MOVE_CARD', payload: { fromColumnId: sourceId, toColumnId: targetId, fromIndex: 0, toIndex: 0 } });
+const moveAction = normalizeAction({ type: 'MOVE_CARD', payload: { fromColumnId: sourceId, toColumnId: targetId, fromIndex: 0, toIndex: 0 } });
+const beforeMove = state.board;
+apply(moveAction);
+const movePatch = actionToPatch(moveAction, state.board, beforeMove);
+assert.ok(movePatch.ops.some(op => op.op === 'move'), 'MOVE_CARD must produce a move operation');
+assert.doesNotThrow(() => validateOps(JSON.parse(JSON.stringify(movePatch.ops)), 'board', { uid: state.currentUser.id, role: 'admin' }, beforeMove));
 assert.equal(state.board.columns.find(c => c.id === targetId).cards[0].id, card);
 apply({ type: 'UPDATE_CHECKLIST_ITEM', payload: { cardId: card, checklistId: cl, itemId: state.board.columns.find(c => c.id === targetId).cards[0].checklists[0].items[0].id, updates: { mmPosition: { x: 2, y: 5 } } } });
 const positionDelta = diffEntities({ id:'x', mmPosition: {x:0,y:0} }, { id:'x', mmPosition:{x:3,y:4} });

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminClient, assert, authorizeBoard, jsonBody, route, uuid, validateOps, validateEntity, lookupReceipt, ApiFailure } from '@/lib/api/security';
+import { adminClient, assert, authorizeBoard, jsonBody, route, uuid, validateOps, validateEntity, lookupReceipt, ApiFailure, patchValidationFailure } from '@/lib/api/security';
 import { applyEntityOps } from '@/context/patch/delta';
 import { mapBoardRow } from '@/context/sync/boardApi';
 export const runtime = 'nodejs';
@@ -18,20 +18,14 @@ export const POST = route(async (request, user) => {
   try {
     validateOps(body.patch?.ops, 'board', user, board);
   } catch (error) {
-    if (error instanceof ApiFailure && error.status === 400 && error.code === 'BAD_REQUEST') {
-      throw new ApiFailure(422, 'BAD_PATCH', 'Patch operations do not match the board schema; the invalid queue entry has been rejected.');
-    }
-    throw error;
+    throw patchValidationFailure(error, 'ops') || error;
   }
   const candidate = applyEntityOps(board, body.patch.ops);
   // Validate the entire resulting graph as well as every requested path.
   try {
     validateEntity(candidate, 'board');
   } catch (error) {
-    if (error instanceof ApiFailure && error.status === 400 && error.code === 'BAD_REQUEST') {
-      throw new ApiFailure(422, 'BAD_PATCH', 'The resulting board does not match the board schema; the invalid queue entry has been rejected.');
-    }
-    throw error;
+    throw patchValidationFailure(error, 'board') || error;
   }
   const { data, error } = await adminClient().rpc('apply_workspace_patch_v3', { p_kind: 'board', p_id: body.boardId, p_base_version: body.baseVersion, p_ops: body.patch.ops, p_entry_id: body.entryId, p_actor_id: user.uid });
   if (error) { console.error('[patch]', error); throw new ApiFailure(503, 'WRITE_UNAVAILABLE'); }

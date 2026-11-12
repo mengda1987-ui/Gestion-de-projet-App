@@ -43,6 +43,19 @@ export interface PatchRejected {
 
 export type PatchResult = PatchSuccess | PatchConflict | PatchRejected;
 
+/** Preserve complete, actionable server diagnostics for the sync error capsule. */
+export function formatPatchError(body: any): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  const errorMessage = typeof body.error === 'string'
+    ? body.error.trim()
+    : typeof body.error?.message === 'string' ? body.error.message.trim() : '';
+  const details = typeof body.details === 'string'
+    ? body.details.trim()
+    : body.details && typeof body.details === 'object' ? JSON.stringify(body.details) : '';
+  return [...new Set([message, errorMessage, details].filter(Boolean))].join(' · ') || undefined;
+}
+
 const ENDPOINT = '/api/board/patch';
 
 /**
@@ -67,7 +80,7 @@ function toResult(body: any, status?: number): PatchResult {
   return {
     ok: false,
     code,
-    message: body?.message || body?.error,
+    message: formatPatchError(body),
     status,
     permanent: status === 400 || status === 413 || status === 422,
     before: body?.before,
