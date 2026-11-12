@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BoardState, createInitialState } from './types';
 import { Action } from './actions';
@@ -66,6 +66,7 @@ export function boardReducer(state: BoardState, action: Action): BoardState {
 
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, rawDispatch] = useReducer(boardReducer, null, createInitialState);
+  const [syncNoticeDismissed, setSyncNoticeDismissed] = useState(false);
 
   const {
     dispatchWithSync,
@@ -110,47 +111,37 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   );
   const contentValue = React.useMemo(() => ({ board: state.board, users: state.users, currentUser: state.currentUser }), [state.board, state.users, state.currentUser]);
 
+  useEffect(() => {
+    setSyncNoticeDismissed(false);
+  }, [saveError, syncState.kind, syncState.label, syncState.detail]);
+
   return (
     <BoardCommandsContext.Provider value={contextValue}><BoardStateContext.Provider value={state}><BoardContentContext.Provider value={contentValue}>
       {children}
-      {saveError &&
+      {(saveError || (state._loaded && syncState.kind !== 'idle')) && !syncNoticeDismissed &&
         createPortal(
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[90vw]">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-red-600 text-white text-sm font-medium shadow-xl animate-slide-up">
-              <span>{saveError}</span>
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[2147483647] w-max max-w-[min(92vw,42rem)] pointer-events-none">
+            <div
+              role={saveError || syncState.kind === 'error' ? 'alert' : 'status'}
+              className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-900/95 px-4 py-3 text-sm font-medium text-white shadow-xl animate-slide-up pointer-events-auto"
+            >
+              <span className="min-w-0 flex-1 break-words">
+                <span className="block">{saveError || syncState.label}</span>
+                {saveError && syncState.kind !== 'idle' && (
+                  <span className="mt-1 block text-xs font-normal text-slate-300">{syncState.label}</span>
+                )}
+                {syncState.detail && (
+                  <span className="mt-1 block text-xs font-normal text-slate-300">{syncState.detail}</span>
+                )}
+              </span>
               <button
-                onClick={() => setSaveError(null)}
-                className="shrink-0 px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors text-xs"
+                type="button"
+                aria-label="关闭同步提示"
+                onClick={() => setSyncNoticeDismissed(true)}
+                className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-white hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
               >
                 ✕
               </button>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {state._loaded &&
-        syncState.kind !== 'idle' &&
-        createPortal(
-          <div
-            className="fixed bottom-3 left-4 z-[99998] select-none"
-            title={syncState.detail}
-          >
-            <div
-              className={
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium shadow-md backdrop-blur ' +
-                (syncState.kind === 'error'
-                  ? 'bg-red-600/95 text-white cursor-help'
-                  : 'bg-amber-500/95 text-white')
-              }
-            >
-              <span
-                className={
-                  'w-1.5 h-1.5 rounded-full bg-white ' +
-                  (syncState.kind === 'pending' ? 'animate-pulse' : '')
-                }
-              />
-              {syncState.label}
             </div>
           </div>,
           document.body,
