@@ -29,13 +29,14 @@ async function test(){
  const uid=crypto.randomUUID(); let state=createInitialState();state.currentUser={id:uid,role:'admin'};
  for(const a of [{type:'CREATE_BOARD',payload:{title:'Board',background:'#fff'}},{type:'ADD_COLUMN',payload:{title:'List'}}])state=boardReducer(state,normalizeAction(a));
  state=boardReducer(state,normalizeAction({type:'ADD_CARD',payload:{columnId:state.board.columns[0].id,card:{title:'Card'}}}));state._loaded=true;
- let cloud=structuredClone(state), version=0, sent=[],fail=false,conflict=true, captureFetch;
+ let cloud=structuredClone(state), version=0, sent=[],fail=false,permanentFail=false,conflict=true, captureFetch;
  const effects=[],refs=[],values=[];let cursor=0;
  const react={useRef:v=>{const i=cursor++;return refs[i]||=( {current:v} )},useState:v=>{const i=cursor++;values[i]??=v;return [values[i],v=>{values[i]=typeof v==='function'?v(values[i]):v;}];},useCallback:f=>{cursor++;return f;},useEffect:f=>{cursor++;effects.push(f);}};
  const snapshot=s=>({boards:s.boards,users:s.users,workspaceBackground:s.workspaceBackground,loginBackground:s.loginBackground,portalBackground:s.portalBackground,crmBackground:s.crmBackground,portalImageOpacity:1,crmImageOpacity:1,logo:''});
  const api={buildSnapshot:snapshot,readLocalBackup:()=>null,writeLocalBackup:()=>'',fetchRemoteSnapshot:async()=>captureFetch?new Promise(resolve=>{captureFetch.resolve=resolve;}):({snapshot:snapshot(cloud)})};
  const patch={submitEntry:async entry=>{
   sent.push(entry);
+  if(permanentFail)return {ok:false,code:'BAD_REQUEST',message:'BAD_REQUEST: baseVersion must be a non-negative integer',status:400,permanent:true};
   if(fail)return {ok:false,code:'ERROR'};
   if(conflict){conflict=false;version++;return {ok:false,code:'VERSION_CONFLICT',currentVersion:version};}
   cloud.board={...applyEntityOps(cloud.board,entry.payload.ops),version:++version};cloud.boards=[cloud.board];return {ok:true,version,cards:1};
@@ -61,6 +62,18 @@ async function test(){
   fail=false;const attemptsBeforeBackoff=sent.length;await hook.drainOutbox();assert.equal(sent.length,attemptsBeforeBackoff);assert.equal((await outbox.listAll(uid)).length,1);
   await new Promise(resolve=>setTimeout(resolve,5200));await hook.drainOutbox();assert.equal(cloud.board.columns[0].cards[0].description,'Offline retained');
  assert.equal((await outbox.listAll(uid)).length,0);
+ permanentFail=true;hook.dispatchWithSync({type:'UPDATE_CARD',payload:{cardId:card,updates:{description:'Bad patch retained locally'}}});
+ await hook.drainOutbox();
+ const rejectedView=render();assert.equal(rejectedView.syncState.permanent,true);assert.equal(rejectedView.syncState.code,'BAD_REQUEST');
+ const rejectedEntry=(await outbox.listAll(uid)).find(e=>e.rejection);assert.ok(rejectedEntry);assert.equal(rejectedEntry.rejection.status,400);
+ const attemptsBeforePermanentRetry=sent.length;await hook.drainOutbox();assert.equal(sent.length,attemptsBeforePermanentRetry,'permanent HTTP 400 must not retry');
+ const crmEntry={id:crypto.randomUUID(),accountId:uid,boardId:'crm-module',baseVersion:0,payload:{ops:[]},createdAt:Date.now()+1,attempts:0,kind:'crm'};
+ const otherBoardEntry={id:crypto.randomUUID(),accountId:uid,boardId:'another-board',baseVersion:0,payload:{ops:[]},createdAt:Date.now()+2,attempts:0,kind:'patch',rejection:{status:400,code:'BAD_REQUEST',message:'other board failure'}};
+ const appearanceEntry={id:crypto.randomUUID(),accountId:uid,boardId:'',baseVersion:0,payload:{ops:[]},createdAt:Date.now()+3,attempts:0,kind:'appearance',input:{appearance:{workspaceBackground:'#fff'}},rejection:{status:400,code:'BAD_REQUEST',message:'appearance failure'}};
+  await outbox.enqueue(crmEntry);await outbox.enqueue(otherBoardEntry);await outbox.enqueue(appearanceEntry);
+  await hook.discardRejectedQueueAndRestore();
+  const remaining=await outbox.listAll(uid);assert.equal(remaining.some(e=>e.id===rejectedEntry.id),false);assert.equal(remaining.some(e=>e.id===crmEntry.id),true,'cleanup must preserve CRM queue');assert.equal(remaining.some(e=>e.id===otherBoardEntry.id),true,'cleanup must preserve other-board queue');assert.equal(remaining.some(e=>e.id===appearanceEntry.id),true,'cleanup must preserve global appearance queue');
+  await outbox.dequeue(crmEntry.id);await outbox.dequeue(otherBoardEntry.id);await outbox.dequeue(appearanceEntry.id);permanentFail=false;
  const hiddenEntry={id:crypto.randomUUID(),accountId:crypto.randomUUID(),boardId:'other',baseVersion:0,payload:{ops:[]},createdAt:1,attempts:0};
  await outbox.enqueue(hiddenEntry);assert.equal((await outbox.listAll(uid)).length,0);assert.equal((await outbox.listAll(hiddenEntry.accountId)).length,1);
  await outbox.dequeue(hiddenEntry.id);
@@ -68,6 +81,6 @@ async function test(){
  assert.equal(state.currentUser,null);assert.equal(state.boards.length,0);
  const logoutEffect=effects.find(f=>f.toString().includes('pending.current.clear()'));assert.ok(logoutEffect);logoutEffect();
  for(const r of refs)if(r?.current && typeof r.current==='object' && typeof r.current.hasRef==='function')clearTimeout(r.current);
- console.log('PASS real synchronization hook: consecutive actions, conflict replay, offline retention/retry, account-isolated queue and logout reset');
+  console.log('PASS sync hook: conflict replay, network retry, permanent 400 pause, safe board-scoped cleanup, CRM/other-board preservation and logout reset');
 }
 test().catch(e=>{console.error(e);process.exitCode=1;});

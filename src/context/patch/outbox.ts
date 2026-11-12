@@ -4,6 +4,7 @@ export interface OutboxEntry {
   payload: BoardPatchPayload; createdAt: number; attempts: number;
   kind?: 'patch' | 'create' | 'delete' | 'reorder' | 'appearance' | 'profile' | 'crm';
   input?: Record<string, any>;
+  rejection?: { status: number; code: string; message: string };
 }
 const memory = new Map<string, OutboxEntry>();
 let opening: Promise<IDBDatabase | null> | undefined;
@@ -70,6 +71,30 @@ export async function dequeue(id: string): Promise<void> {
   try { localStorage.setItem(receiptKey(entry.accountId, id), '1'); localStorage.removeItem(recordKey(entry)); } catch {}
   await transaction('readwrite', store => store.delete(id));
   memory.delete(id);
+}
+export async function markRejected(id: string, rejection: NonNullable<OutboxEntry['rejection']>): Promise<void> {
+  const entry = memory.get(id);
+  if (!entry) return;
+  const rejected = { ...entry, rejection };
+  memory.set(id, rejected);
+  mirror(rejected);
+  await transaction('readwrite', store => store.put(rejected));
+}
+/** Discard only explicitly selected entries owned by this account. */
+export async function discardEntries(accountId: string, ids: string[]): Promise<void> {
+  if (!accountId || !ids.length) return;
+  const wanted = new Set(ids);
+  const entries = (await listAll(accountId)).filter(entry => entry.accountId === accountId && wanted.has(entry.id));
+  for (const entry of entries) await dequeue(entry.id);
+  const removed = new Set(entries.map(entry => entry.id));
+  try {
+    const name = key(accountId);
+    const legacy = JSON.parse(localStorage.getItem(name) || '[]');
+    if (Array.isArray(legacy)) localStorage.setItem(name, JSON.stringify(legacy.filter((entry: OutboxEntry) => !removed.has(entry.id) || entry.accountId !== accountId)));
+    const done = new Set<string>(JSON.parse(localStorage.getItem(ackKey(accountId)) || '[]'));
+    for (const id of removed) done.add(id);
+    localStorage.setItem(ackKey(accountId), JSON.stringify([...done]));
+  } catch {}
 }
 export async function listAll(accountId?: string): Promise<OutboxEntry[]> {
   if (!accountId) return [];

@@ -26,6 +26,8 @@ export interface SyncIndicatorState {
   kind: 'idle' | 'pending' | 'error';
   label: string;
   detail?: string;
+  code?: string;
+  permanent?: boolean;
 }
 
 export function buildSnapshot(state: BoardState): WorkspaceSnapshot {

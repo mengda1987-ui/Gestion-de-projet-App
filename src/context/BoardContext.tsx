@@ -67,10 +67,12 @@ export function boardReducer(state: BoardState, action: Action): BoardState {
 export function BoardProvider({ children }: { children: React.ReactNode }) {
   const [state, rawDispatch] = useReducer(boardReducer, null, createInitialState);
   const [syncNoticeDismissed, setSyncNoticeDismissed] = useState(false);
+  const [syncNoticeExpanded, setSyncNoticeExpanded] = useState(false);
 
   const {
     dispatchWithSync,
     drainOutbox,
+    discardRejectedQueueAndRestore,
     saveError,
     setSaveError,
     syncState,
@@ -118,32 +120,37 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   return (
     <BoardCommandsContext.Provider value={contextValue}><BoardStateContext.Provider value={state}><BoardContentContext.Provider value={contentValue}>
       {children}
-      {typeof document !== 'undefined' && (saveError || (state._loaded && syncState.kind !== 'idle')) && !syncNoticeDismissed &&
+      {typeof document !== 'undefined' && state.appSection !== 'crm' && (saveError || (state._loaded && syncState.kind !== 'idle')) && (!syncNoticeDismissed || syncState.permanent) &&
         createPortal(
-          // Keep this above workspace/modal backdrop filters, without transforms or fading text.
-          <div data-sync-notice className="pointer-events-none fixed inset-x-0 top-4 z-[2147483647] flex justify-center px-4 opacity-100 filter-none backdrop-blur-none">
-            <div
-              role={saveError || syncState.kind === 'error' ? 'alert' : 'status'}
-              aria-atomic="true"
-              className="pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl items-start gap-3 overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium leading-6 text-white opacity-100 shadow-2xl filter-none backdrop-blur-none"
-            >
-              <span className="min-w-0 flex-1 break-words">
-                <span className="block">{saveError || syncState.label}</span>
-                {saveError && syncState.kind !== 'idle' && (
-                  <span className="mt-1 block text-sm font-normal text-white">{syncState.label}</span>
-                )}
-                {syncState.detail && (
-                  <span className="mt-1 block text-sm font-normal text-white">{syncState.detail}</span>
-                )}
-              </span>
+          <div data-sync-notice className="pointer-events-none fixed bottom-4 left-4 z-[9999] max-w-[calc(100vw-2rem)]">
+            <div className="pointer-events-auto max-w-xs" onMouseEnter={() => setSyncNoticeExpanded(true)} onMouseLeave={() => setSyncNoticeExpanded(false)}>
               <button
                 type="button"
-                aria-label="关闭同步提示"
-                onClick={() => setSyncNoticeDismissed(true)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-600 bg-slate-800 text-base leading-none text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                aria-expanded={syncNoticeExpanded}
+                onClick={() => setSyncNoticeExpanded(true)}
+                className="max-w-xs truncate rounded-lg border border-slate-700/60 bg-slate-900/80 px-3 py-1.5 text-left text-xs text-slate-200 shadow-md backdrop-blur-md"
               >
-                ✕
+                {syncState.permanent
+                  ? `未同步 (${syncState.code || 'BAD_REQUEST'}) · 点击查看或清理`
+                  : syncState.kind === 'pending' ? '正在同步… · 点击查看' : '同步未完成 · 点击查看'}
               </button>
+              {syncNoticeExpanded && (
+                <div className="pt-2">
+                <div role={syncState.kind === 'error' ? 'alert' : 'status'} aria-atomic="true" className="max-h-64 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900/95 p-3 text-xs leading-5 text-slate-200 shadow-xl backdrop-blur-md">
+                  {saveError && <p className="font-medium text-white">{saveError}</p>}
+                  <p className={saveError ? 'mt-1' : ''}>{syncState.label}</p>
+                  {syncState.detail && <p className="mt-1 break-words text-slate-300">{syncState.detail}</p>}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {syncState.permanent && (
+                      <button type="button" onClick={() => void discardRejectedQueueAndRestore()} className="rounded-md border border-amber-400/40 bg-amber-500/15 px-2 py-1 font-medium text-amber-200 hover:bg-amber-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300">
+                        丢弃损坏队列并从云端恢复
+                      </button>
+                    )}
+                    <button type="button" aria-label="关闭同步提示" onClick={() => { setSyncNoticeExpanded(false); setSyncNoticeDismissed(true); }} className="rounded-md px-2 py-1 text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">关闭</button>
+                  </div>
+                </div>
+                </div>
+              )}
             </div>
           </div>,
           document.body,

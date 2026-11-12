@@ -26,6 +26,7 @@ export interface PatchConflict {
 export interface PatchRejected {
   ok: false;
   code:
+    | 'BAD_REQUEST'
     | 'BAD_PATCH'
     | 'NOT_FOUND'
     | 'DESTRUCTIVE_WRITE_BLOCKED'
@@ -34,6 +35,8 @@ export interface PatchRejected {
     | 'ENDPOINT_MISSING'
     | 'ERROR';
   message?: string;
+  status?: number;
+  permanent?: boolean;
   before?: number;
   after?: number;
 }
@@ -48,7 +51,7 @@ const ENDPOINT = '/api/board/patch';
  */
 let endpointMissingLogged = false;
 
-function toResult(body: any): PatchResult {
+function toResult(body: any, status?: number): PatchResult {
   if (body && body.ok === true && typeof body.version === 'number') {
     return { ok: true, version: body.version, cards: body.cards ?? 0 };
   }
@@ -65,6 +68,8 @@ function toResult(body: any): PatchResult {
     ok: false,
     code,
     message: body?.message || body?.error,
+    status,
+    permanent: status === 400 || status === 413 || status === 422,
     before: body?.before,
     after: body?.after,
   };
@@ -134,9 +139,9 @@ export async function submitPatch(
     }
 
     if (!res.ok && !body) {
-      return { ok: false, code: 'ERROR', message: `HTTP ${res.status}` };
+      return { ok: false, code: res.status === 400 ? 'BAD_REQUEST' : 'ERROR', message: `HTTP ${res.status}`, status: res.status, permanent: [400, 413, 422].includes(res.status) };
     }
-    return toResult(body);
+    return toResult(body, res.status);
   } catch (err: any) {
     if (err?.name === 'AbortError') {
       return { ok: false, code: 'ERROR', message: 'aborted' };

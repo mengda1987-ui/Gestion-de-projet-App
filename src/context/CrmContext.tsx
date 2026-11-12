@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { CrmModules, CrmModule, CrmStage, CrmField, CrmContact } from '@/types';
 import { useBoardState } from './BoardContext';
 import { diffEntities, applyEntityOps } from './patch/delta';
-import { enqueue, dequeue, listAll, newEntryId, type OutboxEntry } from './patch/outbox';
+import { enqueue, dequeue, discardEntries, listAll, markRejected, newEntryId, type OutboxEntry } from './patch/outbox';
 import { subscribeSync } from '@/lib/syncEvents';
 
 
@@ -219,6 +219,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const mutationRevision = useRef(0);
   const [active, setActive] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [syncNoticeExpanded, setSyncNoticeExpanded] = useState(false);
   const sequence = useRef(0);
   const apply = useCallback((action: CrmAction) => { optimistic.current = crmReducer(optimistic.current, action); rawDispatch(action); }, []);
   const ensureLoaded = useCallback(() => { setActive(true); }, []);
@@ -263,6 +264,11 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       for (const entry of pending.current.values()) {
         if (generation !== epoch.current) return;
         if (blocked.has(entry.boardId)) continue;
+        if (entry.rejection) {
+          blocked.add(entry.boardId);
+          setSaveError(`CRM 队列已暂停（HTTP ${entry.rejection.status} ${entry.rejection.code}）：${entry.rejection.message}`);
+          continue;
+        }
         let accepted = false;
         try {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -271,9 +277,17 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
           if (generation !== epoch.current) return;
           if (response.ok && body.ok) { await dequeue(entry.id); pending.current.delete(entry.id); mutationRevision.current++; accepted = true; await refresh(generation); break; }
           if (body.code === 'VERSION_CONFLICT') { await refresh(generation); continue; }
+          if ([400, 413, 422].includes(response.status)) {
+            const rejection = { status: response.status, code: body.code || body.error || 'BAD_REQUEST', message: body.message || '请求格式或字段校验失败' };
+            entry.rejection = rejection;
+            await markRejected(entry.id, rejection);
+            blocked.add(entry.boardId);
+            setSaveError(`CRM 队列已暂停（HTTP ${rejection.status} ${rejection.code}）：${rejection.message}`);
+            break;
+          }
           throw new Error(body.message || body.code || body.error || 'CRM synchronization failed');
         }
-        if (!accepted) throw new Error('CRM conflict remains; edits retained locally');
+        if (!accepted && !entry.rejection) throw new Error('CRM conflict remains; edits retained locally');
         } catch (error) { blocked.add(entry.boardId); setSaveError('CRM 未同步，改动已保留：' + String(error)); }
       }
       if (!pending.current.size) setSaveError(null);
@@ -291,11 +305,44 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       if (old === next) continue;
       const ops = old && next ? diffEntities(old, next) : [];
       if (old && next && !ops.length) continue;
+      mutationRevision.current++;
       const e: OutboxEntry = { id: newEntryId(), accountId: uid, kind: 'crm', boardId: id, baseVersion: versions.current.get(id) || 0, payload: { ops }, attempts: 0, createdAt: sequence.current = Math.max(Date.now(), sequence.current + 1), input: next ? old ? { action: 'patch' } : { action: 'create', module: next } : { action: 'delete' } };
       pending.current.set(e.id, e);
       void enqueue(e).then(saved => { if (!saved) setSaveError('CRM 仅暂存内存，请勿关闭页面。'); return flush(); });
     }
   }, [uid, apply, flush]);
+  const discardRejectedCrmQueueAndRestore = useCallback(async () => {
+    const rejected = [...pending.current.values()].find(entry => entry.accountId === uid && entry.kind === 'crm' && entry.rejection);
+    if (!rejected || !uid) return;
+    const generation = epoch.current;
+    const revision = mutationRevision.current;
+    setSaveError('正在从云端恢复 CRM…');
+    try {
+      const remote = await fetchModules();
+      if (generation !== epoch.current) return;
+      if (revision !== mutationRevision.current) {
+        setSaveError('恢复期间有新的 CRM 编辑；队列未清理，请确认后再次恢复。');
+        return;
+      }
+      const discard = [...pending.current.values()].filter(entry => entry.accountId === uid && entry.kind === 'crm' && entry.boardId === rejected.boardId);
+      await discardEntries(uid, discard.map(entry => entry.id));
+      if (generation !== epoch.current) return;
+      for (const entry of discard) pending.current.delete(entry.id);
+      for (const remoteModule of remote) versions.current.set(remoteModule.id, remoteModule.version || 0);
+      let merged = remote;
+      for (const entry of pending.current.values()) {
+        if (entry.kind !== 'crm') continue;
+        if (entry.input?.action === 'create' && !merged.some(remoteModule => remoteModule.id === entry.boardId)) merged = [...merged, entry.input.module];
+        else if (entry.input?.action === 'delete') merged = merged.filter(remoteModule => remoteModule.id !== entry.boardId);
+        else merged = merged.map(remoteModule => remoteModule.id === entry.boardId ? applyEntityOps(remoteModule, entry.payload.ops) : remoteModule);
+      }
+      apply({ type: 'CRM_LOAD', payload: merged });
+      setSaveError(null);
+      if (pending.current.size) void flush();
+    } catch (error) {
+      setSaveError(`CRM 云端恢复失败，队列未清理：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [uid, fetchModules, apply, flush]);
   useEffect(() => {
     epoch.current++; pending.current.clear(); versions.current.clear(); running.current = null; refreshing.current = null;
     apply({ type: 'CRM_LOAD', payload: [] });
@@ -312,7 +359,21 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; clearInterval(interval); unsubscribe(); window.removeEventListener('online', wake); window.removeEventListener('pageshow', wake); document.removeEventListener('visibilitychange', wake); };
   }, [uid, active, flush, refresh]);
   const value = useMemo(() => ({ state, dispatch, saveError, ensureLoaded }), [state, dispatch, saveError, ensureLoaded]);
-  return <CrmContext.Provider value={value}>{children}{saveError && createPortal(<div role="alert" className="fixed bottom-6 left-4 z-[100000] max-w-sm rounded-xl bg-red-600 p-3 text-xs text-white">{saveError}</div>, document.body)}</CrmContext.Provider>;
+  const rejectedCrm = [...pending.current.values()].find(entry => entry.accountId === uid && entry.kind === 'crm' && entry.rejection);
+  return <CrmContext.Provider value={value}>{children}{boardState.appSection === 'crm' && rejectedCrm && typeof document !== 'undefined' && createPortal(
+    <div className="pointer-events-none fixed bottom-4 left-4 z-[10000] max-w-[calc(100vw-2rem)]">
+      <div className="pointer-events-auto max-w-xs" onMouseEnter={() => setSyncNoticeExpanded(true)} onMouseLeave={() => setSyncNoticeExpanded(false)}>
+        <button type="button" aria-expanded={syncNoticeExpanded} onClick={() => setSyncNoticeExpanded(value => !value)} className="max-w-xs truncate rounded-lg border border-slate-700/60 bg-slate-900/80 px-3 py-1.5 text-left text-xs text-slate-200 shadow-md backdrop-blur-md">
+          CRM 未同步 ({rejectedCrm.rejection!.code}) · 点击查看或清理
+        </button>
+        {syncNoticeExpanded && <div className="pt-2"><div role="alert" className="max-h-64 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900/95 p-3 text-xs leading-5 text-slate-200 shadow-xl backdrop-blur-md">
+          <p>CRM 队列已暂停自动重试（HTTP {rejectedCrm.rejection!.status}）。</p>
+          <p className="mt-1 break-words text-slate-300">{rejectedCrm.rejection!.message}</p>
+          <button type="button" onClick={() => void discardRejectedCrmQueueAndRestore()} className="mt-2 rounded-md border border-amber-400/40 bg-amber-500/15 px-2 py-1 font-medium text-amber-200 hover:bg-amber-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300">丢弃此模块队列并从云端恢复</button>
+        </div></div>}
+      </div>
+    </div>, document.body,
+  )}</CrmContext.Provider>;
 }
 export function useCrm() {
   const context = useContext(CrmContext);

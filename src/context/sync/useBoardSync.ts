@@ -7,7 +7,7 @@ import { createInitialState, type BoardState } from '../types';
 import { normalizeAction } from '../normalizeAction';
 import { actionToPatch, isLocalOnlyAction } from '../patch/ops';
 import { applyEntityOps } from '../patch/delta';
-import { enqueue, dequeue, listAll, newEntryId, type OutboxEntry } from '../patch/outbox';
+import { enqueue, dequeue, discardEntries, listAll, markRejected, newEntryId, type OutboxEntry } from '../patch/outbox';
 import { submitEntry } from '../patch/client';
 import { buildSnapshot, readLocalBackup, writeLocalBackup, fetchRemoteSnapshot, type WorkspaceSnapshot, type SyncIndicatorState } from './boardApi';
 
@@ -114,6 +114,12 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
         if (epoch !== generation.current) return;
         if (entry.accountId !== account.current || entry.kind === 'crm' || !pending.current.has(entry.id)) continue;
         if (blocked.has(entry.boardId)) continue;
+        if (entry.rejection) {
+          blocked.add(entry.boardId);
+          setSaveError('同步未完成，改动仍保留在本机；此请求已暂停自动重试。');
+          setSyncState({ kind: 'error', label: '存在未同步改动', detail: `${entry.rejection.message}；该看板队列已暂停，请检查或丢弃并从云端恢复。`, code: entry.rejection.code, permanent: true });
+          continue;
+        }
         const retryAt = retryAfter.current.get(entry.boardId) ?? 0;
         if (retryAt > Date.now()) { blocked.add(entry.boardId); continue; }
         retryAfter.current.delete(entry.boardId);
@@ -122,6 +128,7 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
         setSyncState({ kind: 'pending', label: '保存中…' });
         let accepted = false;
         let failureDetail = '';
+        let permanentFailure: NonNullable<OutboxEntry['rejection']> | undefined;
         for (let retry = 0; retry < 3; retry++) {
           const baseVersion = versions.current.get(entry.boardId) ?? entry.baseVersion;
           const current = { ...entry, baseVersion, attempts: entry.attempts + 1 };
@@ -140,7 +147,7 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
               const url = entry.kind === 'delete' ? endpoint + '?id=' + encodeURIComponent(entry.boardId) : endpoint;
               const response = await fetch(url, { method, credentials: 'same-origin', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
               result = await response.json();
-              result = { ...result, ok: response.ok && result.ok !== false && !result.error };
+              result = { ...result, ok: response.ok && result.ok !== false && !result.error, status: response.status, permanent: [400, 413, 422].includes(response.status) };
             } catch (err) { result = { ok: false, message: String(err) }; } finally { clearTimeout(timer); }
           }
           if (epoch !== generation.current) return;
@@ -172,12 +179,24 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
             continue;
           }
           failureDetail = result.message || result.code || result.error || '云端未确认写入';
+          if (result.permanent) {
+            permanentFailure = { status: result.status || 400, code: result.code || 'BAD_REQUEST', message: failureDetail };
+            break;
+          }
           setSaveError('同步未完成，改动保留在本机，恢复连接或重新登录后重试。');
           blocked.add(entry.boardId);
           break; // block this board only; independent boards can continue syncing
         }
         if (!accepted) {
           blocked.add(entry.boardId);
+          if (permanentFailure) {
+            entry.rejection = permanentFailure;
+            await markRejected(entry.id, permanentFailure);
+            if (epoch !== generation.current) return;
+            setSaveError('同步未完成，改动仍保留在本机；此请求已暂停自动重试。');
+            setSyncState({ kind: 'error', label: '存在未同步改动', detail: `${permanentFailure.message}（HTTP ${permanentFailure.status}）；该看板队列已暂停，请检查或丢弃并从云端恢复。`, code: permanentFailure.code, permanent: true });
+            continue;
+          }
           const failures = (retryCounts.current.get(entry.boardId) ?? 0) + 1;
           retryCounts.current.set(entry.boardId, failures);
           const delay = Math.min(5000 * 2 ** (failures - 1), 5 * 60 * 1000);
@@ -197,8 +216,12 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
       }
       if (!pending.current.size) { setSaveError(null); setSyncState({ kind: 'idle', label: '已同步' }); }
       else {
+        const rejected = [...pending.current.values()].find(e => e.accountId === account.current && e.kind !== 'crm' && e.rejection);
         const deferred = [...pending.current.values()].find(e => retryAfter.current.has(e.boardId));
-        if (deferred) {
+        if (rejected?.rejection) {
+          setSaveError('同步未完成，改动仍保留在本机；此请求已暂停自动重试。');
+          setSyncState({ kind: 'error', label: '存在未同步改动', detail: `${rejected.rejection.message}（HTTP ${rejected.rejection.status}）；该看板队列已暂停，请检查或丢弃并从云端恢复。`, code: rejected.rejection.code, permanent: true });
+        } else if (deferred) {
           const boardId = deferred.boardId;
           const remaining = Math.max(0, (retryAfter.current.get(boardId) ?? Date.now()) - Date.now());
           setSyncState({ kind: 'error', label: '存在未同步改动', detail: `${retryDetails.current.get(boardId) || '云端未确认写入'}；本地改动已保留，${Math.ceil(remaining / 1000)} 秒后自动重试` });
@@ -208,6 +231,49 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
     running.current = task;
     try { await task; } catch (err) { setSaveError('同步队列已保留：' + String(err)); } finally { if (running.current === task) running.current = null; }
   }, [announce, refetch]);
+  const discardRejectedQueueAndRestore = useCallback(async () => {
+    const rejected = [...pending.current.values()].find(entry => entry.accountId === account.current && entry.kind !== 'crm' && entry.rejection);
+    if (!rejected || !account.current || !ready.current) return;
+    const epoch = generation.current;
+    const revision = mutationRevision.current;
+    setSyncState({ kind: 'pending', label: '正在从云端恢复…' });
+    try {
+      // Keep the local queue intact unless a fresh, account-verified cloud snapshot succeeds.
+      const { snapshot } = await fetchRemoteSnapshot(optimisticStateRef.current.users, null, account.current);
+      if (epoch !== generation.current) return;
+      if (revision !== mutationRevision.current) {
+        setSaveError('恢复期间有新的本地编辑；队列未清理，请再次确认从云端恢复。');
+        setSyncState({ kind: 'error', label: '有新的本地改动', detail: '本地队列仍完整保留；再次点击恢复前请确认这些改动可以丢弃。', code: rejected.rejection?.code, permanent: true });
+        return;
+      }
+      const boardId = rejected.boardId;
+      const discard = [...pending.current.values()].filter(entry => {
+        if (entry.accountId !== account.current || entry.kind === 'crm') return false;
+        if (rejected.kind === 'reorder') return entry.kind === 'reorder';
+        if (rejected.kind === 'appearance') return entry.kind === 'appearance';
+        if (rejected.kind === 'profile') return entry.kind === 'profile' && entry.input?.id === rejected.input?.id;
+        if (!boardId) return entry.id === rejected.id;
+        return entry.boardId === boardId || (entry.kind === 'reorder' && entry.input?.orderedIds?.includes(boardId));
+      });
+      await discardEntries(account.current, discard.map(entry => entry.id));
+      if (epoch !== generation.current) return;
+      for (const entry of discard) { pending.current.delete(entry.id); durable.current.delete(entry.id); }
+      const timer = retryTimers.current.get(boardId);
+      if (timer) clearTimeout(timer);
+      retryTimers.current.delete(boardId); retryAfter.current.delete(boardId); retryDetails.current.delete(boardId); retryCounts.current.delete(boardId);
+      for (const board of snapshot.boards) versions.current.set(board.id, board.version ?? 0);
+      mutationRevision.current++;
+      const restored = overlay(snapshot);
+      apply({ type: 'LOAD_ALL_DATA', payload: restored });
+      writeLocalBackup(restored, undefined, account.current);
+      setSaveError(null);
+      setSyncState({ kind: pending.current.size ? 'pending' : 'idle', label: pending.current.size ? '正在同步其他改动…' : '已从云端恢复' });
+      if (pending.current.size) void drainOutbox();
+    } catch (error) {
+      setSaveError(`云端恢复失败，队列未清理：${error instanceof Error ? error.message : String(error)}`);
+      setSyncState({ kind: 'error', label: '云端恢复失败', detail: '本地队列仍完整保留；检查网络后重试。', code: rejected.rejection?.code, permanent: true });
+    }
+  }, [apply, drainOutbox, overlay]);
   const queue = useCallback((entry: OutboxEntry) => {
     pending.current.set(entry.id, entry);
     durable.current.set(entry.id, enqueue(entry)); // called synchronously for EVERY operation
@@ -306,5 +372,5 @@ export function useBoardSync({ state, rawDispatch, reducer }: Params) {
     }
     return () => { clearInterval(timer); window.removeEventListener('online', resume); window.removeEventListener('pageshow', resume); window.removeEventListener('pagehide', hide); document.removeEventListener('visibilitychange', resume); unsubscribe(); bc.current?.close(); };
   }, [drainOutbox, refetch, state.currentUser?.id]);
-  return { dispatchWithSync, drainOutbox, saveError, setSaveError, syncState };
+  return { dispatchWithSync, drainOutbox, discardRejectedQueueAndRestore, saveError, setSaveError, syncState };
 }

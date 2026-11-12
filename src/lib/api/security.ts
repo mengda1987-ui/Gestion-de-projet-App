@@ -88,7 +88,7 @@ const allowed: Record<string, string[]> = {
 };
 const child: Record<string, string> = { columns: 'column', cards: 'card', labels: 'label', mindmap: 'node', checklists: 'checklist', items: 'item', comments: 'comment', attachments: 'attachment', stages: 'stage', fields: 'field', contacts: 'contact' };
 const arrays = new Set(['labels', 'assignees', 'linkedContacts', 'visibleTo', 'tags', 'options']);
-const nullable = new Set(['emoji', 'iconBg', 'iconImage', 'coverImage', 'visibleTo', 'dueDate', 'startDate', 'mmNodeId', 'mmRootId', 'mmPosition', 'parentId']);
+const nullable = new Set(['emoji', 'iconBg', 'iconImage', 'coverImage', 'visibleTo', 'linkedContacts', 'dueDate', 'startDate', 'mmNodeId', 'mmRootId', 'mmPosition', 'parentId']);
 function fieldValue(key: string, v: any, entity: string): void {
   if (v === null) { assert(nullable.has(key) || (key === 'description' && entity === 'node')); return; }
   if (child[key] && !(key === 'labels' && entity === 'card')) {
@@ -99,7 +99,7 @@ function fieldValue(key: string, v: any, entity: string): void {
   if (['archived', 'completed', 'collapsed'].includes(key)) { assert(typeof v === 'boolean'); return; }
   if (key === 'mmPosition') { assert(v && typeof v.x === 'number' && Number.isFinite(v.x) && typeof v.y === 'number' && Number.isFinite(v.y)); return; }
   if (key === 'customFields') { assert(v && !Array.isArray(v) && typeof v === 'object' && Object.values(v).every(x => typeof x === 'string')); return; }
-  assert(typeof v === 'string' && v.length <= (['url', 'coverImage', 'iconImage', 'background'].includes(key) ? 1024 * 1024 : 100000), 'INVALID_FIELD');
+  assert(typeof v === 'string' && v.length <= (['url', 'coverImage', 'iconImage', 'background'].includes(key) ? 1024 * 1024 : 100000), `INVALID_FIELD: ${entity}.${key} must be a string`);
   if (key === 'status') assert(['todo', 'in_progress', 'complete'].includes(v));
   if (key === 'type' && entity === 'field') assert(['text','number','date','select'].includes(v));
   if (['url', 'coverImage', 'iconImage'].includes(key)) assert(!v || /^(https?:\/\/|data:image\/(png|jpeg|webp|gif);base64,|data:application\/pdf;base64,)/i.test(v), 'INVALID_URL');
@@ -131,7 +131,9 @@ export function validateOps(ops: any, root: 'board' | 'module', user: SessionPay
       for (const key of op.fromPath) source = Array.isArray(source) ? source.find(x => x.id === key) : source?.[key];
       const entity = source?.find((x: any) => x.id === op.id);
       if (!entity) throw new ApiFailure(409, 'TARGET_REMOVED');
-      validateOps([{ op: 'remove', path: [...op.fromPath, op.id] }, { op: 'insert', path: op.path, value: entity, afterId: op.afterId }], root, user, model);
+      // Reproduce the JSON wire representation: optional undefined properties become null.
+      const wireEntity = JSON.parse(JSON.stringify(entity));
+      validateOps([{ op: 'remove', path: [...op.fromPath, op.id] }, { op: 'insert', path: op.path, value: wireEntity, afterId: op.afterId }], root, user, model);
       continue;
     }
     let type: string = root, value = model, collection = '', key = '';

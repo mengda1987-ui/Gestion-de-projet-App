@@ -13,6 +13,9 @@ function load(file) {
   const js = ts.transpileModule(fs.readFileSync(full, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const localRequire = name => {
     if (name === './sync/useBoardSync') return {};
+    if (name === 'next/server') return { NextResponse: { json: (body, init) => ({ body, init }) } };
+    if (name === '@/lib/auth/session') return { getSession: async () => null };
+    if (name === '@/lib/supabaseAdmin') return { getAdminClient: () => null };
     if (name.startsWith('@/')) return load('src/' + name.slice(2));
     if (name.startsWith('.')) return load(path.resolve(path.dirname(full), name));
     return require(name);
@@ -24,6 +27,7 @@ const { normalizeAction } = load('src/context/normalizeAction.ts');
 const { boardReducer } = load('src/context/BoardContext.tsx');
 const { createInitialState } = load('src/context/types.ts');
 const { diffEntities, applyEntityOps } = load('src/context/patch/delta.ts');
+const { validateEntity, validateOps } = load('src/lib/api/security.ts');
 let state = createInitialState();
 state.currentUser = { id: crypto.randomUUID(), role: 'admin' };
 function apply(action) {
@@ -31,7 +35,13 @@ function apply(action) {
   const predicted = boardReducer(state, normalized), actual = boardReducer(state, normalized);
   assert.deepEqual(predicted, actual, action.type + ' must be deterministic');
   if (state.board.id && predicted.board.id === state.board.id) {
-    const result = applyEntityOps(state.board, diffEntities(state.board, predicted.board));
+    // Match fetch(JSON.stringify(...)): undefined optional fields arrive as null.
+    const ops = JSON.parse(JSON.stringify(diffEntities(state.board, predicted.board)));
+    const user = { uid: state.currentUser.id, role: state.currentUser.role };
+    if (ops.length) validateOps(ops, 'board', user, state.board);
+    const result = applyEntityOps(state.board, ops);
+    // The API receives JSON, so optional local `undefined` values become wire `null`.
+    validateEntity(JSON.parse(JSON.stringify(result)), 'board');
     // wire nulls are intentionally different from local undefined; compare the entity content.
     const clean = o => JSON.parse(JSON.stringify(o, (key, v) => ['createdAt', 'updatedAt', 'version'].includes(key) ? undefined : v === undefined ? null : v));
     assert.deepEqual(clean(result), clean(predicted.board), action.type + ' delta roundtrip');
