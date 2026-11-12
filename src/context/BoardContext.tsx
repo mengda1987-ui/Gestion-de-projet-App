@@ -118,27 +118,29 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
   return (
     <BoardCommandsContext.Provider value={contextValue}><BoardStateContext.Provider value={state}><BoardContentContext.Provider value={contentValue}>
       {children}
-      {(saveError || (state._loaded && syncState.kind !== 'idle')) && !syncNoticeDismissed &&
+      {typeof document !== 'undefined' && (saveError || (state._loaded && syncState.kind !== 'idle')) && !syncNoticeDismissed &&
         createPortal(
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[2147483647] w-max max-w-[min(92vw,42rem)] pointer-events-none">
+          // Keep this above workspace/modal backdrop filters, without transforms or fading text.
+          <div data-sync-notice className="pointer-events-none fixed inset-x-0 top-4 z-[2147483647] flex justify-center px-4 opacity-100 filter-none backdrop-blur-none">
             <div
               role={saveError || syncState.kind === 'error' ? 'alert' : 'status'}
-              className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-900/95 px-4 py-3 text-sm font-medium text-white shadow-xl animate-slide-up pointer-events-auto"
+              aria-atomic="true"
+              className="pointer-events-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl items-start gap-3 overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium leading-6 text-white opacity-100 shadow-2xl filter-none backdrop-blur-none"
             >
               <span className="min-w-0 flex-1 break-words">
                 <span className="block">{saveError || syncState.label}</span>
                 {saveError && syncState.kind !== 'idle' && (
-                  <span className="mt-1 block text-xs font-normal text-slate-300">{syncState.label}</span>
+                  <span className="mt-1 block text-sm font-normal text-white">{syncState.label}</span>
                 )}
                 {syncState.detail && (
-                  <span className="mt-1 block text-xs font-normal text-slate-300">{syncState.detail}</span>
+                  <span className="mt-1 block text-sm font-normal text-white">{syncState.detail}</span>
                 )}
               </span>
               <button
                 type="button"
                 aria-label="关闭同步提示"
                 onClick={() => setSyncNoticeDismissed(true)}
-                className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs text-white hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-600 bg-slate-800 text-base leading-none text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 ✕
               </button>
