@@ -85,7 +85,7 @@ export function route(handler: (request: NextRequest, user: SessionPayload) => P
 const allowed: Record<string, string[]> = {
   board: ['title', 'background', 'emoji', 'iconBg', 'iconImage', 'visibleTo', 'order', 'columns', 'labels', 'mindmap'],
   column: ['title', 'order', 'position', 'archived', 'visibleTo', 'mmRootId', 'mmPosition', 'cards'],
-  card: ['title', 'description', 'coverImage', 'labels', 'assignees', 'dueDate', 'startDate', 'status', 'completed', 'archived', 'deleted', 'order', 'position', 'mmNodeId', 'mmPosition', 'visibleTo', 'linkedContacts', 'checklists', 'comments', 'attachments'],
+  card: ['title', 'description', 'coverImage', 'labels', 'assignees', 'dueDate', 'startDate', 'status', 'completed', 'archived', 'deleted', 'urgent', 'order', 'position', 'mmNodeId', 'mmPosition', 'visibleTo', 'linkedContacts', 'checklists', 'comments', 'attachments'],
   checklist: ['name', 'items'], item: ['text', 'completed', 'dueDate', 'mmNodeId', 'mmPosition'],
   comment: ['userId', 'text'], attachment: ['name', 'url', 'type', 'size', 'uploadedAt'],
   label: ['name', 'color'], node: ['text', 'description', 'parentId', 'color', 'collapsed', 'order'],
@@ -95,19 +95,19 @@ const allowed: Record<string, string[]> = {
 };
 const child: Record<string, string> = { columns: 'column', cards: 'card', labels: 'label', mindmap: 'node', checklists: 'checklist', items: 'item', comments: 'comment', attachments: 'attachment', stages: 'stage', fields: 'field', contacts: 'contact' };
 const arrays = new Set(['labels', 'assignees', 'linkedContacts', 'visibleTo', 'tags', 'options']);
-const nullable = new Set(['emoji', 'iconBg', 'iconImage', 'coverImage', 'visibleTo', 'linkedContacts', 'dueDate', 'startDate', 'mmNodeId', 'mmRootId', 'mmPosition', 'parentId']);
+const nullable = new Set(['emoji', 'iconBg', 'iconImage', 'coverImage', 'visibleTo', 'linkedContacts', 'dueDate', 'startDate', 'mmNodeId', 'mmRootId', 'mmPosition', 'parentId', 'collapsed', 'options', 'uploadedAt', 'completed', 'deleted', 'urgent', 'position']);
 // Existing boards may contain larger legacy icon data URLs. New board-patch
 // requests remain bounded by jsonBody's 4 MiB request limit.
 const MAX_ICON_IMAGE_LENGTH = 10 * 1024 * 1024;
 function fieldValue(key: string, v: any, entity: string): void {
   const invalid = (expected: string): never => { throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${entity}.${key} ${expected}`); };
-  if (v === null) { if (nullable.has(key) || (key === 'description' && entity === 'node')) return; invalid('cannot be null'); }
+  if (v === null || v === undefined) { if (nullable.has(key) || (key === 'description' && entity === 'node')) return; invalid('cannot be null'); }
   if (child[key] && !(key === 'labels' && entity === 'card')) {
     if (!Array.isArray(v)) invalid('must be an array'); const ids = new Set(); for (const x of v) { validateEntity(x, child[key]); assert(!ids.has(x.id), 'DUPLICATE_ID'); ids.add(x.id); } return;
   }
   if (arrays.has(key)) { if (!Array.isArray(v) || !v.every(x => typeof x === 'string' && x.length <= 200)) invalid('must be an array of strings'); return; }
   if (['order', 'size', 'position'].includes(key)) { if (typeof v !== 'number' || !Number.isFinite(v) || (key === 'size' && v < 0)) invalid('must be a valid number'); return; }
-  if (['archived', 'completed', 'collapsed', 'deleted'].includes(key)) { if (typeof v !== 'boolean') invalid('must be a boolean'); return; }
+  if (['archived', 'completed', 'collapsed', 'deleted', 'urgent'].includes(key)) { if (typeof v !== 'boolean') invalid('must be a boolean'); return; }
   if (key === 'mmPosition') { if (!v || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) invalid('must contain finite numeric x and y coordinates'); return; }
   if (key === 'customFields') { if (!v || Array.isArray(v) || typeof v !== 'object' || !Object.values(v).every(x => typeof x === 'string')) invalid('must be an object of strings'); return; }
   const maxLength = entity === 'board' && key === 'iconImage' ? MAX_ICON_IMAGE_LENGTH : ['url', 'coverImage', 'background'].includes(key) ? 1024 * 1024 : 100000;
@@ -120,14 +120,14 @@ function fieldValue(key: string, v: any, entity: string): void {
 export function validateEntity(v: any, type: string): void {
   assert(v && !Array.isArray(v) && typeof v === 'object' && typeof v.id === 'string' && v.id.length > 0 && v.id.length <= 200);
   for (const [key, value] of Object.entries(v)) {
-    if (['id', 'createdAt', 'updatedAt', 'version', 'isDeleted'].includes(key)) continue;
+    if (value === undefined || ['id', 'createdAt', 'updatedAt', 'version', 'isDeleted'].includes(key)) continue;
     if (!allowed[type]?.includes(key)) throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${type}.${key} is not allowed`);
     fieldValue(key, value, type);
   }
   const required: Record<string, string[]> = { column: ['title', 'cards', 'archived', 'order'], card: ['title', 'description', 'labels', 'assignees', 'checklists', 'comments', 'attachments', 'status', 'archived', 'order'], checklist: ['name', 'items'], item: ['text', 'completed'], module: ['name', 'nameEn', 'emoji', 'color', 'contacts', 'stages', 'fields'], contact: ['name', 'email', 'phone', 'company', 'tags', 'ownerId', 'stageId', 'notes', 'customFields'] };
   required.comment = ['userId', 'text']; required.attachment = ['name', 'url', 'type', 'size']; required.label = ['name', 'color']; required.node = ['text', 'parentId', 'color', 'order']; required.stage = ['name', 'order']; required.field = ['name', 'type'];
   for (const key of required[type] || []) {
-    if (!(key in v)) throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${type}.${key} is required`);
+    if (!(key in v) || v[key] === undefined) throw new ApiFailure(400, 'INVALID_FIELD', `INVALID_FIELD: ${type}.${key} is required`);
   }
   if (type === 'board') {
     const ids = new Set<string>();

@@ -9,8 +9,8 @@ BEGIN
   CASE kind
   WHEN 'board' THEN allowed:=ARRAY['id','title','background','emoji','iconBg','iconImage','visibleTo','order','columns','labels','mindmap']; required:=ARRAY['id','title','columns','labels','mindmap'];
   WHEN 'module' THEN allowed:=ARRAY['id','name','nameEn','emoji','color','stages','fields','contacts']; required:=ARRAY['id','name','nameEn','emoji','color','stages','fields','contacts'];
-  WHEN 'column' THEN allowed:=ARRAY['id','title','cards','order','position','archived','visibleTo','mmRootId','mmPosition']; required:=ARRAY['id','title','cards','order','archived'];
-  WHEN 'card' THEN allowed:=ARRAY['id','title','description','coverImage','labels','assignees','dueDate','startDate','status','completed','archived','checklists','comments','attachments','order','position','mmNodeId','mmPosition','visibleTo','linkedContacts']; required:=ARRAY['id','title','description','labels','assignees','checklists','comments','attachments','status','archived','order'];
+  WHEN 'column' THEN allowed:=ARRAY['id','title','cards','order','position','archived','visibleTo','mmRootId','mmPosition']; required:=ARRAY['id','title','cards','archived'];
+  WHEN 'card' THEN allowed:=ARRAY['id','title','description','coverImage','labels','assignees','dueDate','startDate','status','completed','archived','deleted','urgent','checklists','comments','attachments','order','position','mmNodeId','mmPosition','visibleTo','linkedContacts']; required:=ARRAY['id','title','description','labels','assignees','checklists','comments','attachments','status','archived'];
   WHEN 'checklist' THEN allowed:=ARRAY['id','name','items']; required:=ARRAY['id','name','items'];
   WHEN 'item' THEN allowed:=ARRAY['id','text','completed','dueDate','mmNodeId','mmPosition']; required:=ARRAY['id','text','completed'];
   WHEN 'comment' THEN allowed:=ARRAY['id','userId','text']; required:=ARRAY['id','userId','text'];
@@ -26,7 +26,7 @@ BEGIN
   FOR k,v IN SELECT * FROM jsonb_each(doc) LOOP
     IF k IN ('version','isDeleted','createdAt','updatedAt') THEN CONTINUE; END IF;
     IF NOT k=ANY(allowed) THEN RETURN false; END IF;
-    IF v='null'::jsonb THEN IF k IN ('emoji','iconBg','iconImage','coverImage','visibleTo','dueDate','startDate','mmNodeId','mmRootId','mmPosition','parentId') OR (k='description' AND kind='node') THEN CONTINUE; ELSE RETURN false; END IF; END IF;
+    IF v='null'::jsonb THEN IF k IN ('emoji','iconBg','iconImage','coverImage','visibleTo','linkedContacts','dueDate','startDate','mmNodeId','mmRootId','mmPosition','parentId','collapsed','options','uploadedAt','completed','deleted','urgent','position') OR (k='description' AND kind='node') THEN CONTINUE; ELSE RETURN false; END IF; END IF;
     sub:=CASE k WHEN 'columns' THEN 'column' WHEN 'cards' THEN 'card' WHEN 'checklists' THEN 'checklist' WHEN 'items' THEN 'item' WHEN 'comments' THEN 'comment' WHEN 'attachments' THEN 'attachment' WHEN 'mindmap' THEN 'node' WHEN 'contacts' THEN 'contact' WHEN 'stages' THEN 'stage' WHEN 'fields' THEN 'field' WHEN 'labels' THEN CASE WHEN kind='card' THEN NULL ELSE 'label' END ELSE NULL END;
     IF sub IS NOT NULL THEN
       IF jsonb_typeof(v)<>'array' THEN RETURN false; END IF;
@@ -38,7 +38,7 @@ BEGIN
     ELSIF k IN ('labels','assignees','linkedContacts','visibleTo','tags','options') THEN
       IF jsonb_typeof(v)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements(v) x WHERE jsonb_typeof(x)<>'string') THEN RETURN false; END IF;
     ELSIF k IN ('order','size','position') THEN IF jsonb_typeof(v)<>'number' THEN RETURN false; END IF;
-    ELSIF k IN ('archived','completed','collapsed') THEN IF jsonb_typeof(v)<>'boolean' THEN RETURN false; END IF;
+    ELSIF k IN ('archived','completed','collapsed','deleted','urgent') THEN IF jsonb_typeof(v)<>'boolean' THEN RETURN false; END IF;
     ELSIF k='mmPosition' THEN IF jsonb_typeof(v)<>'object' OR jsonb_typeof(v->'x') IS DISTINCT FROM 'number' OR jsonb_typeof(v->'y') IS DISTINCT FROM 'number' THEN RETURN false; END IF;
     ELSIF k='customFields' THEN IF jsonb_typeof(v)<>'object' OR EXISTS(SELECT 1 FROM jsonb_each(v) x WHERE jsonb_typeof(x.value)<>'string') THEN RETURN false; END IF;
     ELSIF k='iconImage' AND kind='board' THEN IF jsonb_typeof(v)<>'string' OR length(v#>>'{}')>10485760 THEN RETURN false; END IF;

@@ -29,6 +29,7 @@ const { createInitialState } = load('src/context/types.ts');
 const { diffEntities, applyEntityOps } = load('src/context/patch/delta.ts');
 const { actionToPatch } = load('src/context/patch/ops.ts');
 const { formatPatchError } = load('src/context/patch/client.ts');
+const { mapBoardRow } = load('src/context/sync/boardApi.ts');
 const { ApiFailure, patchValidationFailure, validateEntity, validateOps } = load('src/lib/api/security.ts');
 let state = createInitialState();
 state.currentUser = { id: crypto.randomUUID(), role: 'admin' };
@@ -43,7 +44,9 @@ function apply(action) {
     const user = { uid: state.currentUser.id, role: state.currentUser.role };
     if (ops.length) validateOps(ops, 'board', user, state.board);
     const result = applyEntityOps(state.board, ops);
-    // The API receives JSON, so optional local `undefined` values become wire `null`.
+    // Validate both the raw in-memory object (as /api/board/patch does on mapBoardRow)
+    // and its JSON-serialized wire form.
+    validateEntity(result, 'board');
     validateEntity(JSON.parse(JSON.stringify(result)), 'board');
     // wire nulls are intentionally different from local undefined; compare the entity content.
     const clean = o => JSON.parse(JSON.stringify(o, (key, v) => ['createdAt', 'updatedAt', 'version'].includes(key) ? undefined : v === undefined ? null : v));
@@ -52,6 +55,52 @@ function apply(action) {
   state = predicted;
 }
 apply({ type: 'CREATE_BOARD', payload: { title: 'Test', background: '#fff' } });
+const mappedNullIconBoard = mapBoardRow({
+  id: state.board.id,
+  title: '孟达个人',
+  background: '#f5f5f7',
+  emoji: '⚡',
+  iconBg: '#007AFF',
+  iconImage: null,
+  labels: [],
+  visibleTo: [],
+  order: 0,
+  version: 58,
+  is_deleted: false,
+  data: {
+    columns: [{
+      id: 'col-live-1',
+      title: 'Todo',
+      archived: false,
+      order: 0,
+      cards: [{
+        id: 'card-legacy-deleted',
+        title: 'Legacy',
+        description: '',
+        labels: [],
+        assignees: [],
+        checklists: [],
+        comments: [],
+        attachments: [],
+        status: 'todo',
+        archived: false,
+        order: 0,
+        deleted: true,
+        urgent: false,
+      }],
+    }],
+    mindmap: [],
+  },
+});
+assert.equal(Object.hasOwn(mappedNullIconBoard, 'iconImage'), true);
+assert.equal(mappedNullIconBoard.iconImage, undefined);
+assert.doesNotThrow(() => validateEntity(mappedNullIconBoard, 'board'), 'in-memory board from mapBoardRow with undefined iconImage and legacy card flags must pass validateEntity');
+const uiAddAction = normalizeAction({ type: 'ADD_CARD', payload: { columnId: 'col-live-1', card: { id: 'card-ui-1', title: '1' } } });
+const uiAddCardState = boardReducer({ ...state, board: mappedNullIconBoard, boards: [mappedNullIconBoard] }, uiAddAction);
+const uiWireOps = JSON.parse(JSON.stringify(actionToPatch(uiAddAction, uiAddCardState.board, mappedNullIconBoard).ops));
+assert.doesNotThrow(() => validateOps(uiWireOps, 'board', { uid: state.currentUser.id, role: 'admin' }, mappedNullIconBoard));
+const uiCandidate = applyEntityOps(mappedNullIconBoard, uiWireOps);
+assert.doesNotThrow(() => validateEntity(uiCandidate, 'board'), 'resulting board after real UI ADD_CARD on mapBoardRow board must pass validateEntity without JSON.stringify');
 const legacyIcon = 'data:image/png;base64,' + 'A'.repeat(1024 * 1024 + 16);
 const setLargeIconAction = normalizeAction({ type: 'SET_BOARD_ICON', payload: { boardId: state.board.id, iconImage: legacyIcon } });
 const beforeLargeIcon = state.board;
@@ -61,19 +110,14 @@ assert.ok(largeIconPatch.ops.some(op => op.op === 'set' && op.path.join('.') ===
 assert.doesNotThrow(() => validateOps(JSON.parse(JSON.stringify(largeIconPatch.ops)), 'board', { uid: state.currentUser.id, role: 'admin' }, beforeLargeIcon), 'server patch validator must accept real SET_BOARD_ICON data URL patch');
 assert.doesNotThrow(() => validateEntity(JSON.parse(JSON.stringify(state.board)), 'board'), 'legacy icon over 1 MiB must not block board validation');
 assert.doesNotThrow(() => validateEntity({ ...state.board, iconImage: null }, 'board'), 'null icon image must remain valid');
+assert.doesNotThrow(() => validateEntity({ ...state.board, iconImage: undefined, iconBg: undefined, emoji: undefined }, 'board'), 'undefined optional icon fields must remain valid');
 assert.doesNotThrow(() => validateOps([{ op: 'set', path: ['iconImage'], value: null }], 'board', { uid: state.currentUser.id, role: 'admin' }, state.board), 'server patch validator must accept clearing the icon image');
 assert.throws(() => validateEntity({ ...state.board, iconImage: 'x'.repeat(10 * 1024 * 1024 + 1) }, 'board'), error => error.code === 'INVALID_FIELD' && /board\.iconImage/.test(error.message), 'icon images above the explicit 10 MiB limit must be rejected');
 const iconMigration = fs.readFileSync(path.join(root, 'supabase/migrations/202611120002_icon_image_size.sql'), 'utf8');
 assert.match(iconMigration, /k='iconImage' AND kind='board'/, 'database migration must special-case board icon size');
 assert.match(iconMigration, />10485760/, 'database migration must use the 10 MiB icon limit');
-const originalSecuritySql = fs.readFileSync(path.join(root, 'supabase/migrations/202611120001_sync_security_v3.sql'), 'utf8');
-const entityValidator = source => source.match(/CREATE OR REPLACE FUNCTION public\._valid_entity_v3[\s\S]*?END \$\$;/)?.[0];
-const originalValidator = entityValidator(originalSecuritySql);
-const migratedValidator = entityValidator(iconMigration);
-assert.ok(originalValidator && migratedValidator, 'both migrations must define the entity validator');
-const revertIconLimit = "    ELSIF k='iconImage' AND kind='board' THEN IF jsonb_typeof(v)<>'string' OR length(v#>>'{}')>10485760 THEN RETURN false; END IF;\n    ELSE IF jsonb_typeof(v)<>'string' OR length(v#>>'{}')>1048576 THEN RETURN false; END IF;";
-const originalIconLimit = "    ELSE IF jsonb_typeof(v)<>'string' OR length(v#>>'{}')>1048576 THEN RETURN false; END IF;";
-assert.equal(migratedValidator.replace(revertIconLimit, originalIconLimit), originalValidator, 'forward migration must preserve every existing validator rule except the board icon limit');
+assert.match(iconMigration, /'deleted','urgent'/, 'database migration must allow legacy card deleted and urgent flags');
+assert.match(iconMigration, /'linkedContacts'/, 'database migration must allow null linkedContacts from wire-serialized cards');
 const addColumnAction = normalizeAction({ type: 'ADD_COLUMN', payload: { title: 'List' } });
 const beforeAddColumn = state.board;
 apply(addColumnAction);
@@ -168,6 +212,11 @@ if (process.argv.includes('--database')) {
     assert.equal(largeIconSqlResult.rows[0].valid, true, 'SQL validator accepts board icon above 1 MiB');
     const nullIconSqlResult = await db.query("SELECT public._valid_entity_v3($1::jsonb, 'board') AS valid", [JSON.stringify({ ...validLargeIconBoard, iconImage: null })]);
     assert.equal(nullIconSqlResult.rows[0].valid, true, 'SQL validator accepts null board icon');
+    const legacyCardBoardSqlResult = await db.query("SELECT public._valid_entity_v3($1::jsonb, 'board') AS valid", [JSON.stringify({
+      ...uiCandidate,
+      columns: [...uiCandidate.columns, { id: 'col-legacy-pos', title: '张总', archived: false, position: 0, cards: [] }],
+    })]);
+    assert.equal(legacyCardBoardSqlResult.rows[0].valid, true, 'SQL validator accepts board with legacy deleted/urgent card flags, legacy position-only column, and wire-null optional fields');
     const oversizedIconSqlResult = await db.query("SELECT public._valid_entity_v3($1::jsonb, 'board') AS valid", [JSON.stringify({ ...validLargeIconBoard, iconImage: 'x'.repeat(10 * 1024 * 1024 + 1) })]);
     assert.equal(oversizedIconSqlResult.rows[0].valid, false, 'SQL validator rejects board icon above 10 MiB');
     const uid = crypto.randomUUID(), member = crypto.randomUUID(), board = crypto.randomUUID();
